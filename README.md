@@ -30,8 +30,11 @@ Notes:
 
 Run these SQL files in Supabase SQL Editor (in this order):
 
-1. `supabase/campaigns.sql`
-2. `supabase/campaign_logs.sql`
+1. `supabase/users.sql`
+2. `supabase/campaigns.sql`
+3. `supabase/campaign_logs.sql`
+
+For login, each user requires an `email` and `password`, and admins can impersonate standard users from the Users tab.
 
 ### 3) Install and run
 

@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../lib/supabaseServer";
+import { getSessionFromCookies } from "../../../lib/authSession";
 
 export async function GET(req) {
   try {
+    const session = await getSessionFromCookies();
+    if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
     const supabase = getSupabaseServerClient();
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
@@ -13,7 +17,11 @@ export async function GET(req) {
         "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,created_at"
       )
       .order("created_at", { ascending: false });
-    if (userId) query = query.eq("assignee_id", userId);
+    if (session.is_admin) {
+      if (userId) query = query.eq("assignee_id", userId);
+    } else {
+      query = query.eq("assignee_id", session.id);
+    }
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
@@ -25,6 +33,9 @@ export async function GET(req) {
 
 export async function POST(req) {
   try {
+    const session = await getSessionFromCookies();
+    if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
     const supabase = getSupabaseServerClient();
     const body = await req.json();
 
@@ -34,7 +45,7 @@ export async function POST(req) {
     const payload = {
       title,
       description: body?.description ? String(body.description) : null,
-      assignee_id: body?.assignee_id || null,
+      assignee_id: session.is_admin ? body?.assignee_id || null : session.id,
       assignee_team: body?.assignee_team ? String(body.assignee_team) : null,
       priority: body?.priority ? String(body.priority) : "Medium",
       status: body?.status ? String(body.status) : "To Do",

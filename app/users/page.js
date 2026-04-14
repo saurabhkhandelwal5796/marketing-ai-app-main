@@ -1,48 +1,50 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Trash2, UserPlus } from "lucide-react";
-
-const ROLES = [
-  "Marketing Executive",
-  "Content Writer",
-  "Social Media Manager",
-  "SEO Analyst",
-  "Campaign Manager",
-  "Sales Coordinator",
-];
-
-function initials(name) {
-  const parts = String(name || "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  const first = parts[0]?.[0] || "";
-  const last = parts.length > 1 ? parts[parts.length - 1]?.[0] || "" : "";
-  return (first + last).toUpperCase();
-}
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Pencil, Trash2, UserPlus } from "lucide-react";
 
 export default function UsersPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [users, setUsers] = useState([]);
+  const [sessionUser, setSessionUser] = useState(null);
 
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState(ROLES[0]);
+  const [showForm, setShowForm] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "User",
+    status: "Active",
+  });
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
+  const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
 
-  const avatar = useMemo(() => initials(name), [name]);
-
-  const load = async () => {
+  const load = async (overrides = {}) => {
+    const params = new URLSearchParams({
+      search: overrides.search ?? search,
+      role: overrides.role ?? roleFilter,
+      status: overrides.status ?? statusFilter,
+      page: String(overrides.page ?? page),
+      pageSize: String(pageSize),
+    });
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/users");
+      const res = await fetch(`/api/users?${params.toString()}`);
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load users.");
       setUsers(Array.isArray(data.users) ? data.users : []);
+      setPagination(data.pagination || { page: 1, pageSize, total: 0 });
     } catch (e) {
       setError(e?.message || "Failed to load users.");
     } finally {
@@ -51,29 +53,100 @@ export default function UsersPage() {
   };
 
   useEffect(() => {
-    load();
+    const loadSession = async () => {
+      try {
+        const res = await fetch("/api/auth/session");
+        const data = await res.json();
+        if (!res.ok || !data?.user) return;
+        setSessionUser(data.user);
+        if (!data.user.is_admin) {
+          router.replace("/campaigns");
+          return;
+        }
+        load({ page: 1 });
+      } catch {
+        setError("Failed to initialize users.");
+      }
+    };
+    loadSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const onAdd = async (e) => {
+  useEffect(() => {
+    if (!sessionUser?.is_admin) return;
+    load({ page });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  const openCreateForm = () => {
+    setEditingUser(null);
+    setForm({ name: "", email: "", password: "", role: "User", status: "Active" });
+    setShowForm(true);
+  };
+
+  const openEditForm = (user) => {
+    setEditingUser(user);
+    setForm({
+      name: user.name || "",
+      email: user.email || "",
+      password: "",
+      role: user.is_admin ? "Admin" : "User",
+      status: user.status || "Active",
+    });
+    setShowForm(true);
+  };
+
+  const switchAsUser = async (u) => {
+    if (!u?.id) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/auth/switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: u.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to login as user.");
+      router.replace("/dashboard");
+      router.refresh();
+    } catch (e) {
+      setError(e?.message || "Failed to login as user.");
+    }
+  };
+
+  const onOpenUser = (u) => {
+    if (!u?.id) return;
+    router.push(`/users/${u.id}`);
+  };
+
+  const onSave = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, role }),
-      });
+      const payload = { ...form };
+      const res = editingUser
+        ? await fetch(`/api/users/${editingUser.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
       const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create user.");
-      setSuccess("User created.");
-      setName("");
-      setEmail("");
-      setRole(ROLES[0]);
-      setUsers((prev) => [data.user, ...prev]);
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save user.");
+      setSuccess(editingUser ? "User updated." : "User created.");
+      setShowForm(false);
+      setEditingUser(null);
+      load({ page: 1 });
+      setPage(1);
     } catch (e2) {
-      setError(e2?.message || "Failed to create user.");
+      setError(e2?.message || "Failed to save user.");
     } finally {
       setSubmitting(false);
     }
@@ -90,17 +163,30 @@ export default function UsersPage() {
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete user.");
       setSuccess("User deleted.");
-      setUsers((prev) => prev.filter((x) => x.id !== u.id));
+      load({ page });
     } catch (e) {
       setError(e?.message || "Failed to delete user.");
     }
   };
 
+  const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / pageSize));
+
   return (
     <main className="space-y-6 p-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h1 className="text-lg font-semibold text-slate-900">Users</h1>
-        <p className="mt-1 text-sm text-slate-500">Create and manage team members for task assignment.</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-slate-900">Users</h1>
+            <p className="mt-1 text-sm text-slate-500">Manage users with search, filters, and impersonation.</p>
+          </div>
+          <button
+            onClick={openCreateForm}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            <UserPlus size={16} />
+            New
+          </button>
+        </div>
 
         {error ? (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -112,103 +198,210 @@ export default function UsersPage() {
             {success}
           </div>
         ) : null}
-
-        <form onSubmit={onAdd} className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
-          <label className="block text-sm font-medium text-slate-700 md:col-span-1">
-            Name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              required
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700 md:col-span-1">
-            Email
-            <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              type="email"
-              className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              required
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700 md:col-span-1">
-            Role
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              {ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="flex items-end gap-3 md:col-span-1">
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white">
-              {avatar || "?"}
-            </div>
-            <button
-              type="submit"
-              disabled={submitting || !name.trim() || !email.trim()}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              <UserPlus size={16} />
-              {submitting ? "Adding..." : "Add User"}
-            </button>
-          </div>
-        </form>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-900">All Users</h2>
-          <button
-            onClick={load}
-            className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name/email"
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            />
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="all">All Roles</option>
+              <option value="Admin">Admin</option>
+              <option value="User">User</option>
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+            >
+              <option value="all">All Status</option>
+              <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
+            </select>
+            <button
+              onClick={() => {
+                setPage(1);
+                load({ page: 1, search, role: roleFilter, status: statusFilter });
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Apply
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div className="mt-4 text-sm text-slate-500">Loading...</div>
         ) : (
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {users.map((u) => (
-              <article key={u.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-                      {u.avatar || initials(u.name)}
+          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Name</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Email</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Role</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Status</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Created</th>
+                  <th className="px-3 py-2 text-right font-semibold text-slate-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {users.map((u) => (
+                <tr key={u.id}>
+                  <td className="px-3 py-2">
+                    <button onClick={() => onOpenUser(u)} className="font-semibold text-blue-700 hover:underline">
+                      {u.name}
+                    </button>
+                  </td>
+                  <td className="px-3 py-2 text-slate-700">{u.email}</td>
+                  <td className="px-3 py-2 text-slate-700">{u.is_admin ? "Admin" : "User"}</td>
+                  <td className="px-3 py-2 text-slate-700">{u.status || "Active"}</td>
+                  <td className="px-3 py-2 text-slate-700">{new Date(u.created_at).toLocaleDateString()}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => openEditForm(u)}
+                        className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                        title="Edit user"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        onClick={() => switchAsUser(u)}
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        title="Login as user"
+                        disabled={u.is_admin}
+                      >
+                        Login as
+                      </button>
+                      <button
+                        onClick={() => onDelete(u)}
+                        className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                        title="Remove user"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{u.name}</p>
-                      <p className="truncate text-sm text-slate-600">{u.email}</p>
-                      <p className="mt-1 text-xs font-semibold text-slate-700">{u.role || "—"}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => onDelete(u)}
-                    className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                    title="Remove user"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </div>
-              </article>
-            ))}
-            {users.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                No users yet. Add your first user above.
-              </div>
-            ) : null}
+                  </td>
+                </tr>
+                ))}
+                {users.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                    No users yet. Add your first user above.
+                  </td>
+                </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
         )}
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-sm text-slate-600">
+            Showing page {pagination.page} of {totalPages} ({pagination.total} users)
+          </p>
+          <div className="flex gap-2">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
       </section>
+
+      {showForm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4">
+          <form onSubmit={onSave} className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-5 shadow-xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-slate-900">{editingUser ? "Edit User" : "Create User"}</h3>
+              <button type="button" onClick={() => setShowForm(false)} className="text-sm text-slate-500">
+                Close
+              </button>
+            </div>
+            <label className="block text-sm font-medium text-slate-700">
+              Full Name
+              <input
+                value={form.name}
+                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                required
+                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Email
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                required
+                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Password {editingUser ? "(optional for update)" : ""}
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                required={!editingUser}
+                minLength={8}
+                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-sm font-medium text-slate-700">
+                Role
+                <select
+                  value={form.role}
+                  onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
+                >
+                  <option value="User">User</option>
+                  <option value="Admin">Admin</option>
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Status
+                <select
+                  value={form.status}
+                  onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                </select>
+              </label>
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {submitting ? "Saving..." : editingUser ? "Update User" : "Create User"}
+            </button>
+          </form>
+        </div>
+      ) : null}
     </main>
   );
 }

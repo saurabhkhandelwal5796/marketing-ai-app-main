@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
+import { getSessionFromCookies } from "../../../../lib/authSession";
 
 const ALLOWED_FIELDS = new Set([
   "title",
@@ -16,6 +17,9 @@ const ALLOWED_FIELDS = new Set([
 
 export async function PATCH(req, { params }) {
   try {
+    const session = await getSessionFromCookies();
+    if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
     const supabase = getSupabaseServerClient();
     const { id } = await params;
     if (!id) return NextResponse.json({ error: "Missing task id." }, { status: 400 });
@@ -27,7 +31,7 @@ export async function PATCH(req, { params }) {
       patch[k] = v;
     }
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("tasks")
       .update(patch)
       .eq("id", id)
@@ -35,6 +39,8 @@ export async function PATCH(req, { params }) {
         "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,created_at"
       )
       .single();
+    if (!session.is_admin) query = query.eq("assignee_id", session.id);
+    const { data, error } = await query;
     if (error) throw new Error(error.message);
     return NextResponse.json({ task: data });
   } catch (e) {
@@ -44,11 +50,16 @@ export async function PATCH(req, { params }) {
 
 export async function DELETE(_req, { params }) {
   try {
+    const session = await getSessionFromCookies();
+    if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
     const supabase = getSupabaseServerClient();
     const { id } = await params;
     if (!id) return NextResponse.json({ error: "Missing task id." }, { status: 400 });
 
-    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    let query = supabase.from("tasks").delete().eq("id", id);
+    if (!session.is_admin) query = query.eq("assignee_id", session.id);
+    const { error } = await query;
     if (error) throw new Error(error.message);
     return NextResponse.json({ ok: true });
   } catch (e) {
