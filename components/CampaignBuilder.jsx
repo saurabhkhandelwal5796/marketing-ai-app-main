@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CircleHelp } from "lucide-react";
+import { CircleHelp, ChevronDown, ChevronUp, Paperclip } from "lucide-react";
 import Image from "next/image";
 import ChatBox from "./ChatBox";
 import SuggestionsPanel from "./SuggestionsPanel";
 import NextBestActions from "./NextBestActions";
 import OutputCard from "./OutputCard";
 import SendModal from "./SendModal";
+import MarketingAnalysisOutput from "./MarketingAnalysisOutput";
 
 const DEFAULT_ACTIONS = ["LinkedIn", "Email", "WhatsApp", "Instagram", "Blog", "SMS"];
 
@@ -78,6 +79,9 @@ export default function CampaignBuilder({ campaignId }) {
   const [campaignRecord, setCampaignRecord] = useState(null);
   const [loadingCampaign, setLoadingCampaign] = useState(true);
   const [savingCampaign, setSavingCampaign] = useState(false);
+
+  const [inputsOpen, setInputsOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const [company, setCompany] = useState("Cloud Certitude");
   const [campaign, setCampaign] = useState("Hiring experienced MuleSoft developers");
@@ -403,49 +407,117 @@ export default function CampaignBuilder({ campaignId }) {
 
       <section>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-          <div className="space-y-5 xl:col-span-2">
-            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-base font-semibold text-slate-900">Campaign Inputs</h2>
-              <div className="mt-4 space-y-3">
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="inline-flex items-center">
-                    Company Name
-                    <HelpIcon text="Enter your company or brand name as it should appear in generated content." />
-                  </span>
-                  <input value={company} onChange={(e) => setCompany(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                </label>
+          <div className="space-y-4 xl:col-span-1">
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <button
+                onClick={() => setInputsOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">Campaign Inputs</h2>
+                  <p className="mt-0.5 text-xs text-slate-500">Compact setup panel</p>
+                </div>
+                <span className="rounded-lg border border-slate-300 p-1.5 text-slate-600">
+                  {inputsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </span>
+              </button>
 
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="inline-flex items-center">
-                    Campaign Goal
-                    <HelpIcon text="Describe the outcome you want, like hiring, lead generation, or product awareness." />
-                  </span>
-                  <input value={campaign} onChange={(e) => setCampaign(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                </label>
+              {inputsOpen ? (
+                <div className="border-t border-slate-200 px-4 py-4">
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        <span className="inline-flex items-center">
+                          Company
+                          <HelpIcon text="Enter your company or brand name as it should appear in generated content." />
+                        </span>
+                        <input
+                          value={company}
+                          onChange={(e) => setCompany(e.target.value)}
+                          className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
 
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="inline-flex items-center">
-                    Website / Link
-                    <HelpIcon text="Add your website, job post, or landing page URL for better context." />
-                  </span>
-                  <input value={website} onChange={(e) => setWebsite(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-                </label>
+                      <label className="block text-xs font-semibold text-slate-700">
+                        <span className="inline-flex items-center">
+                          Goal
+                          <HelpIcon text="Describe the outcome you want, like hiring, lead generation, or product awareness." />
+                        </span>
+                        <input
+                          value={campaign}
+                          onChange={(e) => setCampaign(e.target.value)}
+                          className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                    </div>
 
-                <label className="block text-sm font-medium text-slate-700">
-                  <span className="inline-flex items-center">
-                    File Upload
-                    <HelpIcon text="Upload an optional brief, JD, or supporting document to guide the AI output." />
-                  </span>
-                  <input type="file" onChange={handleAttachmentChange} className="mt-1.5 block w-full cursor-pointer rounded-xl border border-slate-300 px-3 py-2.5 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200" />
-                  <p className="mt-1 text-xs text-slate-500">{attachmentName ? `Attached: ${attachmentName}` : "Upload supporting brief (optional)."}</p>
-                </label>
-              </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        <span className="inline-flex items-center">
+                          Website
+                          <HelpIcon text="Add your website, job post, or landing page URL for better context." />
+                        </span>
+                        <input
+                          value={website}
+                          onChange={(e) => setWebsite(e.target.value)}
+                          className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-slate-700">File</p>
+                        <p className="truncate text-xs text-slate-500">
+                          {attachmentName ? `Attached: ${attachmentName}` : "Optional brief/JD"}
+                        </p>
+                      </div>
+                      <label
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        title="Upload file"
+                      >
+                        <Paperclip size={14} />
+                        Upload
+                        <input type="file" onChange={handleAttachmentChange} className="hidden" />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
-            <ChatBox messages={chatMessages} onSend={handleAskAi} loading={askLoading} />
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <button
+                onClick={() => setChatOpen((v) => !v)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Description Chat</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {chatOpen ? "Expanded" : "Collapsed"} (click to toggle)
+                  </p>
+                </div>
+                <span className="rounded-lg border border-slate-300 p-1.5 text-slate-600">
+                  {chatOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </span>
+              </button>
+              {chatOpen ? (
+                <div className="border-t border-slate-200">
+                  <ChatBox messages={chatMessages} onSend={handleAskAi} loading={askLoading} />
+                </div>
+              ) : null}
+            </div>
           </div>
 
-          <div className="space-y-5 xl:col-span-3">
+          <div className="space-y-5 xl:col-span-4">
+            <MarketingAnalysisOutput
+              company={company}
+              campaign={campaign}
+              website={website}
+              description={latestUserMessage}
+              attachmentName={attachmentName}
+            />
+
             <SuggestionsPanel marketingPlan={marketingPlan} selectedStepIds={selectedStepIds} onToggleStep={handleToggleStep} loading={askLoading} />
 
             <NextBestActions actions={renderedActions} selectedActions={selectedActions} onToggle={handleToggleAction} onGenerate={() => handleGenerateContent()} loading={generateLoading} />
