@@ -19,7 +19,6 @@ export default function AuthPage() {
     company: "",
     password: "",
     confirmPassword: "",
-    signupAsAdmin: false,
   });
   const [signin, setSignin] = useState({ email: "", password: "" });
 
@@ -143,14 +142,6 @@ export default function AuthPage() {
                     onChange={(e) => setSignup((p) => ({ ...p, confirmPassword: e.target.value }))}
                     className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
-                </label>
-                <label className="flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={signup.signupAsAdmin}
-                    onChange={(e) => setSignup((p) => ({ ...p, signupAsAdmin: e.target.checked }))}
-                  />
-                  Sign up as Admin
                 </label>
                 <button
                   type="submit"

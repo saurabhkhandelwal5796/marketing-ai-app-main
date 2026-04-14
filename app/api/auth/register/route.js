@@ -18,7 +18,6 @@ export async function POST(req) {
     const company = String(body?.company || "").trim();
     const password = String(body?.password || "");
     const confirmPassword = String(body?.confirmPassword || "");
-    const requestAdmin = !!body?.signupAsAdmin;
 
     if (!firstName || !lastName || !email || !company || !password || !confirmPassword) {
       return NextResponse.json({ error: "All fields are required." }, { status: 400 });
@@ -33,8 +32,8 @@ export async function POST(req) {
     const supabase = getSupabaseServerClient();
     const passwordHash = await hashPassword(password);
     const name = `${firstName} ${lastName}`.trim();
-    const isAdmin = requestAdmin;
-    const role = isAdmin ? "Admin" : "User";
+    const isAdmin = false;
+    const role = "User";
 
     const { data, error } = await supabase
       .from("users")
