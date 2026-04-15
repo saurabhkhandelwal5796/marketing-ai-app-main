@@ -9,14 +9,14 @@ export default function AppShell({ children }) {
   const router = useRouter();
   const isAuthRoute = pathname === "/auth";
 
-  const [sidebarMode, setSidebarMode] = useState("expanded"); // expanded | collapsed | hidden
+  const [sidebarMode, setSidebarMode] = useState("expanded"); // expanded | collapsed
   const [sessionUser, setSessionUser] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem("aiMarketing.sidebarMode");
-      if (saved === "expanded" || saved === "collapsed" || saved === "hidden") {
+      if (saved === "expanded" || saved === "collapsed") {
         setSidebarMode(saved);
       }
     } catch (_) {
@@ -69,11 +69,7 @@ export default function AppShell({ children }) {
     setSidebarMode((prev) => (prev === "expanded" ? "collapsed" : "expanded"));
   };
 
-  const toggleHidden = () => {
-    setSidebarMode((prev) => (prev === "hidden" ? "expanded" : "hidden"));
-  };
-
-  const sidebarWidthClass = sidebarMode === "hidden" ? "pl-0" : sidebarMode === "collapsed" ? "pl-[78px]" : "pl-64";
+  const sidebarWidthClass = sidebarMode === "collapsed" ? "pl-[78px]" : "pl-64";
 
   const restoreAdmin = async () => {
     const res = await fetch("/api/auth/restore", { method: "POST" });
@@ -101,7 +97,6 @@ export default function AppShell({ children }) {
       <Sidebar
         mode={sidebarMode}
         onToggleCollapsed={cycleCollapsed}
-        onToggleHidden={toggleHidden}
         isAdmin={!!sessionUser?.is_admin}
       />
       <div className={`transition-all ${sidebarWidthClass}`}>

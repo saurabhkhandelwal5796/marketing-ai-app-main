@@ -14,7 +14,7 @@ export async function GET(req) {
     let query = supabase
       .from("tasks")
       .select(
-        "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,created_at"
+        "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,campaign_id,created_at"
       )
       .order("created_at", { ascending: false });
     if (session.is_admin) {
@@ -41,6 +41,7 @@ export async function POST(req) {
 
     const title = String(body?.title || "").trim();
     if (!title) return NextResponse.json({ error: "Title is required." }, { status: 400 });
+    const campaign_id = body?.campaign_id || null;
 
     const payload = {
       title,
@@ -53,15 +54,22 @@ export async function POST(req) {
       due_date: body?.due_date || null,
       channel_tags: Array.isArray(body?.channel_tags) ? body.channel_tags : [],
       campaign_context: body?.campaign_context ? String(body.campaign_context) : "",
+      campaign_id,
     };
 
-    const { data, error } = await supabase
-      .from("tasks")
-      .insert([payload])
-      .select(
-        "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,created_at"
-      )
-      .single();
+    let data;
+    let error;
+    {
+      const res = await supabase
+        .from("tasks")
+        .insert([payload])
+        .select(
+          "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,created_at"
+        )
+        .single();
+      data = res.data;
+      error = res.error;
+    }
     if (error) throw new Error(error.message);
     return NextResponse.json({ task: data });
   } catch (e) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
   AtSign,
@@ -27,14 +28,6 @@ function cx(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-const ASSIGNEE_OPTIONS = [
-  "Marketing Team",
-  "Sales Team",
-  "Content Team",
-  "Design Team",
-  "Management",
-  "Custom...",
-];
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 const STATUSES = ["To Do", "In Progress", "Done"];
 const FILTER_TAGS = ["Messaging", "Branding", "Channels", "Competitive"];
@@ -51,7 +44,7 @@ const TASK_TYPES = [
   "Sales Coordination",
 ];
 
-const TEAM_OPTIONS = ["Marketing Team", "Sales Team", "Content Team", "Design Team", "Management"];
+// Teams intentionally removed from assignee dropdown (People only).
 
 const TEMPLATE_GROUPS = [
   {
@@ -93,6 +86,25 @@ const TEMPLATE_GROUPS = [
   },
 ];
 
+const CHANNEL_TAG_OPTIONS = [
+  "Email",
+  "LinkedIn",
+  "Instagram",
+  "Facebook",
+  "Twitter",
+  "Blog",
+  "WhatsApp",
+  "YouTube",
+  "SMS",
+];
+
+function ymd(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -111,7 +123,7 @@ function hasFilterTag(detailTags, filter) {
 function tasksToExportText(tasks) {
   const lines = [];
   tasks.forEach((t, idx) => {
-    const assignee = t.assignee_team ? t.assignee_team : t.assignee_id ? t.assignee_id : "";
+    const assignee = t.assignee_id ? t.assignee_id : "";
     lines.push(
       `${idx + 1}. [${t.status}] (${t.priority}) ${t.title}` +
         (assignee ? ` — ${assignee}` : "") +
@@ -134,12 +146,14 @@ function getOutreach(company) {
 }
 
 export default function MarketingAnalysisOutput({
+  campaignId,
   company,
   campaign,
   website,
   description,
   attachmentName,
 }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("details");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -155,9 +169,26 @@ export default function MarketingAnalysisOutput({
   const [threadLoadingByPointId, setThreadLoadingByPointId] = useState({});
 
   const [tasks, setTasks] = useState([]);
-  const [taskView, setTaskView] = useState("list"); // list | kanban
-  const [dragTaskId, setDragTaskId] = useState("");
   const [templatesOpen, setTemplatesOpen] = useState(false);
+
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskModalMode, setTaskModalMode] = useState("create"); // create | edit
+  const [taskModalSaving, setTaskModalSaving] = useState(false);
+  const [taskModalError, setTaskModalError] = useState("");
+  const [toast, setToast] = useState(null); // {type, message}
+
+  const [formId, setFormId] = useState("");
+  const [formTitle, setFormTitle] = useState("");
+  const [formDescription, setFormDescription] = useState("");
+  const [formTaskType, setFormTaskType] = useState("");
+  const [formPriority, setFormPriority] = useState("Medium");
+  const [formAssigneeId, setFormAssigneeId] = useState("");
+  const [formDueDate, setFormDueDate] = useState("");
+  const [formDueReason, setFormDueReason] = useState("");
+  const [formCampaignId, setFormCampaignId] = useState("");
+  const [formCampaignName, setFormCampaignName] = useState("");
+  const [formChannelTags, setFormChannelTags] = useState([]);
+  const [formCampaignContext, setFormCampaignContext] = useState("");
 
   const [companyModalOpen, setCompanyModalOpen] = useState(false);
   const [companyModalLoading, setCompanyModalLoading] = useState(false);
@@ -250,32 +281,151 @@ export default function MarketingAnalysisOutput({
     }
   };
 
-  const createTaskFromTemplate = async (tpl) => {
-    setError("");
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: tpl.title,
-          description: "",
-          assignee_id: null,
-          assignee_team: "Marketing Team",
-          priority: tpl.priority,
-          status: "To Do",
-          task_type: tpl.task_type,
-          due_date: null,
-          channel_tags: [],
-          campaign_context: campaignContext,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
-      setTasks((prev) => [data.task, ...prev]);
-      setTemplatesOpen(false);
-    } catch (e) {
-      setError(e?.message || "Failed to create task.");
+  const showToast = (type, message) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 1800);
+  };
+
+  const resetTaskForm = () => {
+    setFormId("");
+    setFormTitle("");
+    setFormDescription("");
+    setFormTaskType("");
+    setFormPriority("Medium");
+    setFormAssigneeId("");
+    setFormDueDate("");
+    setFormDueReason("");
+    setFormCampaignId("");
+    setFormCampaignName("");
+    setFormChannelTags([]);
+    setFormCampaignContext(campaignContext);
+  };
+
+  const openCreateTaskModal = (prefill = null) => {
+    setTaskModalMode("create");
+    setTaskModalError("");
+    resetTaskForm();
+    setFormCampaignId(campaignId || "");
+    setFormCampaignName(String(campaign || "").trim());
+    if (prefill) {
+      if (typeof prefill.title === "string") setFormTitle(prefill.title);
+      if (typeof prefill.task_type === "string") setFormTaskType(prefill.task_type);
+      if (typeof prefill.priority === "string") setFormPriority(prefill.priority);
     }
+    setTaskModalOpen(true);
+  };
+
+  const openEditTaskModal = (t) => {
+    setTaskModalMode("edit");
+    setTaskModalError("");
+    setFormId(t.id);
+    setFormTitle(t.title || "");
+    setFormDescription(t.description || "");
+    setFormTaskType(t.task_type || "");
+    setFormPriority(t.priority || "Medium");
+    setFormAssigneeId(t.assignee_id || "");
+    setFormDueDate(t.due_date || "");
+    setFormDueReason("");
+    setFormCampaignId(t.campaign_id || "");
+    setFormCampaignName("");
+    setFormChannelTags(Array.isArray(t.channel_tags) ? t.channel_tags : []);
+    setFormCampaignContext(t.campaign_context || "");
+    setTaskModalOpen(true);
+  };
+
+  const buildCampaignContext = () => {
+    const base = String(formCampaignContext || "").trim();
+    const camp = String(formCampaignName || "").trim();
+    const header = camp ? `Campaign: ${camp}` : "";
+    if (!header) return base || "";
+    if (!base) return header;
+    if (base.startsWith("Campaign: ")) return base; // already has header
+    return `${header}\n${base}`;
+  };
+
+  const aiSuggestDueDate = async (title, taskType, priority) => {
+    const today = ymd(new Date());
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        step: "due_date_suggest",
+        today,
+        title,
+        taskType,
+        priority,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data?.error) throw new Error(data?.error || "Failed to suggest due date.");
+    return data;
+  };
+
+  const submitTaskModal = async () => {
+    setTaskModalError("");
+    const title = String(formTitle || "").trim();
+    if (!title) {
+      setTaskModalError("Task Title is required.");
+      return;
+    }
+    if (!String(formTaskType || "").trim()) {
+      setTaskModalError("Task Type is required.");
+      return;
+    }
+
+    setTaskModalSaving(true);
+    try {
+      const payload = {
+        title,
+        description: formDescription || "",
+        assignee_id: formAssigneeId || null,
+        assignee_team: null,
+        priority: formPriority,
+        status: "To Do",
+        task_type: formTaskType,
+        due_date: formDueDate || null,
+        channel_tags: formChannelTags,
+        campaign_context: buildCampaignContext(),
+        campaign_id: formCampaignId || null,
+      };
+
+      if (taskModalMode === "create") {
+        const res = await fetch("/api/tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
+        setTaskModalOpen(false);
+        showToast("success", "Task created successfully");
+        const uid = payload.assignee_id || "";
+        router.push(uid ? `/my-tasks?userId=${encodeURIComponent(uid)}` : "/my-tasks");
+        await loadTasks();
+      } else {
+        const res = await fetch(`/api/tasks/${formId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update task.");
+        setTaskModalOpen(false);
+        showToast("success", "Task updated successfully");
+        await loadTasks();
+      }
+    } catch (e) {
+      setTaskModalError(e?.message || "Failed to save task.");
+      showToast("error", e?.message || "Failed to save task.");
+    } finally {
+      setTaskModalSaving(false);
+    }
+  };
+
+  const createTaskFromTemplate = async (tpl) => {
+    // Template click opens task creation UI with prefilled values
+    setTemplatesOpen(false);
+    openCreateTaskModal({ title: tpl.title, task_type: tpl.task_type, priority: tpl.priority });
   };
 
   const toggleSelected = (id) => {
@@ -476,31 +626,8 @@ export default function MarketingAnalysisOutput({
     }
   };
 
-  const addManualTask = async () => {
-    setError("");
-    try {
-      const res = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: "New task",
-          description: "",
-          assignee_id: null,
-          assignee_team: "Marketing Team",
-          priority: "Medium",
-          status: "To Do",
-          task_type: "Generic Task",
-          due_date: null,
-          channel_tags: [],
-          campaign_context: campaignContext,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
-      setTasks((prev) => [data.task, ...prev]);
-    } catch (e) {
-      setError(e?.message || "Failed to create task.");
-    }
+  const addManualTask = () => {
+    openCreateTaskModal();
   };
 
   const removeTask = async (task) => {
@@ -552,7 +679,7 @@ export default function MarketingAnalysisOutput({
             title,
             description: p.explanation || "",
             assignee_id: null,
-            assignee_team: "Marketing Team",
+            assignee_team: null,
             priority: "Medium",
             status: "To Do",
             task_type: "Generic Task",
@@ -576,17 +703,24 @@ export default function MarketingAnalysisOutput({
     setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, ...patch } : t)));
   };
 
-  const tasksByStatus = useMemo(() => {
-    const by = { "To Do": [], "In Progress": [], Done: [] };
-    tasks.forEach((t) => {
-      const key = STATUSES.includes(t.status) ? t.status : "To Do";
-      by[key].push(t);
-    });
-    return by;
-  }, [tasks]);
+  // Task Assignment tab is intentionally a task creation interface (no list view).
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      {toast ? (
+        <div
+          className={cx(
+            "fixed bottom-4 right-4 z-[70] rounded-xl border px-4 py-3 text-sm font-semibold shadow-lg",
+            toast.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : toast.type === "error"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-slate-200 bg-white text-slate-800"
+          )}
+        >
+          {toast.message}
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
         <div>
           <h3 className="text-base font-semibold text-slate-900">Marketing Analysis</h3>
@@ -986,282 +1120,263 @@ export default function MarketingAnalysisOutput({
                       >
                         Templates
                       </button>
-                      <button
-                        onClick={handleCopyTasks}
-                        className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Export Tasks
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 rounded-full border border-slate-300 bg-white p-1">
-                      <button
-                        onClick={() => setTaskView("list")}
-                        className={cx(
-                          "rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                          taskView === "list" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
-                        )}
-                      >
-                        List
-                      </button>
-                      <button
-                        onClick={() => setTaskView("kanban")}
-                        className={cx(
-                          "rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                          taskView === "kanban"
-                            ? "bg-blue-500 text-white"
-                            : "text-slate-700 hover:bg-slate-50"
-                        )}
-                      >
-                        Kanban
-                      </button>
                     </div>
                   </div>
 
-                  {taskView === "list" ? (
-                    <div className="space-y-3">
-                      {templatesOpen ? (
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                          <p className="text-sm font-semibold text-slate-900">Templates</p>
-                          <div className="mt-3 space-y-3">
-                            {TEMPLATE_GROUPS.map((g) => (
-                              <div key={g.label}>
-                                <p className="text-xs font-semibold text-slate-700">{g.label}</p>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                  {g.items.map((tpl) => (
-                                    <button
-                                      key={`${g.label}-${tpl.title}`}
-                                      onClick={() => createTaskFromTemplate(tpl)}
-                                      className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    >
-                                      {tpl.title} ({tpl.task_type}, {tpl.priority})
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
-                      {tasks.map((t) => (
-                        <motion.article
-                          key={t.id}
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-                          draggable
-                          onDragStart={() => setDragTaskId(t.id)}
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-3">
-                                <input
-                                  value={t.title}
-                                  onChange={(e) => updateTaskLocal(t.id, { title: e.target.value })}
-                                  onBlur={() => patchTask(t.id, { title: t.title })}
-                                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                />
+                  {templatesOpen ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-slate-900">Templates</p>
+                      <div className="mt-3 space-y-3">
+                        {TEMPLATE_GROUPS.map((g) => (
+                          <div key={g.label}>
+                            <p className="text-xs font-semibold text-slate-700">{g.label}</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {g.items.map((tpl) => (
                                 <button
-                                  type="button"
-                                  onClick={() => removeTask(t)}
-                                  className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                                  title="Delete task"
+                                  key={`${g.label}-${tpl.title}`}
+                                  onClick={() => createTaskFromTemplate(tpl)}
+                                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                                 >
-                                  <Trash2 size={16} />
+                                  {tpl.title} ({tpl.task_type}, {tpl.priority})
                                 </button>
-                              </div>
-                              <textarea
-                                value={t.description}
-                                onChange={(e) => updateTaskLocal(t.id, { description: e.target.value })}
-                                onBlur={() => patchTask(t.id, { description: t.description })}
-                                rows={3}
-                                className="mt-2 w-full resize-none rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                              />
-                              {t.channel_tags?.length ? (
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {t.channel_tags.slice(0, 10).map((tag) => (
-                                    <span
-                                      key={`${t.id}-tag-${tag}`}
-                                      className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600"
-                                    >
-                                      {tag}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-
-                            <div className="w-full max-w-[320px] space-y-2">
-                              <div className="grid grid-cols-2 gap-2">
-                                <label className="block text-xs font-semibold text-slate-700">
-                                  Assignee
-                                  <select
-                                    value={
-                                      t.assignee_id
-                                        ? `user:${t.assignee_id}`
-                                        : t.assignee_team
-                                          ? `team:${t.assignee_team}`
-                                          : "team:Marketing Team"
-                                    }
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      if (val.startsWith("user:")) {
-                                        patchTask(t.id, { assignee_id: val.slice(5), assignee_team: null });
-                                      } else if (val.startsWith("team:")) {
-                                        patchTask(t.id, { assignee_team: val.slice(5), assignee_id: null });
-                                      }
-                                    }}
-                                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                  >
-                                    <optgroup label="Teams">
-                                      {TEAM_OPTIONS.map((team) => (
-                                        <option key={team} value={`team:${team}`}>
-                                          {team}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                    <optgroup label="People">
-                                      {users.map((u) => (
-                                        <option key={u.id} value={`user:${u.id}`}>
-                                          {(u.avatar || "").padEnd(2, " ")} {u.name} — {u.role || "—"}
-                                        </option>
-                                      ))}
-                                    </optgroup>
-                                  </select>
-                                </label>
-                                <label className="block text-xs font-semibold text-slate-700">
-                                  Due date
-                                  <input
-                                    type="date"
-                                    value={t.due_date || ""}
-                                    onChange={(e) => patchTask(t.id, { due_date: e.target.value || null })}
-                                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                  />
-                                </label>
-                              </div>
-
-                              <div>
-                                <p className="text-xs font-semibold text-slate-700">Task Type</p>
-                                <div className="mt-1 flex flex-wrap gap-2">
-                                  {TASK_TYPES.map((tt) => (
-                                    <button
-                                      key={`${t.id}-type-${tt}`}
-                                      onClick={() => patchTask(t.id, { task_type: tt })}
-                                      className={cx(
-                                        "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                                        t.task_type === tt
-                                          ? "border-blue-500 bg-blue-500 text-white"
-                                          : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                                      )}
-                                    >
-                                      {tt}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div>
-                                <p className="text-xs font-semibold text-slate-700">Priority</p>
-                                <div className="mt-1 flex flex-wrap gap-2">
-                                  {PRIORITIES.map((p) => (
-                                    <button
-                                      key={`${t.id}-prio-${p}`}
-                                      onClick={() => patchTask(t.id, { priority: p })}
-                                      className={cx(
-                                        "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                                        t.priority === p
-                                          ? "border-blue-500 bg-blue-500 text-white"
-                                          : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
-                                      )}
-                                    >
-                                      {p}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-xs font-semibold text-slate-700">Status</p>
-                                <select
-                                  value={t.status}
-                                  onChange={(e) => patchTask(t.id, { status: e.target.value })}
-                                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                                >
-                                  {STATUSES.map((s) => (
-                                    <option key={`${t.id}-status-${s}`} value={s}>
-                                      {s}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
+                              ))}
                             </div>
                           </div>
-                        </motion.article>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                      {STATUSES.map((status) => (
-                        <div
-                          key={`col-${status}`}
-                          className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                          onDragOver={(e) => e.preventDefault()}
-                          onDrop={() => {
-                            if (!dragTaskId) return;
-                            patchTask(dragTaskId, { status });
-                            setDragTaskId("");
-                          }}
-                        >
-                          <p className="px-1 pb-2 text-sm font-semibold text-slate-900">{status}</p>
-                          <div className="space-y-2">
-                            {(tasksByStatus[status] || []).map((t) => (
-                              <div
-                                key={`kb-${t.id}`}
-                                draggable
-                                onDragStart={() => setDragTaskId(t.id)}
-                                className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <p className="text-sm font-semibold text-slate-900">{t.title}</p>
-                                  <button
-                                    type="button"
-                                    onClick={() => removeTask(t)}
-                                    className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-50"
-                                    title="Delete task"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                                <p className="mt-1 line-clamp-3 text-sm text-slate-700">
-                                  {t.description}
-                                </p>
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-600">
-                                    {t.priority}
-                                  </span>
-                                  <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-600">
-                                    {t.assignee_id ? "Person" : t.assignee_team || "Unassigned"}
-                                  </span>
-                                  {t.due_date ? (
-                                    <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-600">
-                                      Due {t.due_date}
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </div>
-                            ))}
-                            {(tasksByStatus[status] || []).length === 0 ? (
-                              <div className="rounded-xl border border-dashed border-slate-300 bg-white p-3 text-sm text-slate-500">
-                                Drop tasks here
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               )}
+            </div>
+          ) : null}
+
+          {taskModalOpen ? (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-slate-900/40"
+                onClick={() => (taskModalSaving ? null : setTaskModalOpen(false))}
+              />
+              <div className="relative w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">
+                      {taskModalMode === "create" ? "Create Task" : "Edit Task"}
+                    </p>
+                    <p className="mt-0.5 text-sm text-slate-600">
+                      Fill in details. Title and Task Type are required.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => (taskModalSaving ? null : setTaskModalOpen(false))}
+                    className="rounded-xl border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                    title="Close"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                {taskModalError ? (
+                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
+                    {taskModalError}
+                  </div>
+                ) : null}
+
+                <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <label className="block md:col-span-2">
+                    <span className="text-xs font-semibold text-slate-700">Task Title*</span>
+                    <input
+                      value={formTitle}
+                      onChange={(e) => setFormTitle(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      style={{ color: "#000000" }}
+                      placeholder="e.g., Draft 3 LinkedIn posts for product launch"
+                    />
+                  </label>
+
+                  <label className="block md:col-span-2">
+                    <span className="text-xs font-semibold text-slate-700">Description</span>
+                    <textarea
+                      value={formDescription}
+                      onChange={(e) => setFormDescription(e.target.value)}
+                      rows={4}
+                      className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      style={{ color: "#000000" }}
+                      placeholder='Describe what needs to be done, why it matters, and any important context...'
+                    />
+                  </label>
+
+                  <div className="md:col-span-2">
+                    <p className="text-xs font-semibold text-slate-700">Task Type*</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {TASK_TYPES.map((tt) => (
+                        <button
+                          key={`form-type-${tt}`}
+                          type="button"
+                          onClick={() => setFormTaskType(tt)}
+                          className={cx(
+                            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                            formTaskType === tt
+                              ? "border-blue-500 bg-blue-500 text-white"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                          )}
+                        >
+                          {tt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <p className="text-xs font-semibold text-slate-700">Priority*</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {PRIORITIES.map((p) => (
+                        <button
+                          key={`form-prio-${p}`}
+                          type="button"
+                          onClick={() => setFormPriority(p)}
+                          className={cx(
+                            "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                            formPriority === p
+                              ? "border-blue-500 bg-blue-500 text-white"
+                              : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                          )}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-700">Assignee</span>
+                    <select
+                      value={formAssigneeId}
+                      onChange={(e) => setFormAssigneeId(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    >
+                      <option value="">Unassigned</option>
+                      <optgroup label="People">
+                        {users.length === 0 ? (
+                          <option value="" disabled>
+                            No team members yet. Add from Users page.
+                          </option>
+                        ) : (
+                          users.map((u) => (
+                            <option key={`form-user-${u.id}`} value={u.id}>
+                              {u.avatar || ""} {u.name} — {u.role || "—"}
+                            </option>
+                          ))
+                        )}
+                      </optgroup>
+                    </select>
+                  </label>
+
+                  <div>
+                    <div className="flex items-end justify-between gap-2">
+                      <label className="block w-full">
+                        <span className="text-xs font-semibold text-slate-700">Due Date</span>
+                        <input
+                          type="date"
+                          value={formDueDate}
+                          onChange={(e) => setFormDueDate(e.target.value)}
+                          className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const suggestion = await aiSuggestDueDate(formTitle, formTaskType, formPriority);
+                            setFormDueDate(suggestion.suggested_date || "");
+                            setFormDueReason(suggestion.reason || "");
+                            showToast("success", "Suggested due date added");
+                          } catch (e) {
+                            showToast("error", e?.message || "Failed to suggest due date.");
+                          }
+                        }}
+                        className="h-[42px] shrink-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        AI Suggest
+                      </button>
+                    </div>
+                    {formDueReason ? <p className="mt-1 text-xs italic text-slate-500">{formDueReason}</p> : null}
+                  </div>
+
+                  <label className="block md:col-span-2">
+                    <span className="text-xs font-semibold text-slate-700">Campaign</span>
+                    <input
+                      value={formCampaignName || "—"}
+                      disabled
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      style={{ color: "#000000" }}
+                      placeholder="Campaign"
+                    />
+                  </label>
+
+                  <div className="md:col-span-2">
+                    <p className="text-xs font-semibold text-slate-700">Channel Tags</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {CHANNEL_TAG_OPTIONS.map((tag) => {
+                        const active = formChannelTags.includes(tag);
+                        return (
+                          <button
+                            key={`chan-${tag}`}
+                            type="button"
+                            onClick={() => {
+                              setFormChannelTags((prev) =>
+                                prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+                              );
+                            }}
+                            className={cx(
+                              "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                              active
+                                ? "border-blue-500 bg-blue-500 text-white"
+                                : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                            )}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <label className="block md:col-span-2">
+                    <span className="text-xs font-semibold text-slate-700">Campaign Context</span>
+                    <textarea
+                      value={formCampaignContext}
+                      onChange={(e) => setFormCampaignContext(e.target.value)}
+                      rows={3}
+                      className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      style={{ color: "#000000" }}
+                      placeholder="Add any campaign background, target audience, or goals relevant to this task..."
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-5 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => (taskModalSaving ? null : setTaskModalOpen(false))}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={taskModalSaving}
+                    onClick={submitTaskModal}
+                    className={cx(
+                      "rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition",
+                      taskModalSaving ? "opacity-70" : "hover:bg-slate-800"
+                    )}
+                  >
+                    {taskModalSaving ? "Saving..." : taskModalMode === "create" ? "Create Task" : "Save Changes"}
+                  </button>
+                </div>
+              </div>
             </div>
           ) : null}
         </div>

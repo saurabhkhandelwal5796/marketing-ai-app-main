@@ -13,7 +13,28 @@ const ALLOWED_FIELDS = new Set([
   "due_date",
   "channel_tags",
   "campaign_context",
+  "campaign_id",
 ]);
+
+export async function GET(_req, { params }) {
+  try {
+    const supabase = getSupabaseServerClient();
+    const { id } = await params;
+    if (!id) return NextResponse.json({ error: "Missing task id." }, { status: 400 });
+
+    const { data, error } = await supabase
+      .from("tasks")
+      .select(
+        "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,campaign_id,created_at"
+      )
+      .eq("id", id)
+      .single();
+    if (error) throw new Error(error.message);
+    return NextResponse.json({ task: data });
+  } catch (e) {
+    return NextResponse.json({ error: e?.message || "Failed to fetch task." }, { status: 500 });
+  }
+}
 
 export async function PATCH(req, { params }) {
   try {
@@ -36,7 +57,7 @@ export async function PATCH(req, { params }) {
       .update(patch)
       .eq("id", id)
       .select(
-        "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,created_at"
+        "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,campaign_id,created_at"
       )
       .single();
     if (!session.is_admin) query = query.eq("assignee_id", session.id);

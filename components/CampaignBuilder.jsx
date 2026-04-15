@@ -511,6 +511,7 @@ export default function CampaignBuilder({ campaignId }) {
 
           <div className="space-y-5 xl:col-span-4">
             <MarketingAnalysisOutput
+              campaignId={campaignId}
               company={company}
               campaign={campaign}
               website={website}

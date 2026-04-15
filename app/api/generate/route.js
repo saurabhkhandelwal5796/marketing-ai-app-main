@@ -115,6 +115,11 @@ export async function POST(req) {
       point = null,
       companyName = "",
       companyPayload = null,
+      today = "",
+      title = "",
+      taskType = "",
+      priority = "",
+      task = null,
     } = body || {};
 
     if (step === "analysis") {
@@ -455,6 +460,108 @@ Rules:
       const parsed = extractJson(raw);
       if (!parsed) throw new Error("Model returned non-JSON response for company detail.");
       return NextResponse.json(parsed);
+    }
+
+    if (step === "due_date_suggest") {
+      const t = String(today || "").trim();
+      const safeTitle = String(title || "").trim();
+      const safeType = String(taskType || "").trim();
+      const safePriority = String(priority || "").trim();
+      if (!t || !safeTitle || !safeType || !safePriority) {
+        return NextResponse.json({ error: "Missing fields for due date suggestion." }, { status: 400 });
+      }
+
+      const prompt = `Today's date is ${t}.
+Task Title: ${safeTitle}
+Task Type: ${safeType}
+Priority: ${safePriority}
+
+Suggest the best due date using this logic:
+Urgent → 1 day | High → 3 days | Medium → 7 days | Low → 14 days
+LinkedIn Post → 2-3 days | Blog Post → 7-10 days
+Campaign Analysis → 5-7 days | Cold Email Campaign → 3-5 days
+Marketing Video → 10-14 days | Email Newsletter → 5-7 days
+Social Media Post → 2-3 days | Company Research → 5 days
+Sales Coordination → 3 days | Generic Task → follow priority rule
+
+Respond ONLY with valid JSON, no extra text:
+{
+  "suggested_date": "YYYY-MM-DD",
+  "reason": "one short sentence explaining why"
+}`;
+
+      const raw = await callOpenAI({
+        apiKey,
+        prompt,
+        schema: {
+          name: "due_date_suggest_payload",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              suggested_date: { type: "string" },
+              reason: { type: "string" },
+            },
+            required: ["suggested_date", "reason"],
+          },
+        },
+      });
+      const parsed = extractJson(raw);
+      if (!parsed?.suggested_date) throw new Error("Model returned invalid due date suggestion.");
+      return NextResponse.json(parsed);
+    }
+
+    if (step === "task_guide") {
+      if (!task || typeof task !== "object") {
+        return NextResponse.json({ error: "Task payload missing." }, { status: 400 });
+      }
+      const tTitle = String(task.title || "").trim();
+      const tType = String(task.task_type || "").trim();
+      const tPriority = String(task.priority || "").trim();
+      const tDesc = String(task.description || "").trim();
+      const tCtx = String(task.campaign_context || "").trim();
+      if (!tTitle) return NextResponse.json({ error: "Task title missing." }, { status: 400 });
+
+      const system = `You are a marketing mentor helping a complete beginner (fresher)
+accomplish a marketing task professionally. Be friendly,
+encouraging, and assume zero prior marketing knowledge.`;
+
+      const user = `Task Title: ${tTitle}
+Task Type: ${tType}
+Priority: ${tPriority}
+Description: ${tDesc}
+Campaign Context: ${tCtx}
+
+Give a beginner-friendly guide. Structure your response with
+EXACTLY these section headers on their own lines:
+
+WHAT THIS TASK MEANS
+WHAT YOU NEED BEFORE STARTING
+STEP-BY-STEP INSTRUCTIONS
+PRO TIPS
+HOW TO KNOW YOU ARE DONE
+
+Then based on the task_type, add the appropriate bonus section as specified.`;
+
+      const res = await fetch(OPENAI_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4.1-mini",
+          input: [
+            { role: "system", content: system },
+            { role: "user", content: user },
+          ],
+          text: { format: { type: "text" } },
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error?.message || "OpenAI request failed.");
+      const guide = extractTextFromResponse(data);
+      return NextResponse.json({ guide });
     }
 
     if (step === "suggestions") {
