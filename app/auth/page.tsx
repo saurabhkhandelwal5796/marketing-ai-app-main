@@ -67,9 +67,9 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-2">
-        <section className="flex items-center justify-center p-6 lg:p-12">
+    <main className="min-h-dvh bg-slate-100">
+      <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-2">
+        <section className="flex items-start justify-center p-6 pt-8 lg:p-12 lg:pt-12">
           <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl sm:p-8">
             <h1 className="text-2xl font-bold text-slate-900">{mode === "signup" ? "Create your account" : "Welcome back"}</h1>
             <p className="mt-1 text-sm text-slate-500">
@@ -195,8 +195,15 @@ export default function AuthPage() {
           </div>
         </section>
 
-        <section className="relative hidden min-h-screen lg:block">
-          <Image src="/auth-side.png" alt="Authentication side illustration" fill className="object-cover" priority />
+        <section className="relative hidden min-h-dvh lg:block">
+          <Image
+            src="/auth-side.png"
+            alt="Authentication side illustration"
+            fill
+            sizes="50vw"
+            className="object-cover"
+            priority
+          />
         </section>
       </div>
     </main>

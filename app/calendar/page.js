@@ -22,6 +22,7 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState("");
 
   const [formOpen, setFormOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -68,11 +69,18 @@ export default function CalendarPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDate, view]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 2500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const openCreateModal = () => {
     setEditingMeeting({
       start_time: new Date().toISOString(),
       end_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       attendees: sessionUser?.id ? [sessionUser.id] : [],
+      external_attendees: [],
       meeting_type: "Online",
     });
     setFormOpen(true);
@@ -110,6 +118,9 @@ export default function CalendarPage() {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save meeting.");
       setFormOpen(false);
       setEditingMeeting(null);
+      setSelectedMeeting(null);
+      setDetailsOpen(false);
+      setToast(editingMeeting?.id ? "Meeting updated successfully." : "Meeting created successfully.");
       await loadMeetings(activeDate, view);
     } catch (e) {
       setError(e?.message || "Failed to save meeting.");
@@ -129,6 +140,7 @@ export default function CalendarPage() {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete meeting.");
       setDetailsOpen(false);
       setSelectedMeeting(null);
+      setToast("Meeting deleted successfully.");
       await loadMeetings(activeDate, view);
     } catch (e) {
       setError(e?.message || "Failed to delete meeting.");
@@ -149,6 +161,11 @@ export default function CalendarPage() {
 
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      ) : null}
+      {toast ? (
+        <div className="fixed right-6 top-20 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 shadow-md">
+          {toast}
+        </div>
       ) : null}
 
       {loading ? (

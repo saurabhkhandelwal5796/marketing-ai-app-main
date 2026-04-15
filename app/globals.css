@@ -23,4 +23,25 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+html {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Prevent common laptop-width overflow without changing behavior */
+main,
+section,
+article {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Tables, pre blocks, and cards should never force page-level horizontal scroll */
+table,
+pre {
+  max-width: 100%;
 }

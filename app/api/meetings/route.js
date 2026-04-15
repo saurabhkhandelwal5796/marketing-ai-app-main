@@ -12,6 +12,9 @@ function normalizeMeetingPayload(payload, currentUserId) {
   const attendees = Array.isArray(payload?.attendees)
     ? [...new Set(payload.attendees.map((id) => String(id || "").trim()).filter(Boolean))]
     : [];
+  const externalAttendees = Array.isArray(payload?.external_attendees)
+    ? [...new Set(payload.external_attendees.map((email) => String(email || "").trim().toLowerCase()).filter(Boolean))]
+    : [];
 
   if (currentUserId && !attendees.includes(currentUserId)) attendees.push(currentUserId);
 
@@ -30,6 +33,7 @@ function normalizeMeetingPayload(payload, currentUserId) {
       start_time: startTime.toISOString(),
       end_time: endTime.toISOString(),
       attendees,
+      external_attendees: externalAttendees,
       meeting_type: meetingType,
       location,
     },
@@ -38,7 +42,14 @@ function normalizeMeetingPayload(payload, currentUserId) {
 
 function applyScope(query, session) {
   if (session?.is_admin) return query;
-  return query.or(`created_by.eq.${session.id},attendees.cs.{${session.id}}`);
+  const userId = String(session?.id || "").replace(/"/g, "");
+  const userEmail = String(session?.email || "")
+    .trim()
+    .toLowerCase()
+    .replace(/"/g, "");
+  const filters = [`created_by.eq.${userId}`, `attendees.cs.{"${userId}"}`];
+  if (userEmail) filters.push(`external_attendees.cs.{"${userEmail}"}`);
+  return query.or(filters.join(","));
 }
 
 export async function GET(req) {
@@ -53,7 +64,7 @@ export async function GET(req) {
     const supabase = getSupabaseServerClient();
     let query = supabase
       .from("meetings")
-      .select("id,title,description,start_time,end_time,created_by,attendees,meeting_type,location,created_at")
+      .select("id,title,description,start_time,end_time,created_by,attendees,external_attendees,meeting_type,location,created_at")
       .order("start_time", { ascending: true });
 
     if (from) query = query.gte("start_time", from);
@@ -81,7 +92,7 @@ export async function POST(req) {
     const { data, error } = await supabase
       .from("meetings")
       .insert([{ ...normalized.value, created_by: session.id }])
-      .select("id,title,description,start_time,end_time,created_by,attendees,meeting_type,location,created_at")
+      .select("id,title,description,start_time,end_time,created_by,attendees,external_attendees,meeting_type,location,created_at")
       .single();
     if (error) throw new Error(error.message);
 

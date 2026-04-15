@@ -36,7 +36,9 @@ export async function GET(req) {
       .select("id,name,subject,body,case_studies,created_at", { count: "exact" })
       .order(sortBy, { ascending: sortOrder === "asc" })
       .range(from, to);
-    if (search) query = query.ilike("name", `%${search}%`);
+    if (search) {
+      query = query.or(`name.ilike.%${search}%,subject.ilike.%${search}%,body.ilike.%${search}%`);
+    }
 
     const { data, error, count } = await query;
     if (error) throw new Error(error.message);

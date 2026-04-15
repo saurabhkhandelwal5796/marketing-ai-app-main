@@ -93,15 +93,15 @@ export default function AppShell({ children }) {
   if (isAuthRoute) return <>{children}</>;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-50">
       <Sidebar
         mode={sidebarMode}
         onToggleCollapsed={cycleCollapsed}
         isAdmin={!!sessionUser?.is_admin}
       />
-      <div className={`transition-all ${sidebarWidthClass}`}>
+      <div className={`max-w-full min-w-0 overflow-x-hidden transition-all ${sidebarWidthClass}`}>
         <header className="border-b border-slate-200 bg-white px-5 py-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-slate-900">{sessionUser?.name || "User"}</p>
               <p className="text-xs text-slate-500">
@@ -126,7 +126,7 @@ export default function AppShell({ children }) {
             </div>
           </div>
         </header>
-        <div className="min-h-[calc(100vh-57px)]">{children}</div>
+        <div className="min-h-[calc(100vh-57px)] max-w-full min-w-0 overflow-x-hidden">{children}</div>
       </div>
     </div>
   );
