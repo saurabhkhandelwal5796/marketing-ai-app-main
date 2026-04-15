@@ -3,7 +3,12 @@ import { NextResponse } from "next/server";
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
 const SYSTEM_PROMPT = `You are a senior marketing strategist for B2B campaigns.
-Return detailed, practical outputs in JSON only. Avoid fluff and be specific.`;
+Return detailed, practical outputs in JSON only. Avoid fluff and be specific.
+
+Depth requirements:
+- Write FULL paragraphs (not short bullets). Each paragraph should be 4-8 sentences.
+- Be highly actionable: include what to do, how to do it, examples, and measurable success criteria.
+- Maximize depth and coverage: include at least 20+ concrete marketing detail points when asked for strategy/plan depth.`;
 
 function extractJson(text) {
   if (!text) return null;
@@ -111,6 +116,7 @@ export async function POST(req) {
       attachmentName = "",
       responseContext = "",
       question = "",
+      employee = null,
       threadMessages = [],
       point = null,
       companyName = "",
@@ -146,6 +152,15 @@ export async function POST(req) {
       "website": "https://www.notion.so"
     }
   ],
+  "employees": [
+    {
+      "name": "Jane Doe",
+      "title": "Head of Marketing",
+      "company": "Notion",
+      "linkedin": "https://www.linkedin.com/in/janedoe",
+      "email": null
+    }
+  ],
   "aiMessage": "..."
 }
 
@@ -161,6 +176,9 @@ Rules:
 - Ensure coverage across: value proposition, market positioning, competitive advantage, messaging strategy, brand tone, channels, pricing perception, USP, emotional triggers, storytelling angle, SEO keywords, pain points addressed, social proof strategy, call-to-action suggestions, campaign hooks, content themes, awareness vs conversion tactics, seasonal relevance, partnership opportunities, and growth potential.
 - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
 - Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), decisionMakerRole (single role).
+- employees: Return 20-40 REAL, specific employees across the target companies. Include likely outreach-ready roles (e.g., founder, marketing head, growth lead, sales lead, operations head).
+- Each employee must include: name, title, company, linkedin, email.
+- For linkedin/email: include only if genuinely known; otherwise null (do NOT guess).
 - For outreach channels: include email/phone/linkedin/website only if genuinely known; otherwise use null (do NOT guess).
 - tags: 2-4 short tags per marketingDetails item.
 - aiMessage: 2-4 short lines summarizing the analysis output.`;
@@ -221,15 +239,127 @@ Rules:
                   ],
                 },
               },
+              employees: {
+                type: "array",
+                minItems: 20,
+                maxItems: 40,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: "string" },
+                    title: { type: "string" },
+                    company: { type: "string" },
+                    linkedin: { type: ["string", "null"] },
+                    email: { type: ["string", "null"] },
+                  },
+                  required: ["name", "title", "company", "linkedin", "email"],
+                },
+              },
               aiMessage: { type: "string" },
             },
-            required: ["marketingDetails", "targetAudience", "aiMessage"],
+            required: ["marketingDetails", "targetAudience", "employees", "aiMessage"],
           },
         },
       });
 
       const parsed = extractJson(raw);
       if (!parsed) throw new Error("Model returned non-JSON response for analysis.");
+      return NextResponse.json(parsed);
+    }
+
+    if (step === "employee_outreach") {
+      const emp = employee && typeof employee === "object" ? employee : {};
+      const empName = String(emp?.name || "").trim();
+      const empTitle = String(emp?.title || "").trim();
+      const empCompany = String(emp?.company || "").trim();
+      const q = String(question || "").trim();
+      if (!empName) return NextResponse.json({ error: "Employee name is required." }, { status: 400 });
+      if (!q) return NextResponse.json({ error: "Please enter your request." }, { status: 400 });
+
+      const prompt = `Return ONLY valid JSON with this shape:
+{
+  "answer": "...",
+  "suggestedChannels": ["Email", "LinkedIn"],
+  "channelMessages": {
+    "email": {
+      "subject": "...",
+      "body": "..."
+    },
+    "linkedin": {
+      "message": "..."
+    }
+  }
+}
+
+Context:
+- Campaign company: ${company}
+- Campaign goal: ${campaign}
+- Campaign website: ${website}
+- Campaign description: ${description}
+- Employee name: ${empName}
+- Employee title: ${empTitle}
+- Employee company: ${empCompany}
+
+User request:
+${q}
+
+Rules:
+- Provide a ready-to-use outreach response (email, LinkedIn DM, or script based on request).
+- Make it personalized to the employee role and company context.
+- Keep it practical, specific, and conversion-focused.
+- Decide the best channels and include them in suggestedChannels.
+- If Email is suggested, provide email.subject and email.body.
+- If LinkedIn is suggested, provide linkedin.message.
+- Do not include channels that are not relevant.`;
+
+      const raw = await callOpenAI({
+        apiKey,
+        prompt,
+        schema: {
+          name: "employee_outreach_payload",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              answer: { type: "string" },
+              suggestedChannels: {
+                type: "array",
+                items: { type: "string", enum: ["Email", "LinkedIn"] },
+                minItems: 1,
+                maxItems: 2,
+              },
+              channelMessages: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  email: {
+                    type: ["object", "null"],
+                    additionalProperties: false,
+                    properties: {
+                      subject: { type: "string" },
+                      body: { type: "string" },
+                    },
+                    required: ["subject", "body"],
+                  },
+                  linkedin: {
+                    type: ["object", "null"],
+                    additionalProperties: false,
+                    properties: {
+                      message: { type: "string" },
+                    },
+                    required: ["message"],
+                  },
+                },
+                required: ["email", "linkedin"],
+              },
+            },
+            required: ["answer", "suggestedChannels", "channelMessages"],
+          },
+        },
+      });
+      const parsed = extractJson(raw);
+      if (!parsed?.answer) throw new Error("Model returned invalid outreach response format.");
       return NextResponse.json(parsed);
     }
 
@@ -565,7 +695,7 @@ Then based on the task_type, add the appropriate bonus section as specified.`;
     }
 
     if (step === "suggestions") {
-      const prompt = `Return ONLY valid JSON with this shape:
+      const prompt = "You must follow these instructions: " + description + `\n\nGenerate minimum 20 marketing detail points. Each point must have a title and at least 4-5 sentences of detailed explanation. Be specific to this company, not generic.\n\nReturn ONLY valid JSON with this shape:
 {
   "marketingPlan": [
     {
@@ -589,7 +719,8 @@ Context:
 
 Rules:
 - marketingPlan: 12 to 15 detailed plan steps.
-- Each step should include id, title, description (2-3 lines), and channels array.
+- Each step description must be ONE dense paragraph (5-8 sentences) with real execution details (who/what/when/how), and must include 2-4 concrete sub-actions embedded in the paragraph (e.g., "Do X, then Y, then Z").
+- Across the full marketingPlan, cover at least 20+ distinct actionable marketing details (positioning, messaging, offer, channels, targeting, creatives, landing page, tracking, retargeting, budget split, timeline, KPIs, optimization loop, risks).
 - suggestions: 12 to 15 short campaign ideas.
 - recommendedActions: 6-10 channels based on plan steps (e.g. LinkedIn, Email, WhatsApp, Instagram, Blog, SMS, Naukri, Ad Copy).
 - aiMessage: 2-4 short lines.`;
@@ -649,7 +780,7 @@ Rules:
       return NextResponse.json({ error: "Please select at least one action." }, { status: 400 });
     }
 
-    const prompt = `Return ONLY valid JSON with this shape:
+    const prompt = "You must follow these instructions: " + description + `\n\nGenerate minimum 20 marketing detail points. Each point must have a title and at least 4-5 sentences of detailed explanation. Be specific to this company, not generic.\n\nReturn ONLY valid JSON with this shape:
 {
   "outputs": {
     "<selected action 1>": "...",
@@ -668,7 +799,8 @@ Context:
 
 Rules:
 - Include ONLY selected actions in outputs.
-- Keep each output actionable and channel-specific.
+- Keep each output actionable and channel-specific with deep, execution-ready detail.
+- Use full paragraphs (not short bullets). If you include lists, embed them inside paragraphs and include examples.
 - No markdown code fences.`;
 
     const raw = await callOpenAI({ apiKey, prompt });
