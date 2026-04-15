@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   History,
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/campaigns", label: "Campaign", icon: Megaphone },
   { href: "/email-templates", label: "Email Templates", icon: Mail },
   { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
+  { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
   { href: "/history", label: "History", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },
