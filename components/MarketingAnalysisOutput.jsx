@@ -149,6 +149,33 @@ function getOutreach(company) {
   return { email, phone, linkedin, website };
 }
 
+function getEmployeeOutreach(employee, companyOutreach = null) {
+  const email = typeof employee?.email === "string" ? employee.email.trim() : "";
+  const phone = typeof employee?.phone === "string" ? employee.phone.trim() : "";
+  const linkedin = typeof employee?.linkedin === "string" ? employee.linkedin.trim() : "";
+  const website = typeof employee?.website === "string" ? employee.website.trim() : "";
+
+  return {
+    email: email || companyOutreach?.email || "",
+    phone: phone || companyOutreach?.phone || "",
+    linkedin: linkedin || companyOutreach?.linkedin || "",
+    website: website || companyOutreach?.website || "",
+  };
+}
+
+function buildEmployeeChannelPrompt(channel, employee) {
+  const name = employee?.name || "this contact";
+  const title = employee?.title || "their role";
+  const company = employee?.company || "their company";
+  if (channel === "email") {
+    return `Write a cold email for ${name}, ${title} at ${company}`;
+  }
+  if (channel === "call") {
+    return `Write a call script for reaching out to ${name}, ${title} at ${company}`;
+  }
+  return `Write a LinkedIn connection message for ${name}, ${title} at ${company}`;
+}
+
 function initials(name) {
   const parts = String(name || "")
     .trim()
@@ -246,11 +273,34 @@ export default function MarketingAnalysisOutput({
     return parts.join(" — ");
   }, [company, campaign]);
 
+  const companyOutreachByName = useMemo(() => {
+    const map = {};
+    targetAudience.forEach((c) => {
+      const key = String(c?.name || "")
+        .trim()
+        .toLowerCase();
+      if (!key) return;
+      map[key] = getOutreach(c);
+    });
+    return map;
+  }, [targetAudience]);
+
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [assistantChannelContext, setAssistantChannelContext] = useState("");
   const [employeePrompt, setEmployeePrompt] = useState("");
+  const [contactPopup, setContactPopup] = useState({
+    open: false,
+    type: "",
+    employeeName: "",
+    value: "",
+    top: 0,
+    left: 0,
+  });
+  const [contactCopied, setContactCopied] = useState(false);
+  const contactPopupRef = useRef(null);
   const [employeeAssistantLoading, setEmployeeAssistantLoading] = useState(false);
   const [employeeAssistantData, setEmployeeAssistantData] = useState({
     answer: "",
@@ -266,11 +316,13 @@ export default function MarketingAnalysisOutput({
 
   const hasMarketingPlan = Array.isArray(marketingPlan) && marketingPlan.length > 0;
   const assistantAnswer = String(employeeAssistantData?.answer || "");
-  const suggestedChannels = Array.isArray(employeeAssistantData?.suggestedChannels)
-    ? employeeAssistantData.suggestedChannels
-    : [];
-  const hasEmailChannel = suggestedChannels.includes("Email") && !!selectedEmployee?.email;
-  const hasLinkedInChannel = suggestedChannels.includes("LinkedIn") && !!selectedEmployee?.linkedin;
+  const selectedEmployeeOutreach = useMemo(() => {
+    if (!selectedEmployee) return { email: "", phone: "", linkedin: "", website: "" };
+    const companyKey = String(selectedEmployee?.company || "")
+      .trim()
+      .toLowerCase();
+    return getEmployeeOutreach(selectedEmployee, companyOutreachByName[companyKey] || null);
+  }, [selectedEmployee, companyOutreachByName]);
   const createdTemplateKeys = useMemo(() => {
     const set = new Set();
     tasks.forEach((t) => {
@@ -304,6 +356,17 @@ export default function MarketingAnalysisOutput({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!contactPopup.open) return;
+    const onDocClick = (e) => {
+      if (contactPopupRef.current?.contains(e.target)) return;
+      setContactPopup((prev) => ({ ...prev, open: false }));
+      setContactCopied(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [contactPopup.open]);
 
   const loadUsers = async () => {
     setUsersLoading(true);
@@ -786,6 +849,25 @@ export default function MarketingAnalysisOutput({
   };
 
   // Task Assignment tab is intentionally a task creation interface (no list view).
+
+  const applyEmployeeChannelContext = (employee, channel) => {
+    setSelectedEmployee(employee);
+    setAssistantChannelContext(channel);
+    setEmployeePrompt(buildEmployeeChannelPrompt(channel, employee));
+  };
+
+  const openContactPopup = (e, type, employeeName, value) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setContactCopied(false);
+    setContactPopup({
+      open: true,
+      type,
+      employeeName,
+      value: String(value || ""),
+      top: rect.bottom + 8,
+      left: Math.max(12, rect.left - 220 + rect.width),
+    });
+  };
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -1281,11 +1363,25 @@ export default function MarketingAnalysisOutput({
                     ) : null}
                     {employees.map((emp, idx) => {
                       const isActive = selectedEmployee?.name === emp.name && selectedEmployee?.company === emp.company;
+                      const companyKey = String(emp?.company || "")
+                        .trim()
+                        .toLowerCase();
+                      const outreach = getEmployeeOutreach(emp, companyOutreachByName[companyKey] || null);
+                      const hasAnyOutreach =
+                        !!outreach.linkedin || !!outreach.email || !!outreach.phone || !!outreach.website;
+                      const defaultChannel = outreach.email ? "email" : outreach.phone ? "call" : "linkedin";
                       return (
-                        <button
+                        <div
                           key={`${emp.name || "emp"}-${emp.company || "company"}-${idx}`}
-                          type="button"
+                          role="button"
+                          tabIndex={0}
                           onClick={() => setSelectedEmployee(emp)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setSelectedEmployee(emp);
+                            }
+                          }}
                           className={cx(
                             "w-full rounded-2xl border bg-white p-3 text-left shadow-sm transition",
                             isActive ? "border-blue-500 bg-blue-50/40" : "border-slate-200 hover:shadow-md"
@@ -1300,32 +1396,74 @@ export default function MarketingAnalysisOutput({
                               <p className="text-sm text-slate-700">{emp.title || "-"}</p>
                               <p className="mt-0.5 text-xs text-slate-500">{emp.company || "-"}</p>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              {emp.linkedin ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                applyEmployeeChannelContext(emp, defaultChannel);
+                              }}
+                              className="shrink-0 rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Channels
+                            </button>
+                          </div>
+                          {hasAnyOutreach ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {outreach.email ? (
                                 <a
-                                  href={emp.linkedin}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                                  title="LinkedIn"
+                                  href={`mailto:${outreach.email}`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    applyEmployeeChannelContext(emp, "email");
+                                    openContactPopup(e, "email", emp.name || "employee", outreach.email);
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                                  title={outreach.email}
                                 >
-                                  <Link size={14} />
+                                  <Mail size={12} />
+                                  Email
                                 </a>
                               ) : null}
-                              {emp.email ? (
+                              {outreach.phone ? (
                                 <a
-                                  href={`mailto:${emp.email}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                                  title="Email"
+                                  href={`tel:${outreach.phone}`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    applyEmployeeChannelContext(emp, "call");
+                                    openContactPopup(e, "call", emp.name || "employee", outreach.phone);
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                                  title={outreach.phone}
                                 >
-                                  <Mail size={14} />
+                                  <Phone size={12} />
+                                  Call
+                                </a>
+                              ) : null}
+                              {outreach.linkedin ? (
+                                <a
+                                  href={outreach.linkedin}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    applyEmployeeChannelContext(emp, "linkedin");
+                                    openContactPopup(e, "linkedin", emp.name || "employee", outreach.linkedin);
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                                  title="LinkedIn"
+                                >
+                                  <Link size={12} />
+                                  LinkedIn
                                 </a>
                               ) : null}
                             </div>
-                          </div>
-                        </button>
+                          ) : (
+                            <p className="mt-3 text-xs text-slate-500">No verified channels available.</p>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -1340,7 +1478,7 @@ export default function MarketingAnalysisOutput({
                       ) : null}
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
-                      Ask: "Write a cold email for [name]" or "What should I say on LinkedIn?"
+                      Select a channel from an employee card to auto-fill a campaign-aware outreach prompt.
                     </p>
 
                     <textarea
@@ -1369,6 +1507,7 @@ export default function MarketingAnalysisOutput({
                               description,
                               employee: selectedEmployee,
                               question: employeePrompt,
+                              preferredChannel: assistantChannelContext || null,
                             }),
                           });
                           const data = await res.json();
@@ -1398,45 +1537,47 @@ export default function MarketingAnalysisOutput({
                         {assistantAnswer || "AI response will appear here."}
                       </p>
                     </div>
-                    {hasEmailChannel || hasLinkedInChannel ? (
+                    {assistantAnswer && assistantChannelContext ? (
                       <div className="mt-3 grid grid-cols-1 gap-2">
-                        {hasEmailChannel ? (
+                        {assistantChannelContext === "email" ? (
                           <button
                             type="button"
                             onClick={() => {
-                              const to = selectedEmployee?.email || "";
-                              const subj =
-                                employeeAssistantData?.channelMessages?.email?.subject ||
-                                `Regarding ${campaign || "your campaign"} - ${company || "our team"}`;
-                              const body =
-                                employeeAssistantData?.channelMessages?.email?.body || assistantAnswer || "";
-                              setOutreachChannel("Email");
-                              setOutreachTo(to);
-                              setOutreachSubject(subj);
-                              setOutreachBody(body);
-                              setOutreachComposerOpen(true);
+                              const to = selectedEmployeeOutreach.email || "";
+                              const subject = encodeURIComponent(
+                                `Regarding ${campaign || "your campaign"} - ${company || "our team"}`
+                              );
+                              const body = encodeURIComponent(assistantAnswer);
+                              const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`;
+                              window.open(mailtoUrl, "_self");
                             }}
                             className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
                           >
-                            Send Email
+                            Open in Email
                           </button>
                         ) : null}
-                        {hasLinkedInChannel ? (
+                        {assistantChannelContext === "call" ? (
                           <button
                             type="button"
                             onClick={() => {
-                              const to = selectedEmployee?.linkedin || "";
-                              const body =
-                                employeeAssistantData?.channelMessages?.linkedin?.message || assistantAnswer || "";
-                              setOutreachChannel("LinkedIn");
-                              setOutreachTo(to);
-                              setOutreachSubject("");
-                              setOutreachBody(body);
-                              setOutreachComposerOpen(true);
+                              navigator.clipboard.writeText(assistantAnswer || "").catch(() => {});
+                              showToast("success", "Call script copied.");
                             }}
                             className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
                           >
-                            Send LinkedIn Message
+                            Copy Script
+                          </button>
+                        ) : null}
+                        {assistantChannelContext === "linkedin" ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(assistantAnswer || "").catch(() => {});
+                              showToast("success", "LinkedIn message copied.");
+                            }}
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                          >
+                            Copy Message
                           </button>
                         ) : null}
                       </div>
@@ -1887,6 +2028,79 @@ export default function MarketingAnalysisOutput({
           ) : null}
         </div>
       </div>
+
+      {contactPopup.open ? (
+        <div
+          ref={contactPopupRef}
+          className="fixed z-[80]"
+          style={{ top: `${contactPopup.top}px`, left: `${contactPopup.left}px` }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="w-[280px] rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-900">
+                {contactPopup.type === "email"
+                  ? `Send Email to ${contactPopup.employeeName}`
+                  : contactPopup.type === "call"
+                  ? `Call ${contactPopup.employeeName}`
+                  : `Message ${contactPopup.employeeName} on LinkedIn`}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setContactPopup((prev) => ({ ...prev, open: false }));
+                  setContactCopied(false);
+                }}
+                className="rounded-md border border-slate-300 bg-white p-1 text-slate-600 hover:bg-slate-50"
+                title="Close"
+              >
+                <X size={12} />
+              </button>
+            </div>
+            <input
+              readOnly
+              value={contactPopup.value}
+              className="mt-2 w-full rounded-lg border border-slate-300 bg-slate-50 px-2.5 py-2 text-xs text-slate-700"
+              onFocus={(e) => e.target.select()}
+            />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(contactPopup.value || "").catch(() => {});
+                  setContactCopied(true);
+                  setTimeout(() => setContactCopied(false), 2000);
+                }}
+                className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <span className={contactCopied ? "text-emerald-600" : ""}>{contactCopied ? "✓" : "📋"}</span>
+                Copy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (contactPopup.type === "email") {
+                    window.open(`mailto:${contactPopup.value}`, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  if (contactPopup.type === "linkedin") {
+                    window.open(contactPopup.value, "_blank", "noopener,noreferrer");
+                    return;
+                  }
+                  window.open(`tel:${contactPopup.value}`, "_self");
+                }}
+                className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+              >
+                {contactPopup.type === "email"
+                  ? "Open Gmail"
+                  : contactPopup.type === "call"
+                  ? "Call Now"
+                  : "Open LinkedIn"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {activeTab === "details" && anySelected ? (
         <div className="sticky bottom-0 z-10 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">

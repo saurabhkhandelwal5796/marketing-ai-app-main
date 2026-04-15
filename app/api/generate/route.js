@@ -116,6 +116,7 @@ export async function POST(req) {
       attachmentName = "",
       responseContext = "",
       question = "",
+      preferredChannel = "",
       employee = null,
       threadMessages = [],
       point = null,
@@ -158,7 +159,9 @@ export async function POST(req) {
       "title": "Head of Marketing",
       "company": "Notion",
       "linkedin": "https://www.linkedin.com/in/janedoe",
-      "email": null
+      "email": null,
+      "phone": null,
+      "website": null
     }
   ],
   "aiMessage": "..."
@@ -177,8 +180,9 @@ Rules:
 - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
 - Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), decisionMakerRole (single role).
 - employees: Return 20-40 REAL, specific employees across the target companies. Include likely outreach-ready roles (e.g., founder, marketing head, growth lead, sales lead, operations head).
-- Each employee must include: name, title, company, linkedin, email.
-- For linkedin/email: include only if genuinely known; otherwise null (do NOT guess).
+- Each employee must include: name, title, company, linkedin, email, phone, website.
+- For linkedin/email/phone/website: include only if genuinely known; otherwise null (do NOT guess).
+- Prioritize finding employee email address and phone number where possible from reliable public business sources; keep null if not confidently available.
 - For outreach channels: include email/phone/linkedin/website only if genuinely known; otherwise use null (do NOT guess).
 - tags: 2-4 short tags per marketingDetails item.
 - aiMessage: 2-4 short lines summarizing the analysis output.`;
@@ -252,8 +256,10 @@ Rules:
                     company: { type: "string" },
                     linkedin: { type: ["string", "null"] },
                     email: { type: ["string", "null"] },
+                    phone: { type: ["string", "null"] },
+                    website: { type: ["string", "null"] },
                   },
-                  required: ["name", "title", "company", "linkedin", "email"],
+                  required: ["name", "title", "company", "linkedin", "email", "phone", "website"],
                 },
               },
               aiMessage: { type: "string" },
@@ -274,13 +280,14 @@ Rules:
       const empTitle = String(emp?.title || "").trim();
       const empCompany = String(emp?.company || "").trim();
       const q = String(question || "").trim();
+      const channel = String(preferredChannel || "").trim().toLowerCase();
       if (!empName) return NextResponse.json({ error: "Employee name is required." }, { status: 400 });
       if (!q) return NextResponse.json({ error: "Please enter your request." }, { status: 400 });
 
       const prompt = `Return ONLY valid JSON with this shape:
 {
   "answer": "...",
-  "suggestedChannels": ["Email", "LinkedIn"],
+  "suggestedChannels": ["Email", "LinkedIn", "Call"],
   "channelMessages": {
     "email": {
       "subject": "...",
@@ -288,6 +295,9 @@ Rules:
     },
     "linkedin": {
       "message": "..."
+    },
+    "call": {
+      "script": "..."
     }
   }
 }
@@ -300,6 +310,7 @@ Context:
 - Employee name: ${empName}
 - Employee title: ${empTitle}
 - Employee company: ${empCompany}
+- Preferred channel context: ${channel || "(none provided)"}
 
 User request:
 ${q}
@@ -311,6 +322,7 @@ Rules:
 - Decide the best channels and include them in suggestedChannels.
 - If Email is suggested, provide email.subject and email.body.
 - If LinkedIn is suggested, provide linkedin.message.
+- If Call is suggested, provide call.script.
 - Do not include channels that are not relevant.`;
 
       const raw = await callOpenAI({
@@ -325,9 +337,9 @@ Rules:
               answer: { type: "string" },
               suggestedChannels: {
                 type: "array",
-                items: { type: "string", enum: ["Email", "LinkedIn"] },
+                items: { type: "string", enum: ["Email", "LinkedIn", "Call"] },
                 minItems: 1,
-                maxItems: 2,
+                maxItems: 3,
               },
               channelMessages: {
                 type: "object",
@@ -350,8 +362,16 @@ Rules:
                     },
                     required: ["message"],
                   },
+                  call: {
+                    type: ["object", "null"],
+                    additionalProperties: false,
+                    properties: {
+                      script: { type: "string" },
+                    },
+                    required: ["script"],
+                  },
                 },
-                required: ["email", "linkedin"],
+                required: ["email", "linkedin", "call"],
               },
             },
             required: ["answer", "suggestedChannels", "channelMessages"],
