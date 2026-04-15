@@ -10,6 +10,17 @@ function previewBody(text) {
   return `${value.slice(0, 90)}...`;
 }
 
+const MAX_CASE_STUDY_SIZE = 5 * 1024 * 1024;
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function EmailTemplatesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -25,7 +36,7 @@ export default function EmailTemplatesPage() {
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
-  const [form, setForm] = useState({ name: "", body: "" });
+  const [form, setForm] = useState({ name: "", subject: "", body: "", case_studies: [] });
 
   const load = async (overrides = {}) => {
     setLoading(true);
@@ -81,7 +92,7 @@ export default function EmailTemplatesPage() {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save template.");
       setShowForm(false);
       setEditingTemplate(null);
-      setForm({ name: "", body: "" });
+      setForm({ name: "", subject: "", body: "", case_studies: [] });
       setSuccess(editingTemplate ? "Template updated." : "Template saved.");
       setPage(1);
       load({ page: 1 });
@@ -97,14 +108,52 @@ export default function EmailTemplatesPage() {
 
   const openCreateForm = () => {
     setEditingTemplate(null);
-    setForm({ name: "", body: "" });
+    setForm({ name: "", subject: "", body: "", case_studies: [] });
     setShowForm(true);
   };
 
   const openEditForm = (item) => {
     setEditingTemplate(item);
-    setForm({ name: item.name || "", body: item.body || "" });
+    setForm({
+      name: item.name || "",
+      subject: item.subject || "",
+      body: item.body || "",
+      case_studies: Array.isArray(item.case_studies) ? item.case_studies : [],
+    });
     setShowForm(true);
+  };
+
+  const onCaseStudyFiles = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setError("");
+    try {
+      for (const file of files) {
+        if (file.size > MAX_CASE_STUDY_SIZE) {
+          throw new Error(`"${file.name}" exceeds 5MB limit.`);
+        }
+      }
+      const uploads = await Promise.all(
+        files.map(async (file) => ({
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          size: file.size,
+          dataUrl: await readFileAsDataUrl(file),
+        }))
+      );
+      setForm((prev) => ({ ...prev, case_studies: [...(prev.case_studies || []), ...uploads] }));
+    } catch (e) {
+      setError(e?.message || "Failed to attach case studies.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const removeCaseStudy = (index) => {
+    setForm((prev) => ({
+      ...prev,
+      case_studies: (prev.case_studies || []).filter((_, idx) => idx !== index),
+    }));
   };
 
   const onDelete = async (item) => {
@@ -197,6 +246,7 @@ export default function EmailTemplatesPage() {
               <thead className="bg-slate-50">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold text-slate-700">Template Name</th>
+                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Subject</th>
                   <th className="px-3 py-2 text-left font-semibold text-slate-700">Email Body</th>
                   <th className="px-3 py-2 text-left font-semibold text-slate-700">Created At</th>
                   <th className="px-3 py-2 text-right font-semibold text-slate-700">Actions</th>
@@ -210,6 +260,7 @@ export default function EmailTemplatesPage() {
                         {item.name}
                       </button>
                     </td>
+                    <td className="px-3 py-2 text-slate-700">{item.subject || "-"}</td>
                     <td className="px-3 py-2 text-slate-700">{previewBody(item.body)}</td>
                     <td className="px-3 py-2 text-slate-700">{new Date(item.created_at).toLocaleString()}</td>
                     <td className="px-3 py-2">
@@ -240,7 +291,7 @@ export default function EmailTemplatesPage() {
                 ))}
                 {templates.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
                       No templates found.
                     </td>
                   </tr>
@@ -301,6 +352,15 @@ export default function EmailTemplatesPage() {
               />
             </label>
             <label className="block text-sm font-medium text-slate-700">
+              Subject
+              <input
+                required
+                value={form.subject}
+                onChange={(e) => setForm((p) => ({ ...p, subject: e.target.value }))}
+                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+              />
+            </label>
+            <label className="block text-sm font-medium text-slate-700">
               Email Body
               <textarea
                 required
@@ -310,6 +370,36 @@ export default function EmailTemplatesPage() {
                 className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
               />
             </label>
+            <label className="block text-sm font-medium text-slate-700">
+              Case Studies (PDF/DOC/DOCX/TXT)
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                multiple
+                onChange={onCaseStudyFiles}
+                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-xs file:font-semibold"
+              />
+              <p className="mt-1 text-xs text-slate-500">Max file size: 5MB each.</p>
+            </label>
+            {(form.case_studies || []).length ? (
+              <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold text-slate-700">Attached Case Studies</p>
+                {(form.case_studies || []).map((file, index) => (
+                  <div key={`${file.name}-${index}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                    <p className="truncate text-sm text-slate-700">
+                      {file.name} {file.size ? `(${Math.round(file.size / 1024)} KB)` : ""}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => removeCaseStudy(index)}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <button
               type="submit"
               disabled={submitting}
