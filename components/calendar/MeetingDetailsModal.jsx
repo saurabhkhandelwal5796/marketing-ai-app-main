@@ -16,6 +16,7 @@ export default function MeetingDetailsModal({
   const attendeeNames = (meeting.attendees || [])
     .map((id) => userMap.get(id)?.name || userMap.get(id)?.email || "Unknown user")
     .join(", ");
+  const externalAttendees = Array.isArray(meeting.external_attendees) ? meeting.external_attendees.join(", ") : "";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
@@ -47,6 +48,11 @@ export default function MeetingDetailsModal({
           <p>
             <span className="font-semibold text-slate-900">Attendees:</span> {attendeeNames || "No attendees"}
           </p>
+          {externalAttendees ? (
+            <p>
+              <span className="font-semibold text-slate-900">External Attendees:</span> {externalAttendees}
+            </p>
+          ) : null}
         </div>
 
         {canManage ? (

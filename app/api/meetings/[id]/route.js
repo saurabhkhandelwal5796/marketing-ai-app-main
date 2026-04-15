@@ -12,6 +12,9 @@ function normalizeMeetingPayload(payload, currentUserId) {
   const attendees = Array.isArray(payload?.attendees)
     ? [...new Set(payload.attendees.map((id) => String(id || "").trim()).filter(Boolean))]
     : [];
+  const externalAttendees = Array.isArray(payload?.external_attendees)
+    ? [...new Set(payload.external_attendees.map((email) => String(email || "").trim().toLowerCase()).filter(Boolean))]
+    : [];
 
   if (currentUserId && !attendees.includes(currentUserId)) attendees.push(currentUserId);
 
@@ -30,6 +33,7 @@ function normalizeMeetingPayload(payload, currentUserId) {
       start_time: startTime.toISOString(),
       end_time: endTime.toISOString(),
       attendees,
+      external_attendees: externalAttendees,
       meeting_type: meetingType,
       location,
     },
@@ -40,7 +44,7 @@ async function getMeetingById(id) {
   const supabase = getSupabaseServerClient();
   return supabase
     .from("meetings")
-    .select("id,title,description,start_time,end_time,created_by,attendees,meeting_type,location,created_at")
+    .select("id,title,description,start_time,end_time,created_by,attendees,external_attendees,meeting_type,location,created_at")
     .eq("id", id)
     .maybeSingle();
 }
@@ -54,7 +58,7 @@ export async function PATCH(req, { params }) {
     const session = await getSessionFromCookies();
     if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
-    const { id } = params;
+    const { id } = await params;
     if (!id) return NextResponse.json({ error: "Meeting id is required." }, { status: 400 });
 
     const existing = await getMeetingById(id);
@@ -71,7 +75,7 @@ export async function PATCH(req, { params }) {
       .from("meetings")
       .update(normalized.value)
       .eq("id", id)
-      .select("id,title,description,start_time,end_time,created_by,attendees,meeting_type,location,created_at")
+      .select("id,title,description,start_time,end_time,created_by,attendees,external_attendees,meeting_type,location,created_at")
       .single();
     if (error) throw new Error(error.message);
 
@@ -86,7 +90,7 @@ export async function DELETE(_req, { params }) {
     const session = await getSessionFromCookies();
     if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
-    const { id } = params;
+    const { id } = await params;
     if (!id) return NextResponse.json({ error: "Meeting id is required." }, { status: 400 });
 
     const existing = await getMeetingById(id);

@@ -8,6 +8,7 @@ create table if not exists public.meetings (
   end_time timestamptz not null,
   created_by uuid not null references public.users(id) on delete cascade,
   attendees uuid[] not null default '{}',
+  external_attendees text[] not null default '{}',
   meeting_type text not null default 'Online' check (meeting_type in ('Online', 'Offline')),
   location text,
   created_at timestamptz not null default now(),
@@ -16,6 +17,7 @@ create table if not exists public.meetings (
 );
 
 alter table public.meetings add column if not exists updated_at timestamptz not null default now();
+alter table public.meetings add column if not exists external_attendees text[] not null default '{}';
 
 create index if not exists meetings_start_time_idx on public.meetings (start_time);
 create index if not exists meetings_created_by_idx on public.meetings (created_by);
