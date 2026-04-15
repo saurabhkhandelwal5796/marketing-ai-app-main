@@ -22,6 +22,10 @@ alter table public.users add column if not exists last_name text;
 alter table public.users add column if not exists company text;
 alter table public.users add column if not exists role text not null default 'User';
 alter table public.users add column if not exists status text not null default 'Active';
+alter table public.users add column if not exists linkedin_access_token text;
+alter table public.users add column if not exists linkedin_refresh_token text;
+alter table public.users add column if not exists linkedin_token_expires_at timestamptz;
+alter table public.users add column if not exists linkedin_member_urn text;
 alter table public.users alter column email set not null;
 
 create unique index if not exists users_email_unique_idx on public.users (lower(email));
