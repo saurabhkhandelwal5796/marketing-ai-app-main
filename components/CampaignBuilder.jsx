@@ -3,45 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, ChevronDown, ChevronUp, Paperclip } from "lucide-react";
 import Image from "next/image";
-import ChatBox from "./ChatBox";
-import SuggestionsPanel from "./SuggestionsPanel";
 import NextBestActions from "./NextBestActions";
 import OutputCard from "./OutputCard";
 import SendModal from "./SendModal";
 import MarketingAnalysisOutput from "./MarketingAnalysisOutput";
 
 const DEFAULT_ACTIONS = ["LinkedIn", "Email", "WhatsApp", "Instagram", "Blog", "SMS"];
-
-const DEFAULT_MARKETING_PLAN = [
-  {
-    id: "step-1",
-    title: "Step 1: Define Target Audience",
-    description:
-      "Identify ideal candidate persona, industry segments, and role seniority. Prioritize audience quality to improve conversion from impression to application.",
-    channels: ["LinkedIn", "Email"],
-  },
-  {
-    id: "step-2",
-    title: "Step 2: Build Content Strategy",
-    description:
-      "Create channel-specific messaging pillars like salary transparency, growth path, and project exposure. Keep content concise and role-focused.",
-    channels: ["LinkedIn", "Instagram", "Blog", "Email"],
-  },
-  {
-    id: "step-3",
-    title: "Step 3: Execute Outreach",
-    description:
-      "Run outbound and inbound outreach through targeted shortlists and warm leads. Use personalized communication and clear call-to-action.",
-    channels: ["Email", "WhatsApp", "Naukri"],
-  },
-  {
-    id: "step-4",
-    title: "Step 4: Retarget and Optimize",
-    description:
-      "Retarget engaged users with reminder touchpoints and proof points. Iterate weekly using response trends and channel-level performance.",
-    channels: ["LinkedIn", "Instagram", "SMS"],
-  },
-];
 
 const getId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -84,14 +51,15 @@ export default function CampaignBuilder({ campaignId }) {
   const [chatOpen, setChatOpen] = useState(false);
 
   const [company, setCompany] = useState("Cloud Certitude");
-  const [campaign, setCampaign] = useState("Hiring experienced MuleSoft developers");
-  const [website, setWebsite] = useState("https://www.cloudcertitude.com");
+  const [campaign, setCampaign] = useState("Marketing Campaign");
+  const [website, setWebsite] = useState("https://www.cloudcertitude.com/");
   const [attachmentName, setAttachmentName] = useState("");
   const [description, setDescription] = useState(
-    "We want to hire experienced MuleSoft developers in India within 30 days. Focus on strong reach and quality applicants."
+    "You are a senior marketing strategist. Create a complete marketing plan based on: Campaign Name: Get new projects Company: Cloud Certitude Website: CloudCertitude.com Target Audience: New Companies of any domain for which we work and experience like, real estate, interior, manufacturing and many more, details can be fetched from our company website Goal: Need new projects Industry: IT consultancy Provide: 1. Strategy Overview 2. Channel Plan 3. Weekly Execution Plan (4 weeks) 4. Content Ideas 5. Sample LinkedIn post 6. Sample Email Campaign 7. Tools to use"
   );
   const [chatMessages, setChatMessages] = useState(defaultChatMessages);
-  const [marketingPlan, setMarketingPlan] = useState(DEFAULT_MARKETING_PLAN);
+  const [askText, setAskText] = useState("");
+  const [marketingPlan, setMarketingPlan] = useState([]);
   const [selectedStepIds, setSelectedStepIds] = useState([]);
   const [recommendedActions, setRecommendedActions] = useState([]);
   const [selectedActions, setSelectedActions] = useState([]);
@@ -107,6 +75,10 @@ export default function CampaignBuilder({ campaignId }) {
 
   const lastSavedPayloadRef = useRef("");
   const hydratedRef = useRef(false);
+
+  const [historyMarketingDetails, setHistoryMarketingDetails] = useState(null);
+  const [historyTargetAudience, setHistoryTargetAudience] = useState(null);
+  const [historyAiMessage, setHistoryAiMessage] = useState("");
 
   const latestUserMessage = useMemo(() => {
     const msg = [...chatMessages].reverse().find((item) => item.role === "user");
@@ -134,24 +106,29 @@ export default function CampaignBuilder({ campaignId }) {
         const record = data.campaign || {};
         setCampaignRecord(record);
         setCompany(record.company || "Cloud Certitude");
-        setCampaign(record.goal || "Untitled Campaign");
-        setWebsite(record.website || "");
+        setCampaign(record.goal || "Marketing Campaign");
+        setWebsite(record.website || "https://www.cloudcertitude.com/");
         setAttachmentName(record.attachment_name || "");
-        setDescription(record.description || "");
+        setDescription(
+          record.description ||
+            "You are a senior marketing strategist. Create a complete marketing plan based on: Campaign Name: Get new projects Company: Cloud Certitude Website: CloudCertitude.com Target Audience: New Companies of any domain for which we work and experience like, real estate, interior, manufacturing and many more, details can be fetched from our company website Goal: Need new projects Industry: IT consultancy Provide: 1. Strategy Overview 2. Channel Plan 3. Weekly Execution Plan (4 weeks) 4. Content Ideas 5. Sample LinkedIn post 6. Sample Email Campaign 7. Tools to use"
+        );
         setChatMessages(Array.isArray(record.chat_messages) && record.chat_messages.length ? record.chat_messages : defaultChatMessages());
-        setMarketingPlan(Array.isArray(record.marketing_plan) && record.marketing_plan.length ? record.marketing_plan : DEFAULT_MARKETING_PLAN);
+        setMarketingPlan(Array.isArray(record.marketing_plan) ? record.marketing_plan : []);
         setSelectedStepIds(Array.isArray(record.selected_step_ids) ? record.selected_step_ids : []);
         setRecommendedActions(Array.isArray(record.recommended_actions) ? record.recommended_actions : []);
         setSelectedActions(Array.isArray(record.selected_actions) ? record.selected_actions : []);
         setOutputs(record.outputs && typeof record.outputs === "object" ? record.outputs : {});
         lastSavedPayloadRef.current = JSON.stringify({
           company: record.company || "Cloud Certitude",
-          goal: record.goal || "Untitled Campaign",
-          website: record.website || "",
+          goal: record.goal || "Marketing Campaign",
+          website: record.website || "https://www.cloudcertitude.com/",
           attachment_name: record.attachment_name || "",
-          description: record.description || "",
+          description:
+            record.description ||
+            "You are a senior marketing strategist. Create a complete marketing plan based on: Campaign Name: Get new projects Company: Cloud Certitude Website: CloudCertitude.com Target Audience: New Companies of any domain for which we work and experience like, real estate, interior, manufacturing and many more, details can be fetched from our company website Goal: Need new projects Industry: IT consultancy Provide: 1. Strategy Overview 2. Channel Plan 3. Weekly Execution Plan (4 weeks) 4. Content Ideas 5. Sample LinkedIn post 6. Sample Email Campaign 7. Tools to use",
           chat_messages: Array.isArray(record.chat_messages) && record.chat_messages.length ? record.chat_messages : defaultChatMessages(),
-          marketing_plan: Array.isArray(record.marketing_plan) && record.marketing_plan.length ? record.marketing_plan : DEFAULT_MARKETING_PLAN,
+          marketing_plan: Array.isArray(record.marketing_plan) ? record.marketing_plan : [],
           selected_step_ids: Array.isArray(record.selected_step_ids) ? record.selected_step_ids : [],
           recommended_actions: Array.isArray(record.recommended_actions) ? record.recommended_actions : [],
           selected_actions: Array.isArray(record.selected_actions) ? record.selected_actions : [],
@@ -167,6 +144,42 @@ export default function CampaignBuilder({ campaignId }) {
     };
 
     loadCampaign();
+  }, [campaignId]);
+
+  useEffect(() => {
+    const historyId =
+      typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("historyId") : "";
+    if (!historyId) return;
+    let mounted = true;
+    const loadHistory = async () => {
+      try {
+        const res = await fetch(`/api/campaign-history?id=${encodeURIComponent(historyId)}`);
+        const data = await res.json();
+        if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load history record.");
+        const rec = data.record || {};
+        if (!mounted) return;
+        setCompany(rec.company || "Cloud Certitude");
+        setCampaign(rec.goal || "Marketing Campaign");
+        setWebsite(rec.website || "https://www.cloudcertitude.com/");
+        setDescription(rec.description || description);
+        setMarketingPlan(Array.isArray(rec.marketing_plan) ? rec.marketing_plan : []);
+        setSelectedStepIds([]);
+        setRecommendedActions([]);
+        setSelectedActions([]);
+        setOutputs({});
+        setHistoryMarketingDetails(Array.isArray(rec.marketing_details) ? rec.marketing_details : []);
+        setHistoryTargetAudience(Array.isArray(rec.target_audience) ? rec.target_audience : []);
+        setHistoryAiMessage("");
+      } catch (e) {
+        if (!mounted) return;
+        setError(e?.message || "Failed to load history record.");
+      }
+    };
+    loadHistory();
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
   const persistPayload = useMemo(
@@ -254,10 +267,8 @@ export default function CampaignBuilder({ campaignId }) {
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Plan generation failed.");
-
-      const nextPlan = Array.isArray(data?.marketingPlan) && data.marketingPlan.length
-        ? data.marketingPlan
-        : DEFAULT_MARKETING_PLAN;
+      const nextPlan = Array.isArray(data?.marketingPlan) && data.marketingPlan.length ? data.marketingPlan : null;
+      if (!nextPlan) throw new Error("AI did not return a marketing plan. Please try again.");
       setMarketingPlan(nextPlan);
       setSelectedStepIds(nextPlan.slice(0, 2).map((item) => item.id));
       setRecommendedActions(Array.isArray(data?.recommendedActions) ? data.recommendedActions : []);
@@ -424,9 +435,10 @@ export default function CampaignBuilder({ campaignId }) {
 
               {inputsOpen ? (
                 <div className="border-t border-slate-200 px-4 py-4">
-                  <div className="grid grid-cols-1 gap-2">
-                    <div className="grid grid-cols-1 gap-2">
-                      <label className="block text-xs font-semibold text-slate-700">
+                  <div className="max-h-[calc(100vh-260px)] overflow-y-auto pr-1" style={{ scrollbarWidth: "thin" }}>
+                    <div className="grid grid-cols-1 gap-[6px]">
+                      <div className="grid grid-cols-1 gap-[6px]">
+                        <label className="block text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">
                         <span className="inline-flex items-center">
                           Company
                           <HelpIcon text="Enter your company or brand name as it should appear in generated content." />
@@ -434,11 +446,11 @@ export default function CampaignBuilder({ campaignId }) {
                         <input
                           value={company}
                           onChange={(e) => setCompany(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="mt-1 w-full rounded-xl border border-slate-300 px-2 py-1 text-[12px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </label>
 
-                      <label className="block text-xs font-semibold text-slate-700">
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">
                         <span className="inline-flex items-center">
                           Goal
                           <HelpIcon text="Describe the outcome you want, like hiring, lead generation, or product awareness." />
@@ -446,13 +458,13 @@ export default function CampaignBuilder({ campaignId }) {
                         <input
                           value={campaign}
                           onChange={(e) => setCampaign(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="mt-1 w-full rounded-xl border border-slate-300 px-2 py-1 text-[12px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </label>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2">
-                      <label className="block text-xs font-semibold text-slate-700">
+                    <div className="grid grid-cols-1 gap-[6px]">
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">
                         <span className="inline-flex items-center">
                           Website
                           <HelpIcon text="Add your website, job post, or landing page URL for better context." />
@@ -460,20 +472,20 @@ export default function CampaignBuilder({ campaignId }) {
                         <input
                           value={website}
                           onChange={(e) => setWebsite(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          className="mt-1 w-full rounded-xl border border-slate-300 px-2 py-1 text-[12px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                         />
                       </label>
                     </div>
 
                     <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-700">File</p>
-                        <p className="truncate text-xs text-slate-500">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">File</p>
+                        <p className="truncate text-[11px] text-slate-500">
                           {attachmentName ? `Attached: ${attachmentName}` : "Optional brief/JD"}
                         </p>
                       </div>
                       <label
-                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
                         title="Upload file"
                       >
                         <Paperclip size={14} />
@@ -482,6 +494,7 @@ export default function CampaignBuilder({ campaignId }) {
                       </label>
                     </div>
                   </div>
+                </div>
                 </div>
               ) : null}
             </div>
@@ -502,8 +515,33 @@ export default function CampaignBuilder({ campaignId }) {
                 </span>
               </button>
               {chatOpen ? (
-                <div className="border-t border-slate-200">
-                  <ChatBox messages={chatMessages} onSend={handleAskAi} loading={askLoading} />
+                <div className="border-t border-slate-200 p-3">
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">
+                    Description
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className="mt-1 h-[120px] w-full resize-none rounded-xl border border-slate-300 px-2 py-1 text-[11px] leading-5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      style={{ overflowY: "auto" }}
+                    />
+                  </label>
+
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      value={askText}
+                      onChange={(e) => setAskText(e.target.value)}
+                      placeholder="Ask AI..."
+                      className="w-full rounded-xl border border-slate-300 px-2 py-1 text-[11px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                    <button
+                      type="button"
+                      disabled={askLoading}
+                      onClick={() => handleAskAi((askText || "").trim() || description)}
+                      className="shrink-0 rounded-xl bg-blue-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Ask AI
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -517,37 +555,57 @@ export default function CampaignBuilder({ campaignId }) {
               website={website}
               description={latestUserMessage}
               attachmentName={attachmentName}
+              marketingPlan={marketingPlan}
+              selectedStepIds={selectedStepIds}
+              onTogglePlanStep={handleToggleStep}
+              planLoading={askLoading}
+              onGeneratePlan={() => handleAskAi(description)}
+              initialMarketingDetails={historyMarketingDetails}
+              initialTargetAudience={historyTargetAudience}
+              initialAiMessage={historyAiMessage}
             />
 
-            <SuggestionsPanel marketingPlan={marketingPlan} selectedStepIds={selectedStepIds} onToggleStep={handleToggleStep} loading={askLoading} />
-
-            <NextBestActions actions={renderedActions} selectedActions={selectedActions} onToggle={handleToggleAction} onGenerate={() => handleGenerateContent()} loading={generateLoading} />
+            {/* Hidden per requirement: Next Best Actions card */}
+            {false ? (
+              <NextBestActions
+                actions={renderedActions}
+                selectedActions={selectedActions}
+                onToggle={handleToggleAction}
+                onGenerate={() => handleGenerateContent()}
+                loading={generateLoading}
+              />
+            ) : null}
 
             {error ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
             {sendSuccess ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{sendSuccess}</div> : null}
 
-            <div className="space-y-4">
-              <h3 className="text-base font-semibold text-slate-900">Generated Outputs</h3>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {selectedActions.map((action) => (
-                  <OutputCard
-                    key={action}
-                    title={action}
-                    content={outputs[action] || ""}
-                    regenerating={regeneratingAction === action}
-                    onRegenerate={async () => {
-                      setRegeneratingAction(action);
-                      await handleGenerateContent([action]);
-                    }}
-                    onSend={() => handleOpenSendModal(action)}
-                  />
-                ))}
-              </div>
+            {/* Hidden per requirement: Generated Outputs card */}
+            {false ? (
+              <div className="space-y-4">
+                <h3 className="text-base font-semibold text-slate-900">Generated Outputs</h3>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {selectedActions.map((action) => (
+                    <OutputCard
+                      key={action}
+                      title={action}
+                      content={outputs[action] || ""}
+                      regenerating={regeneratingAction === action}
+                      onRegenerate={async () => {
+                        setRegeneratingAction(action);
+                        await handleGenerateContent([action]);
+                      }}
+                      onSend={() => handleOpenSendModal(action)}
+                    />
+                  ))}
+                </div>
 
-              {selectedActions.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">Select one or more actions to render output cards.</div>
-              ) : null}
-            </div>
+                {selectedActions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
+                    Select one or more actions to render output cards.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       </section>

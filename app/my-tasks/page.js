@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
 
@@ -85,6 +85,7 @@ export default function MyTasksPage() {
   const [users, setUsers] = useState([]);
   const [userId, setUserId] = useState("");
   const [tasks, setTasks] = useState([]);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [campaignsById, setCampaignsById] = useState({});
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingTasks, setLoadingTasks] = useState(false);
@@ -93,6 +94,7 @@ export default function MyTasksPage() {
   const [view, setView] = useState("list"); // list | kanban
   const [activeFilter, setActiveFilter] = useState("All Tasks");
   const [search, setSearch] = useState("");
+  const selectAllRef = useRef(null);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -198,6 +200,35 @@ export default function MyTasksPage() {
     return list;
   }, [tasks, activeFilter, search, userId]);
 
+  // Keep selection in sync with currently loaded tasks
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (!prev || prev.size === 0) return prev;
+      const existing = new Set(tasks.map((t) => t?.id).filter(Boolean));
+      const next = new Set();
+      prev.forEach((id) => {
+        if (existing.has(id)) next.add(id);
+      });
+      return next.size === prev.size ? prev : next;
+    });
+  }, [tasks]);
+
+  const visibleIds = useMemo(() => tasksFiltered.map((t) => t.id).filter(Boolean), [tasksFiltered]);
+  const selectedVisibleCount = useMemo(() => {
+    if (!selectedIds || selectedIds.size === 0) return 0;
+    let n = 0;
+    for (const id of visibleIds) if (selectedIds.has(id)) n += 1;
+    return n;
+  }, [selectedIds, visibleIds]);
+
+  const allVisibleSelected = visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = someVisibleSelected;
+  }, [someVisibleSelected]);
+
   const byStatus = useMemo(() => {
     const buckets = { "To Do": [], "In Progress": [], Done: [] };
     tasksFiltered.forEach((t) => {
@@ -242,6 +273,48 @@ export default function MyTasksPage() {
       setSuccess("Task deleted.");
     } catch (e) {
       setError(e?.message || "Failed to delete task.");
+    }
+  };
+
+  const toggleSelected = (taskId, checked) => {
+    if (!taskId) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(taskId);
+      else next.delete(taskId);
+      return next;
+    });
+  };
+
+  const toggleSelectAllVisible = (checked) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) visibleIds.forEach((id) => next.add(id));
+      else visibleIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  };
+
+  const deleteSelected = async () => {
+    const ids = Array.from(selectedIds || []);
+    if (ids.length === 0) return;
+    const ok = window.confirm(`Delete ${ids.length} selected task${ids.length === 1 ? "" : "s"}?`);
+    if (!ok) return;
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/tasks/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete selected tasks.");
+      setTasks((prev) => prev.filter((t) => !selectedIds.has(t.id)));
+      setSelectedIds(new Set());
+      setSuccess(`Deleted ${data?.deletedCount ?? ids.length} task${(data?.deletedCount ?? ids.length) === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setError(e?.message || "Failed to delete selected tasks.");
     }
   };
 
@@ -306,13 +379,25 @@ export default function MyTasksPage() {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-base font-semibold text-slate-900">Tasks</p>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tasks..."
-            className="w-full max-w-[260px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            style={{ color: "#000000" }}
-          />
+          <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
+            <button
+              type="button"
+              disabled={selectedIds.size === 0}
+              onClick={deleteSelected}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title={selectedIds.size ? `Delete ${selectedIds.size} selected` : "Select tasks to delete"}
+            >
+              <Trash2 size={16} />
+              Delete selected{selectedIds.size ? ` (${selectedIds.size})` : ""}
+            </button>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search tasks..."
+              className="w-full max-w-[260px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              style={{ color: "#000000" }}
+            />
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -339,6 +424,20 @@ export default function MyTasksPage() {
               <table className="min-w-[980px] w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
                   <tr>
+                    <th className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          checked={allVisibleSelected}
+                          onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-200"
+                          aria-label="Select all visible tasks"
+                        />
+                        <span className="text-[11px] font-semibold tracking-wide">Select</span>
+                      </div>
+                    </th>
                     <th className="px-4 py-3">Title</th>
                     <th className="px-4 py-3">Task Type</th>
                     <th className="px-4 py-3">Assignee</th>
@@ -353,7 +452,7 @@ export default function MyTasksPage() {
                 <tbody className="divide-y divide-slate-200">
                   {!loadingTasks && tasksFiltered.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-6 text-center text-slate-500">
+                      <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
                         No tasks found
                       </td>
                     </tr>
@@ -362,6 +461,7 @@ export default function MyTasksPage() {
                       const assignee = t.assignee_id ? users.find((u) => u.id === t.assignee_id) : null;
                       const camp = t.campaign_id ? campaignsById[t.campaign_id] : null;
                       const overdue = isPastDue(t.due_date) && t.status !== "Done";
+                      const checked = selectedIds.has(t.id);
                       return (
                         <tr
                           key={`row-${t.id}`}
@@ -374,6 +474,15 @@ export default function MyTasksPage() {
                             router.push(`/tasks/${t.id}`);
                           }}
                         >
+                          <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => toggleSelected(t.id, e.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-200"
+                              aria-label={`Select task ${t.title || ""}`}
+                            />
+                          </td>
                           <td className="px-4 py-3">
                             <div className="max-w-[360px] truncate font-semibold text-slate-900" title={t.title || ""}>
                               {t.title}

@@ -3,13 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import SuggestionsPanel from "./SuggestionsPanel";
 import {
   AtSign,
+  Check,
   ClipboardCopy,
   Globe,
   Mail,
   Link,
   MessageSquarePlus,
+  MoreVertical,
   Phone,
   Sparkles,
   Trash2,
@@ -19,9 +22,10 @@ import {
 } from "lucide-react";
 
 const TABS = [
-  { id: "details", label: "Marketing Details", icon: Sparkles },
-  { id: "audience", label: "Target Audience", icon: Users },
+  { id: "plan", label: "Marketing Plan", icon: ClipboardCopy },
+  { id: "details", label: "Selected Marketing Plans", icon: Sparkles },
   { id: "tasks", label: "Task Assignment", icon: ClipboardCopy },
+  { id: "audience", label: "Target Audience", icon: Users },
 ];
 
 function cx(...classes) {
@@ -145,6 +149,22 @@ function getOutreach(company) {
   return { email, phone, linkedin, website };
 }
 
+function initials(name) {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!parts.length) return "NA";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+}
+
+function templateKey(tpl) {
+  const title = String(tpl?.title || "").trim().toLowerCase();
+  const type = String(tpl?.task_type || "").trim().toLowerCase();
+  return `${title}::${type}`;
+}
+
 export default function MarketingAnalysisOutput({
   campaignId,
   company,
@@ -152,14 +172,26 @@ export default function MarketingAnalysisOutput({
   website,
   description,
   attachmentName,
+  marketingPlan = [],
+  selectedStepIds = [],
+  onTogglePlanStep = () => {},
+  planLoading = false,
+  onGeneratePlan = null,
+  initialMarketingDetails = null,
+  initialTargetAudience = null,
+  initialAiMessage = "",
 }) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState("details");
+  const [activeTab, setActiveTab] = useState("plan");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [aiMessage, setAiMessage] = useState("");
   const [marketingDetails, setMarketingDetails] = useState([]);
   const [targetAudience, setTargetAudience] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [audienceView, setAudienceView] = useState("companies"); // companies | employees
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   const [selectedDetailIds, setSelectedDetailIds] = useState(() => new Set());
   const [tagFilter, setTagFilter] = useState("");
@@ -169,7 +201,7 @@ export default function MarketingAnalysisOutput({
   const [threadLoadingByPointId, setThreadLoadingByPointId] = useState({});
 
   const [tasks, setTasks] = useState([]);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [taskAssignTab, setTaskAssignTab] = useState("template"); // template | task
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskModalMode, setTaskModalMode] = useState("create"); // create | edit
@@ -217,6 +249,61 @@ export default function MarketingAnalysisOutput({
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [employeePrompt, setEmployeePrompt] = useState("");
+  const [employeeAssistantLoading, setEmployeeAssistantLoading] = useState(false);
+  const [employeeAssistantData, setEmployeeAssistantData] = useState({
+    answer: "",
+    suggestedChannels: [],
+    channelMessages: { email: null, linkedin: null },
+  });
+  const [outreachComposerOpen, setOutreachComposerOpen] = useState(false);
+  const [outreachChannel, setOutreachChannel] = useState("Email");
+  const [outreachTo, setOutreachTo] = useState("");
+  const [outreachSubject, setOutreachSubject] = useState("");
+  const [outreachBody, setOutreachBody] = useState("");
+  const [outreachSending, setOutreachSending] = useState(false);
+
+  const hasMarketingPlan = Array.isArray(marketingPlan) && marketingPlan.length > 0;
+  const assistantAnswer = String(employeeAssistantData?.answer || "");
+  const suggestedChannels = Array.isArray(employeeAssistantData?.suggestedChannels)
+    ? employeeAssistantData.suggestedChannels
+    : [];
+  const hasEmailChannel = suggestedChannels.includes("Email") && !!selectedEmployee?.email;
+  const hasLinkedInChannel = suggestedChannels.includes("LinkedIn") && !!selectedEmployee?.linkedin;
+  const createdTemplateKeys = useMemo(() => {
+    const set = new Set();
+    tasks.forEach((t) => {
+      if (!t) return;
+      set.add(templateKey({ title: t.title, task_type: t.task_type }));
+    });
+    return set;
+  }, [tasks]);
+
+  useEffect(() => {
+    if (Array.isArray(initialMarketingDetails)) setMarketingDetails(initialMarketingDetails);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialMarketingDetails]);
+
+  useEffect(() => {
+    if (Array.isArray(initialTargetAudience)) setTargetAudience(initialTargetAudience);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTargetAudience]);
+
+  useEffect(() => {
+    if (typeof initialAiMessage === "string") setAiMessage(initialAiMessage);
+  }, [initialAiMessage]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e) => {
+      if (!menuRef.current) return;
+      if (menuRef.current.contains(e.target)) return;
+      setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen]);
 
   const loadUsers = async () => {
     setUsersLoading(true);
@@ -398,9 +485,7 @@ export default function MarketingAnalysisOutput({
         const data = await res.json();
         if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
         setTaskModalOpen(false);
-        showToast("success", "Task created successfully");
-        const uid = payload.assignee_id || "";
-        router.push(uid ? `/my-tasks?userId=${encodeURIComponent(uid)}` : "/my-tasks");
+        showToast("success", "Task created successfully.");
         await loadTasks();
       } else {
         const res = await fetch(`/api/tasks/${formId}`, {
@@ -424,7 +509,6 @@ export default function MarketingAnalysisOutput({
 
   const createTaskFromTemplate = async (tpl) => {
     // Template click opens task creation UI with prefilled values
-    setTemplatesOpen(false);
     openCreateTaskModal({ title: tpl.title, task_type: tpl.task_type, priority: tpl.priority });
   };
 
@@ -479,6 +563,15 @@ export default function MarketingAnalysisOutput({
       setAiMessage(typeof data?.aiMessage === "string" ? data.aiMessage : "");
       setMarketingDetails(Array.isArray(data?.marketingDetails) ? data.marketingDetails : []);
       setTargetAudience(Array.isArray(data?.targetAudience) ? data.targetAudience : []);
+      setEmployees(Array.isArray(data?.employees) ? data.employees : []);
+      setAudienceView("companies");
+      setSelectedEmployee(null);
+      setEmployeePrompt("");
+      setEmployeeAssistantData({
+        answer: "",
+        suggestedChannels: [],
+        channelMessages: { email: null, linkedin: null },
+      });
       setSelectedDetailIds(new Set());
       setTagFilter("");
       setThreadsByPointId({});
@@ -486,6 +579,26 @@ export default function MarketingAnalysisOutput({
       setThreadLoadingByPointId({});
       setTasks([]);
       setActiveTab("details");
+
+      // Save generated plan + analysis to history
+      try {
+        await fetch("/api/campaign-history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            campaign_id: campaignId,
+            company,
+            goal: campaign,
+            website,
+            description,
+            marketing_details: Array.isArray(data?.marketingDetails) ? data.marketingDetails : [],
+            target_audience: Array.isArray(data?.targetAudience) ? data.targetAudience : [],
+            marketing_plan: Array.isArray(marketingPlan) ? marketingPlan : [],
+          }),
+        });
+      } catch (_) {
+        // ignore history failures
+      }
     } catch (err) {
       setError(err?.message || "Failed to generate analysis.");
     } finally {
@@ -661,42 +774,11 @@ export default function MarketingAnalysisOutput({
 
   const assignSelectedAsTasks = async () => {
     if (!selectedItems.length) return;
-    setError("");
-    try {
-      const existingTitles = new Set(
-        tasks
-          .filter((t) => t.campaign_context === campaignContext)
-          .map((t) => String(t.title || "").trim())
-          .filter(Boolean)
-      );
-      for (const p of selectedItems) {
-        const title = String(p.title || "").trim();
-        if (!title || existingTitles.has(title)) continue;
-        const res = await fetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title,
-            description: p.explanation || "",
-            assignee_id: null,
-            assignee_team: null,
-            priority: "Medium",
-            status: "To Do",
-            task_type: "Generic Task",
-            due_date: null,
-            channel_tags: normalizeTags(p.tags).slice(0, 10),
-            campaign_context: campaignContext,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
-        existingTitles.add(title);
-        setTasks((prev) => [data.task, ...prev]);
-      }
-      setActiveTab("tasks");
-    } catch (e) {
-      setError(e?.message || "Failed to assign tasks.");
-    }
+    // Do not auto-create tasks from selected suggestions.
+    // Only user-explicit template/manual creation should create tasks.
+    setActiveTab("tasks");
+    setTaskAssignTab("template");
+    showToast("success", "Select a template or create a task from scratch.");
   };
 
   const updateTaskLocal = (taskId, patch) => {
@@ -728,13 +810,53 @@ export default function MarketingAnalysisOutput({
             Generate detailed analysis, refine points with per-point threads, then assign tasks.
           </p>
         </div>
-        <button
-          onClick={handleGenerate}
-          disabled={loading}
-          className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {loading ? "Generating..." : marketingDetails.length ? "Regenerate" : "Generate"}
-        </button>
+        <div className="flex items-center gap-2">
+          {hasMarketingPlan ? (
+            <button
+              onClick={handleGenerate}
+              disabled={loading}
+              className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {loading ? "Generating..." : marketingDetails.length ? "Regenerate" : "Generate"}
+            </button>
+          ) : null}
+
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setMenuOpen((v) => !v)}
+              className="rounded-xl border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+              title="Menu"
+              aria-label="Menu"
+            >
+              <MoreVertical size={18} />
+            </button>
+            {menuOpen ? (
+              <div className="absolute right-0 top-full z-20 mt-2 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push("/my-tasks");
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  View My Tasks
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    router.push("/history");
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Campaign History
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {aiMessage ? (
@@ -745,7 +867,7 @@ export default function MarketingAnalysisOutput({
 
       <div className="max-h-[720px] overflow-y-auto">
         <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
-          <div className="flex flex-wrap gap-2">
+          <div className="mx-auto inline-flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
             {TABS.map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id;
@@ -754,10 +876,10 @@ export default function MarketingAnalysisOutput({
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cx(
-                    "inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium transition",
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition",
                     active
-                      ? "border-blue-500 bg-blue-500 text-white"
-                      : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                      ? "bg-blue-600 text-white shadow-sm"
+                      : "bg-white text-slate-700 hover:bg-slate-50"
                   )}
                 >
                   <Icon size={16} />
@@ -772,6 +894,34 @@ export default function MarketingAnalysisOutput({
           {error ? (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
+            </div>
+          ) : null}
+
+          {activeTab === "plan" ? (
+            <div className="space-y-4">
+              {!hasMarketingPlan ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+                  <p className="text-base font-semibold text-slate-900">Generate Your Marketing Plan</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Click to create a detailed AI-powered marketing plan
+                  </p>
+                  <button
+                    type="button"
+                    disabled={planLoading || typeof onGeneratePlan !== "function"}
+                    onClick={() => (typeof onGeneratePlan === "function" ? onGeneratePlan() : null)}
+                    className="mt-4 inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {planLoading ? "Generating..." : "Generate Your Marketing Plan"}
+                  </button>
+                </div>
+              ) : (
+                <SuggestionsPanel
+                  marketingPlan={marketingPlan}
+                  selectedStepIds={selectedStepIds}
+                  onToggleStep={onTogglePlanStep}
+                  loading={planLoading}
+                />
+              )}
             </div>
           ) : null}
 
@@ -992,109 +1142,308 @@ export default function MarketingAnalysisOutput({
           ) : null}
 
           {activeTab === "audience" ? (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {targetAudience.length === 0 ? (
-                <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                  Generate analysis to see target audience segments.
-                </div>
-              ) : null}
-              {targetAudience.map((c, idx) => (
-                <motion.article
-                  key={`${c.name}-${idx}`}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
-                  onClick={() => openCompanyModal(c)}
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setAudienceView("companies")}
+                  className={cx(
+                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                    audienceView === "companies" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
+                  )}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-900">{c.name}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-700">{c.description}</p>
-                    </div>
-                    {c.industry ? (
-                      <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                        {c.industry}
-                      </span>
-                    ) : null}
-                  </div>
+                  Companies
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAudienceView("employees")}
+                  className={cx(
+                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                    audienceView === "employees" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
+                  )}
+                >
+                  Employees
+                </button>
+              </div>
 
-                  <div className="mt-3 space-y-3">
-                    <div>
-                      <p className="text-xs font-semibold text-slate-700">Why relevant</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-700">{c.whyRelevant}</p>
+              {audienceView === "companies" ? (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {targetAudience.length === 0 ? (
+                    <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+                      Generate analysis to see target audience segments.
                     </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-700">Decision maker role</p>
-                      <div className="mt-1 flex flex-wrap gap-1.5">
-                        {c.decisionMakerRole ? (
-                          <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600">
-                            {c.decisionMakerRole}
+                  ) : null}
+                  {targetAudience.map((c, idx) => (
+                    <motion.article
+                      key={`${c.name}-${idx}`}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
+                      onClick={() => openCompanyModal(c)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-slate-900">{c.name}</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-700">{c.description}</p>
+                        </div>
+                        {c.industry ? (
+                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                            {c.industry}
                           </span>
-                        ) : (
-                          <span className="text-xs text-slate-500">—</span>
-                        )}
+                        ) : null}
                       </div>
-                    </div>
 
-                    {(() => {
-                      const outreach = getOutreach(c);
-                      const hasAny = !!outreach.email || !!outreach.phone || !!outreach.linkedin || !!outreach.website;
-                      if (!hasAny) return null;
-                      return (
-                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                          <p className="text-xs font-semibold text-slate-700">Outreach Channels</p>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {outreach.email ? (
-                              <a
-                                href={`mailto:${outreach.email}`}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                title={outreach.email}
-                              >
-                                <Mail size={14} />
-                                Email
-                              </a>
-                            ) : null}
-                            {outreach.phone ? (
-                              <a
-                                href={`tel:${outreach.phone}`}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                title={outreach.phone}
-                              >
-                                <Phone size={14} />
-                                Phone
-                              </a>
-                            ) : null}
-                            {outreach.linkedin ? (
-                              <a
-                                href={outreach.linkedin}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                title="LinkedIn"
-                              >
-                                <Link size={14} />
-                                LinkedIn
-                              </a>
-                            ) : null}
-                            {outreach.website ? (
-                              <a
-                                href={outreach.website}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                title="Website"
-                              >
-                                <Globe size={14} />
-                                Website
-                              </a>
-                            ) : null}
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">Why relevant</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-700">{c.whyRelevant}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-700">Decision maker role</p>
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {c.decisionMakerRole ? (
+                              <span className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600">
+                                {c.decisionMakerRole}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-500">—</span>
+                            )}
                           </div>
                         </div>
+
+                        {(() => {
+                          const outreach = getOutreach(c);
+                          const hasAny = !!outreach.email || !!outreach.phone || !!outreach.linkedin || !!outreach.website;
+                          if (!hasAny) return null;
+                          return (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                              <p className="text-xs font-semibold text-slate-700">Outreach Channels</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {outreach.email ? (
+                                  <a
+                                    href={`mailto:${outreach.email}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    title={outreach.email}
+                                  >
+                                    <Mail size={14} />
+                                    Email
+                                  </a>
+                                ) : null}
+                                {outreach.phone ? (
+                                  <a
+                                    href={`tel:${outreach.phone}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    title={outreach.phone}
+                                  >
+                                    <Phone size={14} />
+                                    Phone
+                                  </a>
+                                ) : null}
+                                {outreach.linkedin ? (
+                                  <a
+                                    href={outreach.linkedin}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    title="LinkedIn"
+                                  >
+                                    <Link size={14} />
+                                    LinkedIn
+                                  </a>
+                                ) : null}
+                                {outreach.website ? (
+                                  <a
+                                    href={outreach.website}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                    title="Website"
+                                  >
+                                    <Globe size={14} />
+                                    Website
+                                  </a>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </motion.article>
+                  ))}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+                  <div className="space-y-3 xl:col-span-2">
+                    {employees.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
+                        Generate analysis to see employee contacts.
+                      </div>
+                    ) : null}
+                    {employees.map((emp, idx) => {
+                      const isActive = selectedEmployee?.name === emp.name && selectedEmployee?.company === emp.company;
+                      return (
+                        <button
+                          key={`${emp.name || "emp"}-${emp.company || "company"}-${idx}`}
+                          type="button"
+                          onClick={() => setSelectedEmployee(emp)}
+                          className={cx(
+                            "w-full rounded-2xl border bg-white p-3 text-left shadow-sm transition",
+                            isActive ? "border-blue-500 bg-blue-50/40" : "border-slate-200 hover:shadow-md"
+                          )}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
+                              {initials(emp.name)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-semibold text-slate-900">{emp.name || "-"}</p>
+                              <p className="text-sm text-slate-700">{emp.title || "-"}</p>
+                              <p className="mt-0.5 text-xs text-slate-500">{emp.company || "-"}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {emp.linkedin ? (
+                                <a
+                                  href={emp.linkedin}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                                  title="LinkedIn"
+                                >
+                                  <Link size={14} />
+                                </a>
+                              ) : null}
+                              {emp.email ? (
+                                <a
+                                  href={`mailto:${emp.email}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                                  title="Email"
+                                >
+                                  <Mail size={14} />
+                                </a>
+                              ) : null}
+                            </div>
+                          </div>
+                        </button>
                       );
-                    })()}
+                    })}
                   </div>
-                </motion.article>
-              ))}
+
+                  <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-900">AI Assistant</p>
+                      {selectedEmployee ? (
+                        <span className="rounded-full border border-slate-300 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600">
+                          {selectedEmployee.name}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Ask: "Write a cold email for [name]" or "What should I say on LinkedIn?"
+                    </p>
+
+                    <textarea
+                      value={employeePrompt}
+                      onChange={(e) => setEmployeePrompt(e.target.value)}
+                      rows={5}
+                      className="mt-3 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      placeholder="Write a cold email for this person..."
+                    />
+                    <button
+                      type="button"
+                      disabled={employeeAssistantLoading || !employeePrompt.trim() || !selectedEmployee}
+                      onClick={async () => {
+                        if (!selectedEmployee || !employeePrompt.trim()) return;
+                        setEmployeeAssistantLoading(true);
+                        setError("");
+                        try {
+                          const res = await fetch("/api/generate", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              step: "employee_outreach",
+                              company,
+                              campaign,
+                              website,
+                              description,
+                              employee: selectedEmployee,
+                              question: employeePrompt,
+                            }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate outreach message.");
+                          setEmployeeAssistantData({
+                            answer: String(data?.answer || ""),
+                            suggestedChannels: Array.isArray(data?.suggestedChannels) ? data.suggestedChannels : [],
+                            channelMessages:
+                              data?.channelMessages && typeof data.channelMessages === "object"
+                                ? data.channelMessages
+                                : { email: null, linkedin: null },
+                          });
+                        } catch (e) {
+                          setError(e?.message || "Failed to generate outreach message.");
+                        } finally {
+                          setEmployeeAssistantLoading(false);
+                        }
+                      }}
+                      className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                    >
+                      {employeeAssistantLoading ? "Generating..." : "Ask AI Assistant"}
+                    </button>
+
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-700">Response</p>
+                      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                        {assistantAnswer || "AI response will appear here."}
+                      </p>
+                    </div>
+                    {hasEmailChannel || hasLinkedInChannel ? (
+                      <div className="mt-3 grid grid-cols-1 gap-2">
+                        {hasEmailChannel ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const to = selectedEmployee?.email || "";
+                              const subj =
+                                employeeAssistantData?.channelMessages?.email?.subject ||
+                                `Regarding ${campaign || "your campaign"} - ${company || "our team"}`;
+                              const body =
+                                employeeAssistantData?.channelMessages?.email?.body || assistantAnswer || "";
+                              setOutreachChannel("Email");
+                              setOutreachTo(to);
+                              setOutreachSubject(subj);
+                              setOutreachBody(body);
+                              setOutreachComposerOpen(true);
+                            }}
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                          >
+                            Send Email
+                          </button>
+                        ) : null}
+                        {hasLinkedInChannel ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const to = selectedEmployee?.linkedin || "";
+                              const body =
+                                employeeAssistantData?.channelMessages?.linkedin?.message || assistantAnswer || "";
+                              setOutreachChannel("LinkedIn");
+                              setOutreachTo(to);
+                              setOutreachSubject("");
+                              setOutreachBody(body);
+                              setOutreachComposerOpen(true);
+                            }}
+                            className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                          >
+                            Send LinkedIn Message
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </aside>
+                </div>
+              )}
             </div>
           ) : null}
 
@@ -1108,37 +1457,72 @@ export default function MarketingAnalysisOutput({
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={addManualTask}
-                        className="rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                      >
-                        + Add Task
-                      </button>
-                      <button
-                        onClick={() => setTemplatesOpen((v) => !v)}
-                        className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Templates
-                      </button>
+                      <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
+                        <button
+                          type="button"
+                          onClick={() => setTaskAssignTab("template")}
+                          className={cx(
+                            "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                            taskAssignTab === "template"
+                              ? "bg-blue-500 text-white"
+                              : "text-slate-700 hover:bg-slate-50"
+                          )}
+                        >
+                          Task Template
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTaskAssignTab("task")}
+                          className={cx(
+                            "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                            taskAssignTab === "task" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
+                          )}
+                        >
+                          Task
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {templatesOpen ? (
+                  {taskAssignTab === "task" ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                      <p className="text-sm font-semibold text-slate-900">Templates</p>
+                      <button
+                        type="button"
+                        onClick={addManualTask}
+                        className="rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                      >
+                        Create Task from Scratch
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {taskAssignTab === "template" ? (
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-slate-900">Task Template</p>
                       <div className="mt-3 space-y-3">
                         {TEMPLATE_GROUPS.map((g) => (
                           <div key={g.label}>
                             <p className="text-xs font-semibold text-slate-700">{g.label}</p>
                             <div className="mt-2 flex flex-wrap gap-2">
                               {g.items.map((tpl) => (
+                                (() => {
+                                  const done = createdTemplateKeys.has(templateKey(tpl));
+                                  return (
                                 <button
                                   key={`${g.label}-${tpl.title}`}
                                   onClick={() => createTaskFromTemplate(tpl)}
-                                  className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                  className={cx(
+                                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                                    done
+                                      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                  )}
                                 >
+                                  {done ? <Check size={12} /> : null}
                                   {tpl.title} ({tpl.task_type}, {tpl.priority})
                                 </button>
+                                  );
+                                })()
                               ))}
                             </div>
                           </div>
@@ -1157,8 +1541,8 @@ export default function MarketingAnalysisOutput({
                 className="absolute inset-0 bg-slate-900/40"
                 onClick={() => (taskModalSaving ? null : setTaskModalOpen(false))}
               />
-              <div className="relative w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
-                <div className="flex items-start justify-between gap-3">
+              <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
                   <div>
                     <p className="text-base font-semibold text-slate-900">
                       {taskModalMode === "create" ? "Create Task" : "Edit Task"}
@@ -1177,8 +1561,9 @@ export default function MarketingAnalysisOutput({
                   </button>
                 </div>
 
+                <div className="overflow-y-auto px-5 py-4">
                 {taskModalError ? (
-                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
                     {taskModalError}
                   </div>
                 ) : null}
@@ -1356,7 +1741,7 @@ export default function MarketingAnalysisOutput({
                   </label>
                 </div>
 
-                <div className="mt-5 flex items-center justify-end gap-2">
+                <div className="mt-5 flex items-center justify-end gap-2 border-t border-slate-200 pt-4">
                   <button
                     type="button"
                     onClick={() => (taskModalSaving ? null : setTaskModalOpen(false))}
@@ -1374,6 +1759,127 @@ export default function MarketingAnalysisOutput({
                     )}
                   >
                     {taskModalSaving ? "Saving..." : taskModalMode === "create" ? "Create Task" : "Save Changes"}
+                  </button>
+                </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {outreachComposerOpen ? (
+            <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-slate-900/40"
+                onClick={() => (outreachSending ? null : setOutreachComposerOpen(false))}
+              />
+              <div className="relative flex max-h-[88vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+                  <div>
+                    <p className="text-base font-semibold text-slate-900">Send {outreachChannel}</p>
+                    <p className="mt-0.5 text-sm text-slate-600">
+                      AI drafted this {outreachChannel.toLowerCase()} message. You can edit before sending.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => (outreachSending ? null : setOutreachComposerOpen(false))}
+                    className="rounded-xl border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                    title="Close"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <div className="overflow-y-auto px-5 py-4">
+                  <label className="block">
+                    <span className="text-xs font-semibold text-slate-700">
+                      {outreachChannel === "LinkedIn" ? "LinkedIn URL" : "To"}
+                    </span>
+                    <input
+                      value={outreachTo}
+                      onChange={(e) => setOutreachTo(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+                  {outreachChannel === "Email" ? (
+                    <label className="mt-3 block">
+                      <span className="text-xs font-semibold text-slate-700">Subject</span>
+                      <input
+                        value={outreachSubject}
+                        onChange={(e) => setOutreachSubject(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </label>
+                  ) : null}
+                  <label className="mt-3 block">
+                    <span className="text-xs font-semibold text-slate-700">
+                      {outreachChannel === "LinkedIn" ? "Message" : "Body"}
+                    </span>
+                    <textarea
+                      value={outreachBody}
+                      onChange={(e) => setOutreachBody(e.target.value)}
+                      rows={10}
+                      className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (outreachChannel === "Email") {
+                        const url = `mailto:${encodeURIComponent(outreachTo)}?subject=${encodeURIComponent(
+                          outreachSubject
+                        )}&body=${encodeURIComponent(outreachBody)}`;
+                        window.open(url, "_self");
+                        return;
+                      }
+                      if (outreachChannel === "LinkedIn" && outreachTo) {
+                        navigator.clipboard.writeText(outreachBody || "").catch(() => {});
+                        window.open(outreachTo, "_blank", "noopener,noreferrer");
+                      }
+                    }}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    {outreachChannel === "Email" ? "Open Mail App" : "Open LinkedIn & Copy Message"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={outreachSending || !outreachTo.trim() || !outreachBody.trim()}
+                    onClick={async () => {
+                      setOutreachSending(true);
+                      setError("");
+                      try {
+                        const res = await fetch("/api/campaign-logs", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            campaign_id: campaignId || null,
+                            campaign_name: campaign || company || "Campaign",
+                            channel: outreachChannel,
+                            recipients: outreachTo,
+                            content:
+                              outreachChannel === "Email"
+                                ? `Subject: ${outreachSubject}\n\n${outreachBody}`
+                                : outreachBody,
+                            status: "sent",
+                            sent_at: new Date().toISOString(),
+                            opens: 0,
+                            clicks: 0,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok || data?.error) throw new Error(data?.error || "Failed to send.");
+                        showToast("success", `${outreachChannel} sent successfully.`);
+                        setOutreachComposerOpen(false);
+                      } catch (e) {
+                        setError(e?.message || "Failed to send.");
+                      } finally {
+                        setOutreachSending(false);
+                      }
+                    }}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    {outreachSending ? "Sending..." : "Send"}
                   </button>
                 </div>
               </div>
