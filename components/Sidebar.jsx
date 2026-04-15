@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   History,
+  Mail,
   Megaphone,
   ClipboardList,
   UsersRound,
@@ -16,13 +17,14 @@ import {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/campaigns", label: "Campaign", icon: Megaphone },
+  { href: "/email-templates", label: "Email Templates", icon: Mail },
   { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
-  { href: "/users", label: "Users", icon: UsersRound },
+  { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
   { href: "/history", label: "History", icon: History },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export default function Sidebar({ mode = "expanded", onToggleCollapsed, onToggleHidden }) {
+export default function Sidebar({ mode = "expanded", onToggleCollapsed, onToggleHidden, isAdmin = false }) {
   const pathname = usePathname();
   const collapsed = mode === "collapsed";
 
@@ -49,9 +51,11 @@ export default function Sidebar({ mode = "expanded", onToggleCollapsed, onToggle
       </div>
 
       <nav className="space-y-1 p-3">
-        {navItems.map((item) => {
+        {navItems
+          .filter((item) => !item.adminOnly || isAdmin)
+          .map((item) => {
           const Icon = item.icon;
-          const active = item.href === "/campaigns" ? pathname.startsWith("/campaigns") : pathname === item.href;
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
               key={item.href}
