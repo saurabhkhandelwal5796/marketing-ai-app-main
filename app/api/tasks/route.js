@@ -10,6 +10,7 @@ export async function GET(req) {
     const supabase = getSupabaseServerClient();
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
+    const campaignId = searchParams.get("campaignId");
 
     let query = supabase
       .from("tasks")
@@ -22,6 +23,7 @@ export async function GET(req) {
     } else {
       query = query.eq("assignee_id", session.id);
     }
+    if (campaignId) query = query.eq("campaign_id", campaignId);
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);

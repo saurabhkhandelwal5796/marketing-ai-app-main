@@ -176,6 +176,34 @@ function buildEmployeeChannelPrompt(channel, employee) {
   return `Write a LinkedIn connection message for ${name}, ${title} at ${company}`;
 }
 
+function getLinkedinSearchUrl(name, company) {
+  const keywords = [name, company].filter(Boolean).join(" ").trim();
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(keywords)}`;
+}
+
+function resolveLinkedinUrl(rawUrl, name, company) {
+  const url = String(rawUrl || "").trim();
+  const isValidProfileUrl =
+    /^https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-_%]+\/?(\?.*)?$/i.test(url) && !/404/i.test(url);
+  if (isValidProfileUrl) return url;
+  return getLinkedinSearchUrl(name, company);
+}
+
+function parseEmailFromAssistantResponse(answer, fallbackSubject) {
+  const text = String(answer || "").replace(/\r\n/g, "\n").trim();
+  if (!text) return { subject: fallbackSubject, body: "" };
+
+  const withoutFences = text.replace(/```[\s\S]*?```/g, (match) => match.replace(/```/g, "").trim());
+  const subjectMatch = withoutFences.match(/^Subject:\s*(.+)$/im);
+  const subject = subjectMatch?.[1]?.trim() || fallbackSubject;
+
+  let body = withoutFences.replace(/^Subject:\s*.+$/im, "").trim();
+  const dearIndex = body.search(/^Dear\b/im);
+  if (dearIndex >= 0) body = body.slice(dearIndex).trim();
+
+  return { subject, body };
+}
+
 function initials(name) {
   const parts = String(name || "")
     .trim()
@@ -255,6 +283,12 @@ export default function MarketingAnalysisOutput({
   const [companyModalData, setCompanyModalData] = useState(null);
   const [activeCompany, setActiveCompany] = useState(null);
 
+  // Per-company AI assistant state (lives only inside the company detail modal).
+  const [companyAssistantInput, setCompanyAssistantInput] = useState("");
+  const [companyAssistantLoading, setCompanyAssistantLoading] = useState(false);
+  const [companyAssistantError, setCompanyAssistantError] = useState("");
+  const [companyAssistantMessages, setCompanyAssistantMessages] = useState([]); // [{ role: "user"|"assistant", content: string }]
+
   const selectedCount = selectedDetailIds.size;
   const anySelected = selectedCount > 0;
 
@@ -327,10 +361,11 @@ export default function MarketingAnalysisOutput({
     const set = new Set();
     tasks.forEach((t) => {
       if (!t) return;
+      if ((t.campaign_id || "") !== (campaignId || "")) return;
       set.add(templateKey({ title: t.title, task_type: t.task_type }));
     });
     return set;
-  }, [tasks]);
+  }, [campaignId, tasks]);
 
   useEffect(() => {
     if (Array.isArray(initialMarketingDetails)) setMarketingDetails(initialMarketingDetails);
@@ -384,7 +419,10 @@ export default function MarketingAnalysisOutput({
     setTasksLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/tasks");
+      const params = new URLSearchParams();
+      if (campaignId) params.set("campaignId", campaignId);
+      const query = params.toString();
+      const res = await fetch(`/api/tasks${query ? `?${query}` : ""}`);
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load tasks.");
       setTasks(Array.isArray(data.tasks) ? data.tasks : []);
@@ -399,7 +437,7 @@ export default function MarketingAnalysisOutput({
     loadUsers();
     loadTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [campaignId]);
 
   const openCompanyModal = async (companyObj) => {
     setActiveCompany(companyObj);
@@ -407,6 +445,11 @@ export default function MarketingAnalysisOutput({
     setCompanyModalError("");
     setCompanyModalData(null);
     setCompanyModalLoading(true);
+    // Reset the AI assistant so each company has independent chat context.
+    setCompanyAssistantInput("");
+    setCompanyAssistantMessages([]);
+    setCompanyAssistantError("");
+    setCompanyAssistantLoading(false);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -434,6 +477,56 @@ export default function MarketingAnalysisOutput({
   const showToast = (type, message) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 1800);
+  };
+
+  const submitCompanyAssistant = async () => {
+    const question = String(companyAssistantInput || "").trim();
+    if (!question || companyAssistantLoading) return;
+
+    setCompanyAssistantError("");
+    setCompanyAssistantLoading(true);
+
+    // Keep prior context (not including the current question) for the prompt transcript.
+    const priorThread = companyAssistantMessages;
+
+    // Update UI immediately with the user's question.
+    setCompanyAssistantMessages((prev) => [...prev, { role: "user", content: question }]);
+    setCompanyAssistantInput("");
+
+    try {
+      const safeCompanyName = String(activeCompany?.name || "").trim();
+      const safeCountry = String(activeCompany?.country || "").trim();
+      const safeSector = String(activeCompany?.sector || activeCompany?.industry || "").trim();
+
+      const companyData = {
+        ...(activeCompany || {}),
+        companyModalData: companyModalData || null,
+      };
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "company_assistant",
+          companyName: safeCompanyName,
+          country: safeCountry,
+          sector: safeSector,
+          question,
+          threadMessages: priorThread,
+          companyPayload: companyData,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to ask AI.");
+
+      const answer = typeof data?.answer === "string" ? data.answer : "";
+      setCompanyAssistantMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+    } catch (e) {
+      setCompanyAssistantError(e?.message || "Failed to ask AI.");
+    } finally {
+      setCompanyAssistantLoading(false);
+    }
   };
 
   const resetTaskForm = () => {
@@ -983,18 +1076,12 @@ export default function MarketingAnalysisOutput({
             <div className="space-y-4">
               {!hasMarketingPlan ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-                  <p className="text-base font-semibold text-slate-900">Generate Your Marketing Plan</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Click to create a detailed AI-powered marketing plan
-                  </p>
-                  <button
-                    type="button"
-                    disabled={planLoading || typeof onGeneratePlan !== "function"}
-                    onClick={() => (typeof onGeneratePlan === "function" ? onGeneratePlan() : null)}
-                    className="mt-4 inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
+                  <p className="text-base font-semibold text-slate-900">
                     {planLoading ? "Generating..." : "Generate Your Marketing Plan"}
-                  </button>
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {planLoading ? "Please wait while AI builds your marketing plan" : "click on ask ai for marketing plan"}
+                  </p>
                 </div>
               ) : (
                 <SuggestionsPanel
@@ -1267,12 +1354,13 @@ export default function MarketingAnalysisOutput({
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-slate-900">{c.name}</p>
                           <p className="mt-1 text-sm leading-6 text-slate-700">{c.description}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Country: <span className="font-semibold text-slate-700">{c.country || "-"}</span>
+                          </p>
                         </div>
-                        {c.industry ? (
-                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                            {c.industry}
-                          </span>
-                        ) : null}
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                          Sector: {c.sector || c.industry || "-"}
+                        </span>
                       </div>
 
                       <div className="mt-3 space-y-3">
@@ -1367,6 +1455,7 @@ export default function MarketingAnalysisOutput({
                         .trim()
                         .toLowerCase();
                       const outreach = getEmployeeOutreach(emp, companyOutreachByName[companyKey] || null);
+                      const linkedinUrl = resolveLinkedinUrl(outreach.linkedin, emp.name, emp.company);
                       const hasAnyOutreach =
                         !!outreach.linkedin || !!outreach.email || !!outreach.phone || !!outreach.website;
                       const defaultChannel = outreach.email ? "email" : outreach.phone ? "call" : "linkedin";
@@ -1443,17 +1532,17 @@ export default function MarketingAnalysisOutput({
                               ) : null}
                               {outreach.linkedin ? (
                                 <a
-                                  href={outreach.linkedin}
+                                  href={linkedinUrl}
                                   target="_blank"
                                   rel="noreferrer"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     applyEmployeeChannelContext(emp, "linkedin");
-                                    openContactPopup(e, "linkedin", emp.name || "employee", outreach.linkedin);
+                                    openContactPopup(e, "linkedin", emp.name || "employee", linkedinUrl);
                                   }}
                                   className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
-                                  title="LinkedIn"
+                                  title="Search on LinkedIn"
                                 >
                                   <Link size={12} />
                                   LinkedIn
@@ -1544,11 +1633,14 @@ export default function MarketingAnalysisOutput({
                             type="button"
                             onClick={() => {
                               const to = selectedEmployeeOutreach.email || "";
-                              const subject = encodeURIComponent(
-                                `Regarding ${campaign || "your campaign"} - ${company || "our team"}`
-                              );
-                              const body = encodeURIComponent(assistantAnswer);
-                              const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`;
+                              const fallbackSubject = `Regarding ${campaign || "your campaign"} - ${company || "our team"}`;
+                              const structuredEmail = employeeAssistantData?.channelMessages?.email || null;
+                              const parsedFromAnswer = parseEmailFromAssistantResponse(assistantAnswer, fallbackSubject);
+                              const subject = String(structuredEmail?.subject || parsedFromAnswer.subject || fallbackSubject).trim();
+                              const body = String(structuredEmail?.body || parsedFromAnswer.body || "").trim();
+                              const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
+                                body
+                              )}`;
                               window.open(mailtoUrl, "_self");
                             }}
                             className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
@@ -2103,11 +2195,10 @@ export default function MarketingAnalysisOutput({
       ) : null}
 
       {activeTab === "details" && anySelected ? (
-        <div className="sticky bottom-0 z-10 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="fixed bottom-4 right-4 z-[75]">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
             <p className="text-sm text-slate-700">
-              <span className="font-semibold">{selectedCount}</span> items selected →{" "}
-              <span className="font-semibold">Assign as Tasks</span>
+              <span className="font-semibold">{selectedCount}</span> selected
             </p>
             <button
               onClick={assignSelectedAsTasks}
@@ -2235,6 +2326,81 @@ export default function MarketingAnalysisOutput({
                   ) : null}
                 </div>
               ) : null}
+
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">AI Assistant</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Ask anything about this company. You can ask follow-up questions too.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <textarea
+                    value={companyAssistantInput}
+                    onChange={(e) => setCompanyAssistantInput(e.target.value)}
+                    rows={3}
+                    placeholder="Ask anything about this company..."
+                    className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        submitCompanyAssistant();
+                      }
+                    }}
+                  />
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={submitCompanyAssistant}
+                      disabled={companyAssistantLoading || !String(companyAssistantInput || "").trim()}
+                      className={cx(
+                        "rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800",
+                        companyAssistantLoading ? "cursor-not-allowed opacity-70" : "hover:bg-slate-800"
+                      )}
+                    >
+                      {companyAssistantLoading ? "Asking AI..." : "Ask AI"}
+                    </button>
+                  </div>
+
+                  {companyAssistantError ? (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
+                      {companyAssistantError}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 space-y-3">
+                    {companyAssistantMessages.length ? (
+                      companyAssistantMessages.map((m, idx) => (
+                        <div key={`${m.role}-${idx}`} className={cx("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                          <div
+                            className={cx(
+                              "max-w-[92%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-xs leading-5",
+                              m.role === "user"
+                                ? "bg-blue-600 text-white"
+                                : "rounded-bl-md border border-slate-200 bg-white text-slate-700"
+                            )}
+                          >
+                            {m.content}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-slate-500">Response will appear here after you ask.</p>
+                    )}
+
+                    {companyAssistantLoading ? (
+                      <div className="flex justify-start">
+                        <div className="max-w-[92%] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-500">
+                          AI is thinking...
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

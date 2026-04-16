@@ -2,7 +2,7 @@ create extension if not exists pgcrypto;
 
 create table if not exists public.campaigns (
   id uuid primary key default gen_random_uuid(),
-  name text not null default 'Untitled Campaign',
+  name text not null default 'Generating title...',
   company text not null default '',
   goal text not null default '',
   website text not null default '',
@@ -14,10 +14,15 @@ create table if not exists public.campaigns (
   recommended_actions jsonb not null default '[]'::jsonb,
   selected_actions jsonb not null default '[]'::jsonb,
   outputs jsonb not null default '{}'::jsonb,
+  created_by text,
+  updated_by text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   last_activity_at timestamptz not null default now()
 );
+
+alter table public.campaigns add column if not exists created_by text;
+alter table public.campaigns add column if not exists updated_by text;
 
 create or replace function public.set_campaigns_updated_at()
 returns trigger as $$

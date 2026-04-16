@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../lib/supabaseServer";
+import { getSessionFromCookies } from "../../../lib/authSession";
 
 const getDefaultChatMessage = () => [
   {
@@ -10,17 +11,56 @@ const getDefaultChatMessage = () => [
   },
 ];
 
-export async function GET() {
+const isMissingColumnError = (message = "") =>
+  /column .*created_by.* does not exist/i.test(message) ||
+  /column .*updated_by.* does not exist/i.test(message) ||
+  /Could not find the 'created_by' column of 'campaigns' in the schema cache/i.test(message) ||
+  /Could not find the 'updated_by' column of 'campaigns' in the schema cache/i.test(message);
+
+const UUID_RE = /^[0-9a-f-]{36}$/i;
+
+export async function GET(req) {
   try {
+    const { searchParams } = new URL(req.url);
+    const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 20, 1), 50);
+    const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
     const supabase = getSupabaseServerClient();
-    const { data, error } = await supabase
+    let campaigns = null;
+    let error = null;
+    ({ data: campaigns, error } = await supabase
       .from("campaigns")
-      .select("id,name,company,goal,updated_at,last_activity_at")
+      .select("id,name,company,goal,created_at,updated_at,last_activity_at,created_by,updated_by")
       .order("last_activity_at", { ascending: false })
-      .limit(300);
+      .range(offset, offset + limit - 1));
+    if (error && isMissingColumnError(error.message || "")) {
+      ({ data: campaigns, error } = await supabase
+        .from("campaigns")
+        .select("id,name,company,goal,created_at,updated_at,last_activity_at")
+        .order("last_activity_at", { ascending: false })
+        .range(offset, offset + limit - 1));
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ campaigns: data || [] });
+    const ids = Array.from(
+      new Set(
+        (campaigns || [])
+          .flatMap((item) => [item?.created_by, item?.updated_by])
+          .filter((value) => typeof value === "string" && value.trim())
+      )
+    );
+    const uuidIds = ids.filter((value) => UUID_RE.test(value));
+    let userNameById = {};
+    if (uuidIds.length) {
+      const { data: users } = await supabase.from("users").select("id,name").in("id", uuidIds);
+      userNameById = Object.fromEntries((users || []).map((user) => [user.id, user.name]));
+    }
+    const enrichedCampaigns = (campaigns || []).map((item) => ({
+      ...item,
+      created_by_name: userNameById[item.created_by] || (item.created_by && !UUID_RE.test(item.created_by) ? item.created_by : "-"),
+      last_modified_by_name:
+        userNameById[item.updated_by] || (item.updated_by && !UUID_RE.test(item.updated_by) ? item.updated_by : "-"),
+    }));
+    return NextResponse.json({ campaigns: enrichedCampaigns, hasMore: (campaigns || []).length === limit });
   } catch (error) {
     return NextResponse.json({ error: error?.message || "Failed to fetch campaigns." }, { status: 500 });
   }
@@ -29,31 +69,68 @@ export async function GET() {
 export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
+    const session = await getSessionFromCookies();
+    const currentActor = session?.id || session?.name || session?.email || "";
+    if (!currentActor) {
+      return NextResponse.json({ error: "Unauthorized. Please log in again." }, { status: 401 });
+    }
     const supabase = getSupabaseServerClient();
-    const { data, error } = await supabase
+    const baseInsert = {
+      name: body?.name || "Generating title...",
+      company: body?.company || "",
+      goal: body?.goal || "",
+      website: body?.website || "",
+      attachment_name: body?.attachment_name || "",
+      description: body?.description || "",
+      chat_messages: getDefaultChatMessage(),
+      marketing_plan: [],
+      selected_step_ids: [],
+      recommended_actions: [],
+      selected_actions: [],
+      outputs: {},
+    };
+    let data = null;
+    let error = null;
+    ({ data, error } = await supabase
       .from("campaigns")
       .insert([
         {
-          name: body?.name || "Untitled Campaign",
-          company: body?.company || "",
-          goal: body?.goal || "",
-          website: body?.website || "",
-          attachment_name: body?.attachment_name || "",
-          description: body?.description || "",
-          chat_messages: getDefaultChatMessage(),
-          marketing_plan: [],
-          selected_step_ids: [],
-          recommended_actions: [],
-          selected_actions: [],
-          outputs: {},
+          ...baseInsert,
+          created_by: currentActor || null,
+          updated_by: currentActor || null,
         },
       ])
-      .select("id,name,company,goal,updated_at,last_activity_at")
-      .single();
+      .select("id,name,company,goal,updated_at,last_activity_at,created_by,updated_by")
+      .single());
+    if (error && isMissingColumnError(error.message || "")) {
+      return NextResponse.json(
+        {
+          error:
+            "Audit columns missing in campaigns table. Please add created_by and updated_by in Supabase, then retry.",
+        },
+        { status: 500 }
+      );
+    }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, campaign: data });
   } catch (error) {
     return NextResponse.json({ error: error?.message || "Failed to create campaign." }, { status: 500 });
+  }
+}
+
+export async function DELETE(req) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const ids = Array.isArray(body?.ids) ? body.ids.filter((id) => typeof id === "string" && id.trim()) : [];
+    if (!ids.length) {
+      return NextResponse.json({ error: "No campaign IDs provided." }, { status: 400 });
+    }
+    const supabase = getSupabaseServerClient();
+    const { error } = await supabase.from("campaigns").delete().in("id", ids);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, deleted: ids.length });
+  } catch (error) {
+    return NextResponse.json({ error: error?.message || "Failed to delete campaigns." }, { status: 500 });
   }
 }

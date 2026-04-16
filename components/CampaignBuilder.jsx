@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp, ChevronDown, ChevronUp, Paperclip } from "lucide-react";
-import Image from "next/image";
 import NextBestActions from "./NextBestActions";
 import OutputCard from "./OutputCard";
 import SendModal from "./SendModal";
@@ -31,6 +30,26 @@ const toActionResponseMap = (raw) => {
   return raw.outputs && typeof raw.outputs === "object" ? { ...raw.outputs } : {};
 };
 
+const generateCampaignTitle = ({ plan = [], aiMessage = "", campaign = "", company = "" }) => {
+  const firstPlan = Array.isArray(plan) ? plan[0] : null;
+  const source = String(firstPlan?.title || firstPlan?.description || aiMessage || "").trim();
+  const cleaned = source
+    .replace(/\s+/g, " ")
+    .replace(/^step\s*\d+\s*[:.\-]\s*/i, "")
+    .replace(/^\d+\s*[:.\-]\s*/i, "")
+    .replace(/^\(?\d+\)?\s*/i, "")
+    .replace(/^this campaign focuses on\s*/i, "")
+    .replace(/^campaign focuses on\s*/i, "")
+    .replace(/^marketing plan for\s*/i, "");
+  const sentence = cleaned
+    .split(/[.!?]/)
+    .map((part) => part.trim())
+    .find(Boolean);
+  const fallback = `Regarding ${campaign || "campaign"} - ${company || "company"}`;
+  const words = String(sentence || fallback).split(/\s+/).filter(Boolean);
+  return words.slice(0, 10).join(" ") || fallback;
+};
+
 function HelpIcon({ text }) {
   return (
     <span className="group relative ml-1 inline-flex align-middle">
@@ -48,7 +67,6 @@ export default function CampaignBuilder({ campaignId }) {
   const [savingCampaign, setSavingCampaign] = useState(false);
 
   const [inputsOpen, setInputsOpen] = useState(true);
-  const [chatOpen, setChatOpen] = useState(false);
 
   const [company, setCompany] = useState("Cloud Certitude");
   const [campaign, setCampaign] = useState("Marketing Campaign");
@@ -57,8 +75,9 @@ export default function CampaignBuilder({ campaignId }) {
   const [description, setDescription] = useState(
     "You are a senior marketing strategist. Create a complete marketing plan based on: Campaign Name: Get new projects Company: Cloud Certitude Website: CloudCertitude.com Target Audience: New Companies of any domain for which we work and experience like, real estate, interior, manufacturing and many more, details can be fetched from our company website Goal: Need new projects Industry: IT consultancy Provide: 1. Strategy Overview 2. Channel Plan 3. Weekly Execution Plan (4 weeks) 4. Content Ideas 5. Sample LinkedIn post 6. Sample Email Campaign 7. Tools to use"
   );
+  const [isFocused, setIsFocused] = useState(false);
+  const [isLeftPanelExpanded, setIsLeftPanelExpanded] = useState(false);
   const [chatMessages, setChatMessages] = useState(defaultChatMessages);
-  const [askText, setAskText] = useState("");
   const [marketingPlan, setMarketingPlan] = useState([]);
   const [selectedStepIds, setSelectedStepIds] = useState([]);
   const [recommendedActions, setRecommendedActions] = useState([]);
@@ -75,6 +94,7 @@ export default function CampaignBuilder({ campaignId }) {
 
   const lastSavedPayloadRef = useRef("");
   const hydratedRef = useRef(false);
+  const leftPanelRef = useRef(null);
 
   const [historyMarketingDetails, setHistoryMarketingDetails] = useState(null);
   const [historyTargetAudience, setHistoryTargetAudience] = useState(null);
@@ -93,6 +113,17 @@ export default function CampaignBuilder({ campaignId }) {
   useEffect(() => {
     setSelectedActions((prev) => prev.filter((item) => dynamicActions.includes(item)));
   }, [dynamicActions]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!leftPanelRef.current) return;
+      if (!leftPanelRef.current.contains(event.target)) {
+        setIsLeftPanelExpanded(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
 
   useEffect(() => {
     const loadCampaign = async () => {
@@ -133,7 +164,6 @@ export default function CampaignBuilder({ campaignId }) {
           recommended_actions: Array.isArray(record.recommended_actions) ? record.recommended_actions : [],
           selected_actions: Array.isArray(record.selected_actions) ? record.selected_actions : [],
           outputs: record.outputs && typeof record.outputs === "object" ? record.outputs : {},
-          name: record.goal || "Untitled Campaign",
         });
       } catch (err) {
         setError(err.message || "Unable to load campaign.");
@@ -195,7 +225,6 @@ export default function CampaignBuilder({ campaignId }) {
       recommended_actions: recommendedActions,
       selected_actions: selectedActions,
       outputs,
-      name: campaign || "Untitled Campaign",
     }),
     [
       attachmentName,
@@ -244,6 +273,7 @@ export default function CampaignBuilder({ campaignId }) {
   };
 
   const handleAskAi = async (text) => {
+    setIsLeftPanelExpanded(false);
     setError("");
     setSendSuccess("");
     const userMsg = { id: getId(), role: "user", content: text };
@@ -272,6 +302,18 @@ export default function CampaignBuilder({ campaignId }) {
       setMarketingPlan(nextPlan);
       setSelectedStepIds(nextPlan.slice(0, 2).map((item) => item.id));
       setRecommendedActions(Array.isArray(data?.recommendedActions) ? data.recommendedActions : []);
+      const nextTitle = generateCampaignTitle({
+        plan: nextPlan,
+        aiMessage: data?.aiMessage || "",
+        campaign,
+        company,
+      });
+      setCampaignRecord((prev) => ({ ...(prev || {}), name: nextTitle }));
+      await fetch(`/api/campaigns/${campaignId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextTitle }),
+      });
 
       setChatMessages((prev) => [
         ...prev,
@@ -289,6 +331,7 @@ export default function CampaignBuilder({ campaignId }) {
       setAskLoading(false);
     }
   };
+  const handleAskAI = () => handleAskAi(description);
 
   const handleToggleStep = (stepId) => {
     setSelectedStepIds((prev) =>
@@ -391,34 +434,22 @@ export default function CampaignBuilder({ campaignId }) {
 
   return (
     <main className="space-y-6 p-6">
-      <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 to-slate-800 p-4 text-white">
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="rounded-xl border border-white/20 bg-white/95 p-1.5">
-              <Image
-                src="/ai-workflow-logo.png"
-                alt="AI Marketing Workflow Studio logo"
-                width={240}
-                height={80}
-                className="h-12 w-auto object-contain sm:h-14"
-                priority
-              />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold sm:text-2xl">AI Marketing Workflow Studio</h1>
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-300">Plan · Create · Publish · Grow</p>
-            </div>
-          </div>
-          <div className="text-right text-xs text-slate-300">
-            <p>{campaignRecord?.name || campaign || "Campaign"}</p>
-            <p>{savingCampaign ? "Saving..." : "All changes saved"}</p>
-          </div>
+          <p className="text-sm font-semibold text-slate-900">{campaignRecord?.name || "Generating title..."}</p>
+          <p className="text-xs text-slate-500">{savingCampaign ? "Saving..." : "All changes saved"}</p>
         </div>
       </section>
 
       <section>
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-          <div className="space-y-4 xl:col-span-1">
+          <div
+            ref={leftPanelRef}
+            onClick={() => setIsLeftPanelExpanded(true)}
+            className={`space-y-4 transition-all duration-300 ease-in-out ${
+              isLeftPanelExpanded ? "xl:col-span-2" : "xl:col-span-1"
+            }`}
+          >
             <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <button
                 onClick={() => setInputsOpen((v) => !v)}
@@ -446,7 +477,22 @@ export default function CampaignBuilder({ campaignId }) {
                         <input
                           value={company}
                           onChange={(e) => setCompany(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-slate-300 px-2 py-1 text-[12px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          onFocus={(e) => {
+                            e.target.style.borderColor = "#2563eb";
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = "#e5e7eb";
+                          }}
+                          className="mt-1 w-full outline-none"
+                          style={{
+                            border: "1.5px solid #e5e7eb",
+                            borderRadius: "10px",
+                            padding: "8px 12px",
+                            fontSize: "13px",
+                            color: "#111111",
+                            background: "#ffffff",
+                            width: "100%",
+                          }}
                         />
                       </label>
 
@@ -458,7 +504,22 @@ export default function CampaignBuilder({ campaignId }) {
                         <input
                           value={campaign}
                           onChange={(e) => setCampaign(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-slate-300 px-2 py-1 text-[12px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          onFocus={(e) => {
+                            e.target.style.borderColor = "#2563eb";
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = "#e5e7eb";
+                          }}
+                          className="mt-1 w-full outline-none"
+                          style={{
+                            border: "1.5px solid #e5e7eb",
+                            borderRadius: "10px",
+                            padding: "8px 12px",
+                            fontSize: "13px",
+                            color: "#111111",
+                            background: "#ffffff",
+                            width: "100%",
+                          }}
                         />
                       </label>
                     </div>
@@ -472,7 +533,22 @@ export default function CampaignBuilder({ campaignId }) {
                         <input
                           value={website}
                           onChange={(e) => setWebsite(e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-slate-300 px-2 py-1 text-[12px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                          onFocus={(e) => {
+                            e.target.style.borderColor = "#2563eb";
+                          }}
+                          onBlur={(e) => {
+                            e.target.style.borderColor = "#e5e7eb";
+                          }}
+                          className="mt-1 w-full outline-none"
+                          style={{
+                            border: "1.5px solid #e5e7eb",
+                            borderRadius: "10px",
+                            padding: "8px 12px",
+                            fontSize: "13px",
+                            color: "#111111",
+                            background: "#ffffff",
+                            width: "100%",
+                          }}
                         />
                       </label>
                     </div>
@@ -493,61 +569,113 @@ export default function CampaignBuilder({ campaignId }) {
                         <input type="file" onChange={handleAttachmentChange} className="hidden" />
                       </label>
                     </div>
+
+                    <div className="block text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">
+                      <p>Description</p>
+                      <div
+                        onFocus={() => setIsFocused(true)}
+                        onBlur={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget)) {
+                            setIsFocused(false);
+                          }
+                        }}
+                        style={{
+                          position: "relative",
+                          background: "#ffffff",
+                          border: `1.5px solid ${isFocused ? "#2563eb" : "#e5e7eb"}`,
+                          borderRadius: "16px",
+                          padding: "12px 14px",
+                          boxShadow: isFocused ? "0 0 0 3px rgba(37,99,235,0.1)" : "0 2px 8px rgba(0,0,0,0.06)",
+                          transition: "border-color 0.2s, box-shadow 0.2s",
+                          marginTop: "8px",
+                        }}
+                      >
+                        <textarea
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          placeholder="Describe your campaign goals, audience, and constraints..."
+                          rows={4}
+                          style={{
+                            width: "100%",
+                            border: "none",
+                            outline: "none",
+                            resize: "none",
+                            background: "transparent",
+                            fontSize: "13px",
+                            lineHeight: "1.6",
+                            color: "#111111",
+                            fontFamily: "inherit",
+                            overflowY: "auto",
+                            minHeight: "80px",
+                            maxHeight: "160px",
+                            display: "block",
+                            whiteSpace: "pre-wrap",
+                            wordBreak: "break-word",
+                          }}
+                        />
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: isLeftPanelExpanded ? "space-between" : "flex-end",
+                            alignItems: "center",
+                            marginTop: "8px",
+                            paddingTop: "8px",
+                            borderTop: "1px solid #f3f4f6",
+                          }}
+                        >
+                          {isLeftPanelExpanded ? (
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#9ca3af",
+                              }}
+                            >
+                              Describe your campaign
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            disabled={askLoading}
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                            }}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleAskAI();
+                            }}
+                            style={{
+                              background: "#2563eb",
+                              color: "#ffffff",
+                              border: "none",
+                              borderRadius: "10px",
+                              padding: "6px 14px",
+                              fontSize: "12px",
+                              fontWeight: "500",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                              opacity: askLoading ? 0.7 : 1,
+                            }}
+                          >
+                            {askLoading ? "Generating..." : "✦ Ask AI"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <button
-                onClick={() => setChatOpen((v) => !v)}
-                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Description Chat</p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {chatOpen ? "Expanded" : "Collapsed"} (click to toggle)
-                  </p>
-                </div>
-                <span className="rounded-lg border border-slate-300 p-1.5 text-slate-600">
-                  {chatOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                </span>
-              </button>
-              {chatOpen ? (
-                <div className="border-t border-slate-200 p-3">
-                  <label className="block text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">
-                    Description
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="mt-1 h-[120px] w-full resize-none rounded-xl border border-slate-300 px-2 py-1 text-[11px] leading-5 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      style={{ overflowY: "auto" }}
-                    />
-                  </label>
-
-                  <div className="mt-2 flex items-center gap-2">
-                    <input
-                      value={askText}
-                      onChange={(e) => setAskText(e.target.value)}
-                      placeholder="Ask AI..."
-                      className="w-full rounded-xl border border-slate-300 px-2 py-1 text-[11px] outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                    <button
-                      type="button"
-                      disabled={askLoading}
-                      onClick={() => handleAskAi((askText || "").trim() || description)}
-                      className="shrink-0 rounded-xl bg-blue-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Ask AI
-                    </button>
-                  </div>
                 </div>
               ) : null}
             </div>
           </div>
 
-          <div className="space-y-5 xl:col-span-4">
+          <div
+            className={`space-y-5 transition-all duration-300 ease-in-out ${
+              isLeftPanelExpanded ? "xl:col-span-3" : "xl:col-span-4"
+            }`}
+          >
             <MarketingAnalysisOutput
               campaignId={campaignId}
               company={company}
