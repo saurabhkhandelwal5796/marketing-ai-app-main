@@ -9,6 +9,7 @@ export default function AppShell({ children }) {
   const pathname = usePathname();
   const router = useRouter();
   const isAuthRoute = pathname === "/auth";
+  const isPublicRoute = pathname === "/auth";
 
   const [sidebarMode, setSidebarMode] = useState("expanded"); // expanded | collapsed
   const [sessionUser, setSessionUser] = useState(null);
@@ -72,14 +73,14 @@ export default function AppShell({ children }) {
 
   useEffect(() => {
     if (loadingSession) return;
-    if (!sessionUser && !isAuthRoute) {
+    if (!sessionUser && !isPublicRoute) {
       router.replace("/auth");
       return;
     }
     if (sessionUser && isAuthRoute) {
       router.replace("/dashboard");
     }
-  }, [isAuthRoute, loadingSession, router, sessionUser]);
+  }, [isAuthRoute, isPublicRoute, loadingSession, router, sessionUser]);
 
   useEffect(() => {
     const onClickOutside = (event) => {
@@ -188,7 +189,7 @@ export default function AppShell({ children }) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Loading...</div>;
   }
 
-  if (isAuthRoute) return <>{children}</>;
+  if (isPublicRoute) return <>{children}</>;
 
   return (
     <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-50">
