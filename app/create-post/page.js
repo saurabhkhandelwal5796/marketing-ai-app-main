@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, Mail, Send, Sparkles } from "lucide-react";
+import { BriefcaseBusiness, Camera, ChevronDown, ChevronUp, FileText, Mail, MessageCircle, Megaphone, Send, Sparkles } from "lucide-react";
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -11,10 +11,22 @@ function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
 }
 
+const PLATFORM_META = {
+  linkedin_post: { label: "LinkedIn", Icon: BriefcaseBusiness, color: "text-blue-700" },
+  instagram_post: { label: "Instagram", Icon: Camera, color: "text-pink-600" },
+  email_campaign: { label: "Email", Icon: Mail, color: "text-slate-700" },
+  newsletter: { label: "Newsletter", Icon: FileText, color: "text-indigo-600" },
+  ad_copy: { label: "Ad Copy", Icon: Megaphone, color: "text-orange-600" },
+  blog_post: { label: "Blog", Icon: FileText, color: "text-emerald-700" },
+  whatsapp_message: { label: "WhatsApp", Icon: MessageCircle, color: "text-green-600" },
+};
+
 export default function CreatePostPage() {
   const [input, setInput] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState([]);
+  const [hasSubmittedInput, setHasSubmittedInput] = useState(false);
+  const [hasSubmittedPlatforms, setHasSubmittedPlatforms] = useState(false);
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
   const [activeType, setActiveType] = useState("");
@@ -99,6 +111,12 @@ export default function CreatePostPage() {
     if (!input.trim()) return;
     setGeneratingSuggestions(true);
     setMessage("");
+    setHasSubmittedInput(false);
+    setHasSubmittedPlatforms(false);
+    setSuggestions([]);
+    setSelectedTypes([]);
+    setContentByType({});
+    setActiveType("");
     try {
       const res = await fetch("/api/create-post/suggestions", {
         method: "POST",
@@ -109,6 +127,7 @@ export default function CreatePostPage() {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate suggestions.");
       setSuggestions(data.suggestions || []);
       setSelectedTypes(data.preselected || []);
+      setHasSubmittedInput(true);
     } catch (e) {
       setMessage(e?.message || "Failed to generate suggestions.");
     } finally {
@@ -116,7 +135,7 @@ export default function CreatePostPage() {
     }
   };
 
-  const createContent = async () => {
+  const submitPlatforms = async () => {
     if (selectedTypes.length === 0) return;
     setGeneratingContent(true);
     setMessage("");
@@ -143,6 +162,7 @@ export default function CreatePostPage() {
       const first = selectedTypes[0] || "";
       setActiveType(first);
       setImagePrompt(input.trim());
+      setHasSubmittedPlatforms(true);
     } catch (e) {
       setMessage(e?.message || "Failed to generate content.");
     } finally {
@@ -195,6 +215,12 @@ export default function CreatePostPage() {
     const nextRecipients = [...new Set([...recipientEmails, email])];
     setRecipientEmails(nextRecipients);
     setRecipientInput("");
+    syncDrafts([...new Set([...nextRecipients, ...selectedUserEmails])], baseEmailSubject, baseEmailBody);
+  };
+
+  const removeManualRecipient = (emailToRemove) => {
+    const nextRecipients = recipientEmails.filter((email) => email !== emailToRemove);
+    setRecipientEmails(nextRecipients);
     syncDrafts([...new Set([...nextRecipients, ...selectedUserEmails])], baseEmailSubject, baseEmailBody);
   };
 
@@ -340,34 +366,43 @@ export default function CreatePostPage() {
         </button>
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-900">Platform Suggestions</h2>
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {suggestions.map((item) => {
-            const selected = selectedTypes.includes(item.id);
-            return (
-              <button
-                key={item.id}
-                onClick={() => toggleType(item.id)}
-                className={`rounded-xl border p-4 text-left transition ${
-                  selected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"
-                }`}
-              >
-                <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-                <p className="mt-1 text-xs text-slate-500">{item.hint}</p>
-              </button>
-            );
-          })}
-        </div>
-        <button
-          onClick={createContent}
-          disabled={generatingContent || selectedTypes.length === 0}
-          className="mt-4 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {generatingContent ? "Creating..." : "Create Content"}
-        </button>
-      </section>
+      {hasSubmittedInput ? (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900">Platform Suggestions</h2>
+          <p className="mt-1 text-sm text-slate-500">Select one or more suggested platforms, then submit to continue.</p>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {suggestions.map((item) => {
+              const meta = PLATFORM_META[item.id];
+              const Icon = meta?.Icon;
+              const selected = selectedTypes.includes(item.id);
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => toggleType(item.id)}
+                  className={`rounded-xl border p-4 text-left transition ${
+                    selected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {Icon ? <Icon size={16} className={meta.color} /> : null}
+                    <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">{item.hint}</p>
+                </button>
+              );
+            })}
+          </div>
+          <button
+            onClick={submitPlatforms}
+            disabled={generatingContent || selectedTypes.length === 0}
+            className="mt-4 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {generatingContent ? "Submitting..." : "Submit Platform Selection"}
+          </button>
+        </section>
+      ) : null}
 
+      {hasSubmittedPlatforms ? (
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-base font-semibold text-slate-900">Generated Platform Content</h2>
         {selectedTypes.length === 0 || !activeType || !contentByType[activeType] ? (
@@ -375,7 +410,10 @@ export default function CreatePostPage() {
         ) : (
           <>
             <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-              {selectedTypes.map((typeId) => (
+              {selectedTypes.map((typeId) => {
+                const meta = PLATFORM_META[typeId];
+                const Icon = meta?.Icon;
+                return (
                 <button
                   key={typeId}
                   onClick={() => setActiveType(typeId)}
@@ -383,9 +421,13 @@ export default function CreatePostPage() {
                     activeType === typeId ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
                   }`}
                 >
-                  {contentByType[typeId]?.typeLabel || typeId}
+                  <span className="inline-flex items-center gap-1.5">
+                    {Icon ? <Icon size={14} className={meta.color} /> : null}
+                    {contentByType[typeId]?.typeLabel || meta?.label || typeId}
+                  </span>
                 </button>
-              ))}
+                );
+              })}
             </div>
 
             <div className="mt-4 rounded-xl border border-slate-200 p-3">
@@ -497,7 +539,7 @@ export default function CreatePostPage() {
               )}
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
-                  onClick={createContent}
+                  onClick={submitPlatforms}
                   className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
                 >
                   <Sparkles size={14} className="mr-1 inline" />
@@ -556,10 +598,11 @@ export default function CreatePostPage() {
           </>
         )}
       </section>
+      ) : null}
 
       {showEmailPopup ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-5xl space-y-3 rounded-2xl bg-white p-5 shadow-xl">
+        <div className="fixed inset-0 z-50 bg-slate-900/40 p-4">
+          <div className="mx-auto flex h-[calc(100vh-2rem)] w-full max-w-6xl flex-col space-y-3 rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-slate-900">Email Popup</h3>
               <button onClick={() => setShowEmailPopup(false)} className="text-sm text-slate-500">
@@ -598,6 +641,25 @@ export default function CreatePostPage() {
                   Add
                 </button>
               </div>
+              {recipientEmails.length ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {recipientEmails.map((email) => (
+                    <span
+                      key={email}
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                    >
+                      {email}
+                      <button
+                        onClick={() => removeManualRecipient(email)}
+                        className="font-semibold text-slate-500 hover:text-red-600"
+                        title="Remove recipient"
+                      >
+                        x
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
               {showUsersPanel ? (
                 <div className="mt-3 space-y-2">
@@ -607,17 +669,20 @@ export default function CreatePostPage() {
                     placeholder="Search users by name or email"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   />
-                  <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200 p-2">
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                    <div className="space-y-2">
                       {filteredUsers.map((u) => (
-                    <label key={u.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={selectedUserRecipients.includes(u.id)}
-                        onChange={(e) => updateSelectedUsers(u.id, e.target.checked)}
-                      />
-                      <span>{u.name}</span>
-                    </label>
+                        <label key={u.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                          <div>
+                            <p className="font-medium text-slate-800">{u.name}</p>
+                            <p className="text-xs text-slate-500">{u.email}</p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={selectedUserRecipients.includes(u.id)}
+                            onChange={(e) => updateSelectedUsers(u.id, e.target.checked)}
+                          />
+                        </label>
                       ))}
                     </div>
                   </div>
@@ -625,10 +690,10 @@ export default function CreatePostPage() {
               ) : null}
             </div>
 
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-12">
               <div className="rounded-xl border border-slate-200 p-3 lg:col-span-4">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected Recipients</p>
-                <div className="mt-2 space-y-1">
+                <div className="mt-2 max-h-[42vh] space-y-1 overflow-y-auto pr-1">
                   {allRecipients.length ? (
                     allRecipients.map((email) => (
                       <button
@@ -647,7 +712,7 @@ export default function CreatePostPage() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-slate-200 p-3 lg:col-span-8">
+              <div className="overflow-y-auto rounded-xl border border-slate-200 p-3 lg:col-span-8">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {activeRecipient ? `Editing email for ${activeRecipient}` : "Select a recipient to edit email"}
                 </p>

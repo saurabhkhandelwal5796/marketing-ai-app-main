@@ -7,12 +7,6 @@ function safeString(value) {
   return String(value || "").trim();
 }
 
-function initials(firstName, lastName) {
-  const f = safeString(firstName)[0] || "";
-  const l = safeString(lastName)[0] || "";
-  return (f + l).toUpperCase() || "U";
-}
-
 function splitName(fullName) {
   const parts = safeString(fullName).split(/\s+/).filter(Boolean);
   if (parts.length === 0) return { firstName: "", lastName: "" };
@@ -28,7 +22,7 @@ export async function GET() {
     const supabase = getSupabaseServerClient();
     const { data, error } = await supabase
       .from("users")
-      .select("id,name,email,first_name,last_name,company")
+      .select("id,name,email,first_name,last_name,company,avatar")
       .eq("id", session.id)
       .maybeSingle();
 
@@ -45,6 +39,7 @@ export async function GET() {
         email: safeString(data.email),
         company: safeString(data.company),
         name: safeString(data.name),
+        avatar: safeString(data.avatar),
       },
     });
   } catch (e) {
@@ -64,6 +59,7 @@ export async function PATCH(req) {
     const company = safeString(body?.company);
     const newPassword = String(body?.newPassword || "");
     const confirmPassword = String(body?.confirmPassword || "");
+    const avatarDataUrl = String(body?.avatar || "").trim();
 
     if (!firstName || !lastName || !email || !company) {
       return NextResponse.json({ error: "First name, last name, email, and company are required." }, { status: 400 });
@@ -85,8 +81,14 @@ export async function PATCH(req) {
       company,
       name,
       email,
-      avatar: initials(firstName, lastName),
     };
+
+    if (avatarDataUrl) {
+      if (!avatarDataUrl.startsWith("data:image/")) {
+        return NextResponse.json({ error: "Invalid profile image format." }, { status: 400 });
+      }
+      patch.avatar = avatarDataUrl;
+    }
 
     if (newPassword) {
       patch.password = await hashPassword(newPassword);
@@ -97,7 +99,7 @@ export async function PATCH(req) {
       .from("users")
       .update(patch)
       .eq("id", session.id)
-      .select("id,name,email,role,is_admin,first_name,last_name,company")
+      .select("id,name,email,role,is_admin,first_name,last_name,company,avatar")
       .single();
 
     if (error) {
@@ -125,6 +127,7 @@ export async function PATCH(req) {
         lastName: safeString(data.last_name),
         email: safeString(data.email),
         company: safeString(data.company),
+        avatar: safeString(data.avatar),
       },
     });
   } catch (e) {
