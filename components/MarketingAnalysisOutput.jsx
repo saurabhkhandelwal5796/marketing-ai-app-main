@@ -283,6 +283,12 @@ export default function MarketingAnalysisOutput({
   const [companyModalData, setCompanyModalData] = useState(null);
   const [activeCompany, setActiveCompany] = useState(null);
 
+  // Per-company AI assistant state (lives only inside the company detail modal).
+  const [companyAssistantInput, setCompanyAssistantInput] = useState("");
+  const [companyAssistantLoading, setCompanyAssistantLoading] = useState(false);
+  const [companyAssistantError, setCompanyAssistantError] = useState("");
+  const [companyAssistantMessages, setCompanyAssistantMessages] = useState([]); // [{ role: "user"|"assistant", content: string }]
+
   const selectedCount = selectedDetailIds.size;
   const anySelected = selectedCount > 0;
 
@@ -439,6 +445,11 @@ export default function MarketingAnalysisOutput({
     setCompanyModalError("");
     setCompanyModalData(null);
     setCompanyModalLoading(true);
+    // Reset the AI assistant so each company has independent chat context.
+    setCompanyAssistantInput("");
+    setCompanyAssistantMessages([]);
+    setCompanyAssistantError("");
+    setCompanyAssistantLoading(false);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -466,6 +477,56 @@ export default function MarketingAnalysisOutput({
   const showToast = (type, message) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 1800);
+  };
+
+  const submitCompanyAssistant = async () => {
+    const question = String(companyAssistantInput || "").trim();
+    if (!question || companyAssistantLoading) return;
+
+    setCompanyAssistantError("");
+    setCompanyAssistantLoading(true);
+
+    // Keep prior context (not including the current question) for the prompt transcript.
+    const priorThread = companyAssistantMessages;
+
+    // Update UI immediately with the user's question.
+    setCompanyAssistantMessages((prev) => [...prev, { role: "user", content: question }]);
+    setCompanyAssistantInput("");
+
+    try {
+      const safeCompanyName = String(activeCompany?.name || "").trim();
+      const safeCountry = String(activeCompany?.country || "").trim();
+      const safeSector = String(activeCompany?.sector || activeCompany?.industry || "").trim();
+
+      const companyData = {
+        ...(activeCompany || {}),
+        companyModalData: companyModalData || null,
+      };
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "company_assistant",
+          companyName: safeCompanyName,
+          country: safeCountry,
+          sector: safeSector,
+          question,
+          threadMessages: priorThread,
+          companyPayload: companyData,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to ask AI.");
+
+      const answer = typeof data?.answer === "string" ? data.answer : "";
+      setCompanyAssistantMessages((prev) => [...prev, { role: "assistant", content: answer }]);
+    } catch (e) {
+      setCompanyAssistantError(e?.message || "Failed to ask AI.");
+    } finally {
+      setCompanyAssistantLoading(false);
+    }
   };
 
   const resetTaskForm = () => {
@@ -1293,12 +1354,13 @@ export default function MarketingAnalysisOutput({
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-slate-900">{c.name}</p>
                           <p className="mt-1 text-sm leading-6 text-slate-700">{c.description}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            Country: <span className="font-semibold text-slate-700">{c.country || "-"}</span>
+                          </p>
                         </div>
-                        {c.industry ? (
-                          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                            {c.industry}
-                          </span>
-                        ) : null}
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                          Sector: {c.sector || c.industry || "-"}
+                        </span>
                       </div>
 
                       <div className="mt-3 space-y-3">
@@ -2264,6 +2326,81 @@ export default function MarketingAnalysisOutput({
                   ) : null}
                 </div>
               ) : null}
+
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">AI Assistant</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Ask anything about this company. You can ask follow-up questions too.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <textarea
+                    value={companyAssistantInput}
+                    onChange={(e) => setCompanyAssistantInput(e.target.value)}
+                    rows={3}
+                    placeholder="Ask anything about this company..."
+                    className="w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-black outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        submitCompanyAssistant();
+                      }
+                    }}
+                  />
+                  <div className="mt-2 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={submitCompanyAssistant}
+                      disabled={companyAssistantLoading || !String(companyAssistantInput || "").trim()}
+                      className={cx(
+                        "rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800",
+                        companyAssistantLoading ? "cursor-not-allowed opacity-70" : "hover:bg-slate-800"
+                      )}
+                    >
+                      {companyAssistantLoading ? "Asking AI..." : "Ask AI"}
+                    </button>
+                  </div>
+
+                  {companyAssistantError ? (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
+                      {companyAssistantError}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3 space-y-3">
+                    {companyAssistantMessages.length ? (
+                      companyAssistantMessages.map((m, idx) => (
+                        <div key={`${m.role}-${idx}`} className={cx("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                          <div
+                            className={cx(
+                              "max-w-[92%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-xs leading-5",
+                              m.role === "user"
+                                ? "bg-blue-600 text-white"
+                                : "rounded-bl-md border border-slate-200 bg-white text-slate-700"
+                            )}
+                          >
+                            {m.content}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-slate-500">Response will appear here after you ask.</p>
+                    )}
+
+                    {companyAssistantLoading ? (
+                      <div className="flex justify-start">
+                        <div className="max-w-[92%] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-500">
+                          AI is thinking...
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

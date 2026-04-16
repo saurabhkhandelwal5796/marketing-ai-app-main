@@ -122,6 +122,8 @@ export async function POST(req) {
       point = null,
       companyName = "",
       companyPayload = null,
+      country = "",
+      sector = "",
       today = "",
       title = "",
       taskType = "",
@@ -178,7 +180,7 @@ Rules:
 - marketingDetails: MINIMUM 20 points (aim 22-26). Each point must have a unique id, a bold-style title, and a detailed explanation paragraph.
 - Ensure coverage across: value proposition, market positioning, competitive advantage, messaging strategy, brand tone, channels, pricing perception, USP, emotional triggers, storytelling angle, SEO keywords, pain points addressed, social proof strategy, call-to-action suggestions, campaign hooks, content themes, awareness vs conversion tactics, seasonal relevance, partnership opportunities, and growth potential.
 - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
-- Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), decisionMakerRole (single role).
+- Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), sector (1 tag), decisionMakerRole (single role), country (1 country).
 - employees: Return 20-40 REAL, specific employees across the target companies. Include likely outreach-ready roles (e.g., founder, marketing head, growth lead, sales lead, operations head).
 - Each employee must include: name, title, company, linkedin, email, phone, website.
 - For employee linkedin values, ONLY use this format: https://www.linkedin.com/in/firstname-lastname
@@ -226,6 +228,8 @@ Rules:
                     description: { type: "string" },
                     whyRelevant: { type: "string" },
                     industry: { type: "string" },
+                    country: { type: ["string", "null"] },
+                    sector: { type: ["string", "null"] },
                     decisionMakerRole: { type: "string" },
                     email: { type: ["string", "null"] },
                     phone: { type: ["string", "null"] },
@@ -237,6 +241,8 @@ Rules:
                     "description",
                     "whyRelevant",
                     "industry",
+                    "country",
+                    "sector",
                     "decisionMakerRole",
                     "email",
                     "phone",
@@ -452,6 +458,76 @@ Rules:
 
       const parsed = extractJson(raw);
       if (!parsed?.answer) throw new Error("Model returned invalid follow-up format.");
+      return NextResponse.json(parsed);
+    }
+
+    if (step === "company_assistant") {
+      const safeCompanyName = typeof companyName === "string" ? companyName : "";
+      const safeCountry = typeof country === "string" ? country : "";
+      const safeSector = typeof sector === "string" ? sector : "";
+      const safeQuestion = typeof question === "string" ? question : "";
+
+      if (!safeQuestion.trim()) {
+        return NextResponse.json({ error: "Please enter a question." }, { status: 400 });
+      }
+
+      const safeThread = Array.isArray(threadMessages)
+        ? threadMessages
+            .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+            .slice(-20)
+        : [];
+
+      const threadTranscript = safeThread.length
+        ? safeThread.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n")
+        : "";
+
+      const safeCompanyData =
+        companyPayload && typeof companyPayload === "object"
+          ? JSON.stringify(companyPayload)
+          : String(companyPayload || "");
+
+      const prompt = `Return ONLY valid JSON with this shape:
+{
+  "answer": "..."
+}
+
+Company context:
+- Company name: ${safeCompanyName}
+- Country: ${safeCountry || "(unknown)"}
+- Sector: ${safeSector || "(unknown)"}
+- Available company data (may be partial): ${safeCompanyData}
+
+Prior chat (most recent last):
+${threadTranscript || "(no prior chat)"}
+
+User question:
+${safeQuestion}
+
+Rules:
+- Provide useful insights about this company, including relevant industry context.
+- Suggest targeting ideas: best decision-maker roles, outreach angles, segmentation hints, and likely channels to use.
+- Keep it specific and practical (avoid generic advice).
+- Write in 2-3 detailed paragraphs; each paragraph should be 4-8 sentences.
+- Maintain continuity with the prior chat.`;
+
+      const raw = await callOpenAI({
+        apiKey,
+        prompt,
+        schema: {
+          name: "company_assistant_payload",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              answer: { type: "string" },
+            },
+            required: ["answer"],
+          },
+        },
+      });
+
+      const parsed = extractJson(raw);
+      if (!parsed?.answer) throw new Error("Model returned invalid company assistant format.");
       return NextResponse.json(parsed);
     }
 
