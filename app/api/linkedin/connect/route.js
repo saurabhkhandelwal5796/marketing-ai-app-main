@@ -3,7 +3,8 @@ import crypto from "crypto";
 import { getSessionFromCookies } from "../../../../lib/authSession";
 
 function getBaseUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  // LinkedIn redirect URLs must match exactly; trim trailing slashes to avoid `//api/...`.
+  return String(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
 }
 
 export async function GET() {
@@ -17,6 +18,7 @@ export async function GET() {
     }
 
     const redirectUri = `${getBaseUrl()}/api/linkedin/callback`;
+    console.log("Redirect URI:", redirectUri);
     const state = crypto.randomBytes(16).toString("hex");
     const authUrl = new URL("https://www.linkedin.com/oauth/v2/authorization");
     authUrl.searchParams.set("response_type", "code");
@@ -25,6 +27,7 @@ export async function GET() {
     authUrl.searchParams.set("state", state);
     authUrl.searchParams.set("scope", "openid profile email w_member_social");
 
+    // Note: do not log authUrl.toString() because it contains the redirect_uri.
     const res = NextResponse.redirect(authUrl.toString());
     res.cookies.set("linkedin_oauth_state", state, {
       httpOnly: true,

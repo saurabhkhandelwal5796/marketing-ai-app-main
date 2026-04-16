@@ -4,7 +4,8 @@ import { getSessionFromCookies } from "../../../../lib/authSession";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
 
 function getBaseUrl() {
-  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  // LinkedIn redirect URLs must match exactly; trim trailing slashes to avoid `//api/...`.
+  return String(process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/+$/, "");
 }
 
 export async function GET(req) {
