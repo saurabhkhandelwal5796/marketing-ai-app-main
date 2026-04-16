@@ -355,10 +355,11 @@ export default function MarketingAnalysisOutput({
     const set = new Set();
     tasks.forEach((t) => {
       if (!t) return;
+      if ((t.campaign_id || "") !== (campaignId || "")) return;
       set.add(templateKey({ title: t.title, task_type: t.task_type }));
     });
     return set;
-  }, [tasks]);
+  }, [campaignId, tasks]);
 
   useEffect(() => {
     if (Array.isArray(initialMarketingDetails)) setMarketingDetails(initialMarketingDetails);
@@ -412,7 +413,10 @@ export default function MarketingAnalysisOutput({
     setTasksLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/tasks");
+      const params = new URLSearchParams();
+      if (campaignId) params.set("campaignId", campaignId);
+      const query = params.toString();
+      const res = await fetch(`/api/tasks${query ? `?${query}` : ""}`);
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load tasks.");
       setTasks(Array.isArray(data.tasks) ? data.tasks : []);
@@ -427,7 +431,7 @@ export default function MarketingAnalysisOutput({
     loadUsers();
     loadTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [campaignId]);
 
   const openCompanyModal = async (companyObj) => {
     setActiveCompany(companyObj);
@@ -2129,11 +2133,10 @@ export default function MarketingAnalysisOutput({
       ) : null}
 
       {activeTab === "details" && anySelected ? (
-        <div className="sticky bottom-0 z-10 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="fixed bottom-4 right-4 z-[75]">
+          <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
             <p className="text-sm text-slate-700">
-              <span className="font-semibold">{selectedCount}</span> items selected →{" "}
-              <span className="font-semibold">Assign as Tasks</span>
+              <span className="font-semibold">{selectedCount}</span> selected
             </p>
             <button
               onClick={assignSelectedAsTasks}
