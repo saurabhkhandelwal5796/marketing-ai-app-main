@@ -31,7 +31,8 @@ function buildDynamicSuggestions(input, preselected) {
     .sort((a, b) => b._score - a._score);
 
   const strongMatches = scored.filter((item) => item._score > 0);
-  const targetCount = Math.max(3, Math.min(6, strongMatches.length || 4));
+  // Allow broader suggestion sets so users can choose more channels when relevant.
+  const targetCount = Math.max(4, Math.min(TYPE_CATALOG.length, strongMatches.length || 5));
   const selected = strongMatches.length >= targetCount ? strongMatches.slice(0, targetCount) : scored.slice(0, targetCount);
   return selected.map(({ _score, ...rest }) => rest);
 }

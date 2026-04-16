@@ -173,42 +173,39 @@ export default function UsersPage() {
 
   return (
     <main className="space-y-6 p-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
+      <section className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-6 py-6 text-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">Users</h1>
-            <p className="mt-1 text-sm text-slate-500">Manage users with search, filters, and impersonation.</p>
+            <h1 className="text-2xl font-semibold">User Management</h1>
+            <p className="mt-1 text-sm text-slate-200">Manage users, permissions, and impersonation from one place.</p>
           </div>
           <button
             onClick={openCreateForm}
-            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100"
           >
             <UserPlus size={16} />
-            New
+            Add User
           </button>
         </div>
-
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        ) : null}
-        {success ? (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {success}
-          </div>
-        ) : null}
       </section>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">All Users</h2>
-          <div className="flex items-center gap-2">
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      ) : null}
+      {success ? (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
+      ) : null}
+
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-slate-900">All Users</h2>
+            <div className="flex flex-wrap items-center gap-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search name/email"
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              className="min-w-[220px] rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
             <select
               value={roleFilter}
@@ -237,37 +234,38 @@ export default function UsersPage() {
             >
               Apply
             </button>
+            </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="mt-4 text-sm text-slate-500">Loading...</div>
+          <div className="px-5 py-10 text-sm text-slate-500">Loading...</div>
         ) : (
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+          <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Name</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Email</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Role</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Status</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Created</th>
-                  <th className="px-3 py-2 text-right font-semibold text-slate-700">Actions</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Name</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Email</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Role</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Status</th>
+                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Created</th>
+                  <th className="px-5 py-3 text-right font-semibold text-slate-700">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {users.map((u) => (
                 <tr key={u.id}>
-                  <td className="px-3 py-2">
+                  <td className="px-5 py-3">
                     <button onClick={() => onOpenUser(u)} className="font-semibold text-blue-700 hover:underline">
                       {u.name}
                     </button>
                   </td>
-                  <td className="px-3 py-2 text-slate-700">{u.email}</td>
-                  <td className="px-3 py-2 text-slate-700">{u.is_admin ? "Admin" : "User"}</td>
-                  <td className="px-3 py-2 text-slate-700">{u.status || "Active"}</td>
-                  <td className="px-3 py-2 text-slate-700">{new Date(u.created_at).toLocaleDateString()}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-5 py-3 text-slate-700">{u.email}</td>
+                  <td className="px-5 py-3 text-slate-700">{u.is_admin ? "Admin" : "User"}</td>
+                  <td className="px-5 py-3 text-slate-700">{u.status || "Active"}</td>
+                  <td className="px-5 py-3 text-slate-700">{new Date(u.created_at).toLocaleDateString()}</td>
+                  <td className="px-5 py-3">
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => openEditForm(u)}
@@ -297,7 +295,7 @@ export default function UsersPage() {
                 ))}
                 {users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
                     No users yet. Add your first user above.
                   </td>
                 </tr>
@@ -306,7 +304,7 @@ export default function UsersPage() {
             </table>
           </div>
         )}
-        <div className="mt-4 flex items-center justify-between">
+        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
           <p className="text-sm text-slate-600">
             Showing page {pagination.page} of {totalPages} ({pagination.total} users)
           </p>

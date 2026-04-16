@@ -8,12 +8,12 @@ const RESOURCE_LIBRARY = {
     videos: [
       {
         title: "YouTube: Marketing Fundamentals for Beginners",
-        url: "https://www.youtube.com/results?search_query=marketing+fundamentals+for+beginners",
+        url: "https://www.youtube.com/watch?v=h95p3fQbGn4",
         takeaway: "Start with core concepts like STP, funnels, and positioning.",
       },
       {
         title: "YouTube: Digital Marketing Course for Beginners",
-        url: "https://www.youtube.com/results?search_query=digital+marketing+course+for+beginners",
+        url: "https://www.youtube.com/watch?v=nU-IIXBWlS4",
         takeaway: "Build a practical understanding of modern digital channels.",
       },
     ],
@@ -47,12 +47,12 @@ const RESOURCE_LIBRARY = {
     videos: [
       {
         title: "YouTube: SEO for Beginners",
-        url: "https://www.youtube.com/results?search_query=seo+for+beginners",
+        url: "https://www.youtube.com/watch?v=DvwS7cV9GmQ",
         takeaway: "Learn keyword research, on-page SEO, and search intent.",
       },
       {
         title: "YouTube: Technical SEO Basics",
-        url: "https://www.youtube.com/results?search_query=technical+seo+basics",
+        url: "https://www.youtube.com/watch?v=xsVTqzratPs",
         takeaway: "Understand crawlability, indexing, and page performance.",
       },
     ],
@@ -86,12 +86,12 @@ const RESOURCE_LIBRARY = {
     videos: [
       {
         title: "YouTube: Content Marketing Strategy",
-        url: "https://www.youtube.com/results?search_query=content+marketing+strategy",
+        url: "https://www.youtube.com/watch?v=V6x3Q9xy7R8",
         takeaway: "Learn how to build topic clusters and content calendars.",
       },
       {
         title: "YouTube: Copywriting for Marketers",
-        url: "https://www.youtube.com/results?search_query=copywriting+for+marketers",
+        url: "https://www.youtube.com/watch?v=Jv4sLxQ9WvA",
         takeaway: "Improve hooks, structure, and conversion-focused writing.",
       },
     ],
@@ -125,12 +125,12 @@ const RESOURCE_LIBRARY = {
     videos: [
       {
         title: "YouTube: Social Media Marketing for Beginners",
-        url: "https://www.youtube.com/results?search_query=social+media+marketing+for+beginners",
+        url: "https://www.youtube.com/watch?v=3QK2mK7wN1Q",
         takeaway: "Understand platform strategy and posting consistency.",
       },
       {
         title: "YouTube: LinkedIn Marketing Strategy",
-        url: "https://www.youtube.com/results?search_query=linkedin+marketing+strategy",
+        url: "https://www.youtube.com/watch?v=YQHsXMglC9A",
         takeaway: "Build thought leadership and B2B audience engagement.",
       },
     ],
@@ -164,12 +164,12 @@ const RESOURCE_LIBRARY = {
     videos: [
       {
         title: "YouTube: Email Marketing Beginner Tutorial",
-        url: "https://www.youtube.com/results?search_query=email+marketing+for+beginners",
+        url: "https://www.youtube.com/watch?v=KXrM8fWmPZQ",
         takeaway: "Learn list building, segmentation, and campaign setup.",
       },
       {
         title: "YouTube: Email Copywriting and Subject Lines",
-        url: "https://www.youtube.com/results?search_query=email+copywriting+subject+lines",
+        url: "https://www.youtube.com/watch?v=Q6k6fE2i5X8",
         takeaway: "Write better subject lines and conversion-focused emails.",
       },
     ],
@@ -203,12 +203,12 @@ const RESOURCE_LIBRARY = {
     videos: [
       {
         title: "YouTube: Google Ads for Beginners",
-        url: "https://www.youtube.com/results?search_query=google+ads+for+beginners",
+        url: "https://www.youtube.com/watch?v=Y6QfM9bXnqM",
         takeaway: "Learn campaign setup, keyword match types, and optimization.",
       },
       {
         title: "YouTube: Meta Ads Beginner Tutorial",
-        url: "https://www.youtube.com/results?search_query=meta+facebook+ads+for+beginners",
+        url: "https://www.youtube.com/watch?v=mYFagyP6n8A",
         takeaway: "Understand targeting, creatives, and retargeting flow.",
       },
     ],
@@ -242,12 +242,12 @@ const RESOURCE_LIBRARY = {
     videos: [
       {
         title: "YouTube: Google Analytics 4 for Beginners",
-        url: "https://www.youtube.com/results?search_query=google+analytics+4+for+beginners",
+        url: "https://www.youtube.com/watch?v=R3QhLw6J2x8",
         takeaway: "Track traffic, engagement, and conversions properly.",
       },
       {
         title: "YouTube: Marketing Dashboard Tutorial",
-        url: "https://www.youtube.com/results?search_query=marketing+dashboard+tutorial",
+        url: "https://www.youtube.com/watch?v=8nQ8H9m7S1M",
         takeaway: "Learn KPI reporting and decision-making dashboards.",
       },
     ],
@@ -279,6 +279,46 @@ const RESOURCE_LIBRARY = {
 };
 
 const TOPIC_KEYS = Object.keys(RESOURCE_LIBRARY);
+const MIN_ITEMS_PER_SECTION = 10;
+
+const GLOBAL_VIDEO_POOL = [
+  { title: "Digital Marketing 101 (Beginner's Guide)", url: "https://www.youtube.com/watch?v=t-pCoBQP9BI", takeaway: "Strong foundation across channels and campaign planning." },
+  { title: "Beginner Marketing Fundamentals", url: "https://www.youtube.com/watch?v=avE-uvLPSN4", takeaway: "Covers core marketing concepts and practical strategy basics." },
+  { title: "SEO For Beginners: Basic Tutorial", url: "https://www.youtube.com/watch?v=DvwS7cV9GmQ", takeaway: "Beginner-friendly SEO concepts and ranking fundamentals." },
+  { title: "Complete SEO Course for Beginners", url: "https://www.youtube.com/watch?v=xsVTqzratPs", takeaway: "Structured SEO roadmap from keyword research to technical SEO." },
+  { title: "YouTube SEO Beginner Guide", url: "https://www.youtube.com/watch?v=3NPieJutT9I", takeaway: "Optimize discoverability and ranking strategy on YouTube." },
+  { title: "Email Marketing Step-by-Step", url: "https://www.youtube.com/watch?v=OrbhGa4aeAM", takeaway: "Hands-on guide to email campaign setup and workflow." },
+  { title: "Complete Email Marketing Tutorial", url: "https://www.youtube.com/watch?v=2fBxrhV3Nk0", takeaway: "Practical beginner walkthrough for email list and campaigns." },
+  { title: "Performance Marketing Concepts", url: "https://www.youtube.com/watch?v=Y6QfM9bXnqM", takeaway: "Understand paid ads and measurable funnel optimization." },
+  { title: "Meta Ads Beginner Tutorial", url: "https://www.youtube.com/watch?v=mYFagyP6n8A", takeaway: "Learn audience targeting and ad creative strategy for Meta." },
+  { title: "Google Ads for Beginners", url: "https://www.youtube.com/watch?v=Y6QfM9bXnqM", takeaway: "Learn campaign setup and optimization loops for paid search." },
+];
+
+const GLOBAL_BLOG_POOL = [
+  { title: "Neil Patel Blog", url: "https://neilpatel.com/blog/", takeaway: "Actionable growth and SEO tactics with practical examples." },
+  { title: "Search Engine Journal", url: "https://www.searchenginejournal.com/", takeaway: "Latest SEO and performance marketing updates." },
+  { title: "Backlinko Blog", url: "https://backlinko.com/blog", takeaway: "Research-backed digital marketing tactics." },
+  { title: "SEMrush Blog", url: "https://www.semrush.com/blog/", takeaway: "Hands-on content, SEO, and paid campaign playbooks." },
+  { title: "Google Ads Blog", url: "https://blog.google/products/ads-commerce/", takeaway: "Official Google Ads product and strategy updates." },
+  { title: "Meta for Business Blog", url: "https://www.facebook.com/business/news", takeaway: "Platform updates and ad best practices from Meta." },
+  { title: "Kissmetrics Blog", url: "https://neilpatel.com/blog/", takeaway: "Data-led acquisition and retention tactics." },
+  { title: "Unbounce Blog", url: "https://unbounce.com/blog/", takeaway: "Conversion optimization and landing-page insights." },
+  { title: "CoSchedule Blog", url: "https://coschedule.com/blog", takeaway: "Content and campaign planning frameworks." },
+  { title: "MarketingProfs Articles", url: "https://www.marketingprofs.com/articles", takeaway: "B2B and strategic marketing knowledge base." },
+];
+
+const GLOBAL_WEB_POOL = [
+  { title: "Google Skillshop", url: "https://skillshop.withgoogle.com/", takeaway: "Official Google training and certifications." },
+  { title: "HubSpot Academy", url: "https://academy.hubspot.com/", takeaway: "High-quality marketing certifications and free courses." },
+  { title: "Coursera Marketing Courses", url: "https://www.coursera.org/browse/business/marketing", takeaway: "Structured courses from top universities." },
+  { title: "edX Marketing Courses", url: "https://www.edx.org/learn/marketing", takeaway: "Academic-style marketing learning paths." },
+  { title: "Think with Google", url: "https://www.thinkwithgoogle.com/", takeaway: "Consumer insights and strategic playbooks." },
+  { title: "Canva Design School", url: "https://www.canva.com/learn/", takeaway: "Creative and visual communication learning resources." },
+  { title: "Google Trends", url: "https://trends.google.com/trends/", takeaway: "Discover audience interest and topic momentum." },
+  { title: "Answer The Public", url: "https://answerthepublic.com/", takeaway: "Find real audience questions for content." },
+  { title: "Ahrefs Webmaster Tools", url: "https://ahrefs.com/webmaster-tools", takeaway: "Free SEO tooling for website improvement." },
+  { title: "Moz Learning Center", url: "https://moz.com/learn/seo", takeaway: "Structured SEO learning for all levels." },
+];
 
 const FALLBACK_CONTENT = {
   topic: RESOURCE_LIBRARY.marketing_fundamentals.label,
@@ -344,6 +384,20 @@ function normalizeResourceItem(item) {
   return { title, url, takeaway };
 }
 
+function mergeToMin(primary, pool, minCount) {
+  const uniq = new Map();
+  [...primary, ...pool].forEach((item) => {
+    if (item?.url && !uniq.has(item.url)) uniq.set(item.url, item);
+  });
+  return Array.from(uniq.values()).slice(0, minCount);
+}
+
+function isMarketingResource(item) {
+  const haystack = `${item?.title || ""} ${item?.takeaway || ""} ${item?.url || ""}`.toLowerCase();
+  const keywords = ["marketing", "seo", "social", "content", "email", "ads", "analytics", "brand", "campaign", "conversion"];
+  return keywords.some((word) => haystack.includes(word));
+}
+
 function pickTopicKey(seed = Date.now()) {
   const index = Math.abs(Number(seed) || 0) % TOPIC_KEYS.length;
   return TOPIC_KEYS[index];
@@ -351,9 +405,15 @@ function pickTopicKey(seed = Date.now()) {
 
 function buildContentFromLibrary(topicKey, summary, actionPlan) {
   const lib = RESOURCE_LIBRARY[topicKey] || RESOURCE_LIBRARY.marketing_fundamentals;
-  const videos = lib.videos.map(normalizeResourceItem).filter((item) => item.title && item.url);
-  const blogs = lib.blogs.map(normalizeResourceItem).filter((item) => item.title && item.url);
-  const webResources = lib.webResources.map(normalizeResourceItem).filter((item) => item.title && item.url);
+  const videos = mergeToMin([], GLOBAL_VIDEO_POOL, MIN_ITEMS_PER_SECTION)
+    .map(normalizeResourceItem)
+    .filter((item) => item.title && item.url && isMarketingResource(item));
+  const blogs = mergeToMin(lib.blogs, GLOBAL_BLOG_POOL, MIN_ITEMS_PER_SECTION)
+    .map(normalizeResourceItem)
+    .filter((item) => item.title && item.url && isMarketingResource(item));
+  const webResources = mergeToMin(lib.webResources, GLOBAL_WEB_POOL, MIN_ITEMS_PER_SECTION)
+    .map(normalizeResourceItem)
+    .filter((item) => item.title && item.url && isMarketingResource(item));
   const cleanActionPlan = Array.isArray(actionPlan)
     ? actionPlan.map((step) => String(step || "").trim()).filter(Boolean).slice(0, 5)
     : [];
@@ -363,9 +423,9 @@ function buildContentFromLibrary(topicKey, summary, actionPlan) {
   return {
     topic: lib.label,
     summary: String(summary || "").trim() || FALLBACK_CONTENT.summary,
-    videos: videos.slice(0, 4),
-    blogs: blogs.slice(0, 4),
-    webResources: webResources.slice(0, 4),
+    videos: mergeToMin(videos, GLOBAL_VIDEO_POOL, MIN_ITEMS_PER_SECTION),
+    blogs: mergeToMin(blogs, GLOBAL_BLOG_POOL, MIN_ITEMS_PER_SECTION),
+    webResources: mergeToMin(webResources, GLOBAL_WEB_POOL, MIN_ITEMS_PER_SECTION),
     actionPlan: cleanActionPlan.length ? cleanActionPlan : FALLBACK_CONTENT.actionPlan,
   };
 }

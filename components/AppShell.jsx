@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleUserRound } from "lucide-react";
 import Sidebar from "./Sidebar";
 
 export default function AppShell({ children }) {
@@ -81,16 +80,6 @@ export default function AppShell({ children }) {
     }
   }, [isAuthRoute, loadingSession, router, sessionUser]);
 
-  useEffect(() => {
-    const onClickOutside = (event) => {
-      if (!userMenuRef.current?.contains(event.target)) {
-        setIsUserMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
   const cycleCollapsed = () => {
     setSidebarMode((prev) => (prev === "expanded" ? "collapsed" : "expanded"));
   };
@@ -99,6 +88,7 @@ export default function AppShell({ children }) {
   };
 
   const sidebarWidthClass = sidebarMode === "collapsed" ? "pl-[78px]" : "pl-64";
+  const isImpersonating = !!sessionUser?.admin_id;
 
   const restoreAdmin = async () => {
     const res = await fetch("/api/auth/restore", { method: "POST" });
@@ -106,82 +96,6 @@ export default function AppShell({ children }) {
     const data = await fetch("/api/auth/session").then((r) => r.json());
     setSessionUser(data?.user || null);
     router.refresh();
-  };
-
-  const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setSessionUser(null);
-    router.replace("/auth");
-    router.refresh();
-  };
-
-  const openProfileModal = async () => {
-    setIsUserMenuOpen(false);
-    setProfileError("");
-    setProfileSuccess("");
-    setProfileSubmitting(false);
-    setProfileForm({
-      firstName: "",
-      lastName: "",
-      email: "",
-      company: "",
-      newPassword: "",
-      confirmPassword: "",
-    });
-    setIsProfileModalOpen(true);
-
-    try {
-      const res = await fetch("/api/auth/profile");
-      const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load profile.");
-      setProfileForm({
-        firstName: data?.user?.firstName || "",
-        lastName: data?.user?.lastName || "",
-        email: data?.user?.email || "",
-        company: data?.user?.company || "",
-        newPassword: "",
-        confirmPassword: "",
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to load profile.";
-      setProfileError(message);
-    }
-  };
-
-  const closeProfileModal = () => {
-    if (profileSubmitting) return;
-    setIsProfileModalOpen(false);
-    setProfileError("");
-    setProfileSuccess("");
-  };
-
-  const onProfileSubmit = async (event) => {
-    event.preventDefault();
-    setProfileSubmitting(true);
-    setProfileError("");
-    setProfileSuccess("");
-    try {
-      const res = await fetch("/api/auth/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profileForm),
-      });
-      const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update profile.");
-      setSessionUser((prev) => ({
-        ...prev,
-        name: data?.user?.name || prev?.name,
-        email: data?.user?.email || prev?.email,
-      }));
-      setProfileForm((prev) => ({ ...prev, newPassword: "", confirmPassword: "" }));
-      setProfileSuccess("Profile updated successfully.");
-      router.refresh();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to update profile.";
-      setProfileError(message);
-    } finally {
-      setProfileSubmitting(false);
-    }
   };
 
   if (loadingSession) {
@@ -197,6 +111,7 @@ export default function AppShell({ children }) {
         onToggleCollapsed={cycleCollapsed}
         onHoverExpand={expandSidebarOnHover}
         isAdmin={!!sessionUser?.is_admin}
+        currentUser={sessionUser}
       />
       <div className={`max-w-full min-w-0 overflow-x-hidden transition-all ${sidebarWidthClass}`}>
         {showTopHeader ? (
@@ -258,108 +173,23 @@ export default function AppShell({ children }) {
                 <h2 className="text-lg font-semibold text-slate-900">Edit Profile</h2>
                 <p className="text-sm text-slate-500">Update your details and reset your password if needed.</p>
               </div>
+        {isImpersonating ? (
+          <div className="border-b border-amber-200 bg-amber-50 px-5 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-amber-900">
+                Viewing as <span className="font-semibold">{sessionUser?.name || "User"}</span>
+              </p>
               <button
-                onClick={closeProfileModal}
-                className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                onClick={restoreAdmin}
+                className="rounded-md border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-100"
               >
-                Close
+                Return to Admin
               </button>
             </div>
-
-            {profileError ? (
-              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{profileError}</div>
-            ) : null}
-            {profileSuccess ? (
-              <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {profileSuccess}
-              </div>
-            ) : null}
-
-            <form onSubmit={onProfileSubmit} className="space-y-3">
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-700">
-                  First Name
-                  <input
-                    required
-                    value={profileForm.firstName}
-                    onChange={(e) => setProfileForm((prev) => ({ ...prev, firstName: e.target.value }))}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
-                <label className="block text-sm font-medium text-slate-700">
-                  Last Name
-                  <input
-                    required
-                    value={profileForm.lastName}
-                    onChange={(e) => setProfileForm((prev) => ({ ...prev, lastName: e.target.value }))}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </label>
-              </div>
-              <label className="block text-sm font-medium text-slate-700">
-                Email
-                <input
-                  type="email"
-                  required
-                  value={profileForm.email}
-                  onChange={(e) => setProfileForm((prev) => ({ ...prev, email: e.target.value }))}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-              <label className="block text-sm font-medium text-slate-700">
-                Company
-                <input
-                  required
-                  value={profileForm.company}
-                  onChange={(e) => setProfileForm((prev) => ({ ...prev, company: e.target.value }))}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Optional password reset</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <label className="block text-sm font-medium text-slate-700">
-                    New Password
-                    <input
-                      type="password"
-                      minLength={8}
-                      value={profileForm.newPassword}
-                      onChange={(e) => setProfileForm((prev) => ({ ...prev, newPassword: e.target.value }))}
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </label>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Confirm Password
-                    <input
-                      type="password"
-                      minLength={8}
-                      value={profileForm.confirmPassword}
-                      onChange={(e) => setProfileForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </label>
-                </div>
-              </div>
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={closeProfileModal}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={profileSubmitting}
-                  className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {profileSubmitting ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+        <div className="min-h-screen max-w-full min-w-0 overflow-x-hidden">{children}</div>
+      </div>
     </div>
   );
 }

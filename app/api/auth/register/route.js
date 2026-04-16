@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
-import { setSessionCookie } from "../../../../lib/authSession";
 import { hashPassword } from "../../../../lib/passwords";
 
 function initials(firstName, lastName) {
@@ -77,26 +76,12 @@ export async function POST(req) {
           .select("id,name,email,role,is_admin")
           .single();
         if (fallback.error) throw new Error(fallback.error.message);
-        await setSessionCookie({
-          id: fallback.data.id,
-          name: fallback.data.name,
-          email: fallback.data.email,
-          role: fallback.data.role,
-          is_admin: !!fallback.data.is_admin,
-        });
-        return NextResponse.json({ user: fallback.data });
+        return NextResponse.json({ user: fallback.data, requiresSignin: true });
       }
       throw new Error(error.message);
     }
 
-    await setSessionCookie({
-      id: data.id,
-      name: data.name,
-      email: data.email,
-      role: data.role,
-      is_admin: !!data.is_admin,
-    });
-    return NextResponse.json({ user: data });
+    return NextResponse.json({ user: data, requiresSignin: true });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to create account." }, { status: 500 });
   }

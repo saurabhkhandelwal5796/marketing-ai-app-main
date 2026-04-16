@@ -386,7 +386,7 @@ export default function EmailTemplatesPage() {
               disabled={submitting}
               className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {submitting ? "Saving..." : editingTemplate ? "Update Template" : "Save Template"}
+              {submitting ? "Saving..." : "Save Template"}
             </button>
           </form>
         </div>
