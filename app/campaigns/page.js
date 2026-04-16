@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Filter, Search, ChevronDown } from "lucide-react";
+import HeaderActions from "../../components/campaigns/HeaderActions";
+import InsightPanel from "../../components/campaigns/InsightPanel";
+import CampaignTable from "../../components/campaigns/table/CampaignTable";
 
 const formatDate = (value) => {
   if (!value) return "-";
@@ -9,6 +13,19 @@ const formatDate = (value) => {
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 };
+
+function getCampaignStatus(item) {
+  const name = String(item?.name || "").toLowerCase();
+  if (name.includes("cancel")) return { label: "Cancelled", key: "cancelled" };
+
+  const last = item?.last_activity_at || item?.updated_at || item?.created_at;
+  const ts = last ? new Date(last).getTime() : NaN;
+  if (!Number.isNaN(ts)) {
+    const days = (Date.now() - ts) / (1000 * 60 * 60 * 24);
+    if (days <= 14) return { label: "Confirmed", key: "confirmed" };
+  }
+  return { label: "Pending", key: "pending" };
+}
 
 export default function CampaignListPage() {
   const router = useRouter();
@@ -24,6 +41,13 @@ export default function CampaignListPage() {
   const PAGE_SIZE = 15;
   const [isFetching, setIsFetching] = useState(false);
   const createInFlightRef = useRef(false);
+  const [mounted, setMounted] = useState(false);
+
+  // UI-only state for premium campaign browsing (does not affect backend logic).
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all"); // all | confirmed | pending | cancelled
+  const [sortValue, setSortValue] = useState("last_activity_desc");
 
   const loadCampaigns = async ({ nextOffset = 0, append = false } = {}) => {
     if (isFetching) return;
@@ -51,6 +75,10 @@ export default function CampaignListPage() {
   useEffect(() => {
     loadCampaigns({ nextOffset: 0, append: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   useEffect(() => {
@@ -89,14 +117,92 @@ export default function CampaignListPage() {
     }
   };
 
-  const allSelected = campaigns.length > 0 && selectedCampaignIds.length === campaigns.length;
+  const visibleCampaigns = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    let list = [...campaigns];
 
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedCampaignIds([]);
+    if (query) {
+      list = list.filter((c) => {
+        const name = String(c?.name || "").toLowerCase();
+        const company = String(c?.company || "").toLowerCase();
+        const goal = String(c?.goal || "").toLowerCase();
+        return name.includes(query) || company.includes(query) || goal.includes(query);
+      });
+    }
+
+    if (statusFilter !== "all") {
+      list = list.filter((c) => getCampaignStatus(c).key === statusFilter);
+    }
+
+    const getTs = (v) => {
+      const t = v ? new Date(v).getTime() : NaN;
+      return Number.isNaN(t) ? 0 : t;
+    };
+
+    list.sort((a, b) => {
+      const sa = getCampaignStatus(a);
+      const sb = getCampaignStatus(b);
+      // keep status stable in sort when everything else is equal
+      if (sa.label === sb.label) {
+        // no-op
+      }
+
+      const nameA = String(a?.name || "").toLowerCase();
+      const nameB = String(b?.name || "").toLowerCase();
+      const createdA = getTs(a?.created_at);
+      const createdB = getTs(b?.created_at);
+      const updatedA = getTs(a?.updated_at);
+      const updatedB = getTs(b?.updated_at);
+
+      switch (sortValue) {
+        case "created_desc":
+          return createdB - createdA;
+        case "created_asc":
+          return createdA - createdB;
+        case "name_asc":
+          return nameA.localeCompare(nameB);
+        case "name_desc":
+          return nameB.localeCompare(nameA);
+        case "last_activity_asc":
+          return updatedA - updatedB;
+        case "last_activity_desc":
+        default:
+          return updatedB - updatedA;
+      }
+    });
+
+    return list;
+  }, [campaigns, searchQuery, statusFilter, sortValue]);
+
+  const campaignInsights = useMemo(() => {
+    const total = campaigns.length;
+    let confirmedCount = 0;
+    let pendingCount = 0;
+    let cancelledCount = 0;
+
+    for (const c of campaigns) {
+      const st = getCampaignStatus(c);
+      if (st.key === "confirmed") confirmedCount += 1;
+      else if (st.key === "cancelled") cancelledCount += 1;
+      else pendingCount += 1;
+    }
+
+    const activeCampaigns = confirmedCount;
+    const performancePercent = total > 0 ? Math.round((activeCampaigns / total) * 100) : 0;
+
+    return { total, confirmedCount, pendingCount, cancelledCount, activeCampaigns, performancePercent };
+  }, [campaigns]);
+
+  const visibleIds = visibleCampaigns.map((c) => c.id).filter(Boolean);
+  const allSelectedVisible = visibleIds.length > 0 && visibleIds.every((id) => selectedCampaignIds.includes(id));
+
+  const toggleSelectAllVisible = () => {
+    if (!visibleIds.length) return;
+    if (allSelectedVisible) {
+      setSelectedCampaignIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
       return;
     }
-    setSelectedCampaignIds(campaigns.map((item) => item.id).filter(Boolean));
+    setSelectedCampaignIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
   };
 
   const toggleSelectOne = (id) => {
@@ -127,98 +233,140 @@ export default function CampaignListPage() {
   };
 
   return (
-    <main className="p-6">
-      <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-slate-900">Campaigns</h1>
-            <p className="mt-1 text-sm text-slate-500">Open an existing campaign or create a new one.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleDeleteSelected}
-              disabled={deleting || selectedCampaignIds.length === 0}
-              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {deleting ? "Deleting..." : `Delete${selectedCampaignIds.length ? ` (${selectedCampaignIds.length})` : ""}`}
-            </button>
-            <button
-              onClick={handleCreateNew}
-              disabled={creating}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {creating ? "Creating..." : "New"}
-            </button>
-          </div>
-        </div>
+    <main className="bg-gradient-to-br from-[#0B0F1A] to-[#121826] p-6 lg:p-8 min-h-[calc(100vh)] text-slate-200">
+      <div className="mx-auto max-w-[1440px] space-y-6 md:space-y-8">
+        <div
+          className={`rounded-[28px] border border-white/[0.08] bg-white/[0.02] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.12)] backdrop-blur-2xl transition-all duration-[800ms] ease-out transform-gpu ${
+            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
+          }`}
+        >
+          <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-sm">Campaign Intelligence</h1>
+              <p className="mt-2 text-sm font-medium text-slate-400">Manage, analyze, and optimize your marketing campaigns in real-time.</p>
+            </div>
 
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {error}
+            <HeaderActions
+              creating={creating}
+              deleting={deleting}
+              selectedCount={selectedCampaignIds.length}
+              onCreateNew={handleCreateNew}
+              onDeleteSelected={handleDeleteSelected}
+            />
           </div>
-        ) : null}
 
-        <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
-          {loading ? (
-            <div className="p-4 text-sm text-slate-500">Loading campaigns...</div>
-          ) : campaigns.length === 0 ? (
-            <div className="p-6 text-sm text-slate-500">No campaigns found</div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-slate-600">
-                <tr>
-                  <th className="px-4 py-3 font-medium">S.No.</th>
-                  <th className="px-4 py-3 font-medium">Campaign Name</th>
-                  <th className="px-4 py-3 font-medium">Created Date</th>
-                  <th className="px-4 py-3 font-medium">Last Modified Date</th>
-                  <th className="px-4 py-3 font-medium">Created By</th>
-                  <th className="px-4 py-3 font-medium">Last Modified By</th>
-                  <th className="px-4 py-3 font-medium text-center">
-                    <input
-                      type="checkbox"
-                      checked={allSelected}
-                      onChange={toggleSelectAll}
-                      onClick={(e) => e.stopPropagation()}
-                      aria-label="Select all campaigns"
-                    />
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {campaigns.map((item, idx) => (
-                  <tr
-                    key={item.id}
-                    onClick={() => router.push(`/campaigns/${item.id}`)}
-                    className="cursor-pointer border-t border-slate-200 transition hover:bg-slate-50"
+          {error ? (
+            <div className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-400 backdrop-blur-sm shadow-inner">{error}</div>
+          ) : null}
+
+          {/* Toolbar */}
+          <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-7 lg:items-center">
+            <div className="lg:col-span-4">
+              <div className="relative group">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 transition-colors group-focus-within:text-indigo-400" />
+                <input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search campaigns..."
+                  className="w-full rounded-[14px] border border-white/10 bg-white/5 pl-11 pr-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-all duration-300 focus:border-indigo-500/50 focus:bg-white/10 focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
+                />
+              </div>
+            </div>
+
+            <div className="lg:col-span-3 lg:justify-end">
+              <div className="flex items-center justify-start gap-4 lg:justify-end">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen((p) => !p)}
+                    className="flex items-center gap-2 rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/10 hover:shadow-lg focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                   >
-                    <td className="px-4 py-3 text-slate-600">{idx + 1}</td>
-                    <td className="px-4 py-3 font-medium text-blue-700 underline-offset-2 hover:underline">
-                      {item.name || "Generating title..."}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{formatDate(item.created_at)}</td>
-                    <td className="px-4 py-3 text-slate-600">{formatDate(item.updated_at)}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.created_by_name || item.created_by || "-"}</td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {item.last_modified_by_name || item.last_modified_by || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedCampaignIds.includes(item.id)}
-                        onChange={() => toggleSelectOne(item.id)}
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label={`Select campaign ${item.name || idx + 1}`}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+                    <Filter size={16} strokeWidth={2} className="text-slate-400" />
+                    Filter
+                    <ChevronDown size={16} strokeWidth={2} className={`text-slate-400 transition-transform duration-300 ${filterOpen ? "rotate-180" : ""}`} />
+                  </button>
+
+                  {filterOpen ? (
+                    <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-[16px] border border-white/10 bg-[#121826]/95 p-2 shadow-[0_8px_30px_rgb(0,0,0,0.5)] backdrop-blur-xl">
+                      {[
+                        { key: "all", label: "All" },
+                        { key: "confirmed", label: "Confirmed" },
+                        { key: "pending", label: "Pending" },
+                        { key: "cancelled", label: "Cancelled" },
+                      ].map((opt) => {
+                        const active = statusFilter === opt.key;
+                        return (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => {
+                              setStatusFilter(opt.key);
+                              setFilterOpen(false);
+                            }}
+                            className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-colors duration-200 cursor-pointer ${
+                              active
+                                ? "bg-indigo-500/20 text-indigo-300 ring-1 ring-indigo-500/30"
+                                : "text-slate-400 hover:bg-white/5 hover:text-white"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+
+                <select
+                  value={sortValue}
+                  onChange={(e) => setSortValue(e.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 outline-none transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/10 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-sm"
+                  aria-label="Sort campaigns"
+                >
+                  <option className="bg-[#121826] text-slate-300" value="last_activity_desc">Last Modified (Newest)</option>
+                  <option className="bg-[#121826] text-slate-300" value="last_activity_asc">Last Modified (Oldest)</option>
+                  <option className="bg-[#121826] text-slate-300" value="created_desc">Created (Newest)</option>
+                  <option className="bg-[#121826] text-slate-300" value="created_asc">Created (Oldest)</option>
+                  <option className="bg-[#121826] text-slate-300" value="name_asc">Name (A-Z)</option>
+                  <option className="bg-[#121826] text-slate-300" value="name_desc">Name (Z-A)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Content: Table + Insights */}
+          <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-7 lg:items-start">
+            <section className="lg:col-span-5">
+              <CampaignTable
+                rows={visibleCampaigns}
+                loading={loading}
+                selectedCampaignIds={selectedCampaignIds}
+                totalCampaignCount={campaigns.length}
+                onToggleSelectAll={toggleSelectAllVisible}
+                allSelectedVisible={allSelectedVisible}
+                onToggleSelected={toggleSelectOne}
+                onRowClick={(id) => router.push(`/campaigns/${id}`)}
+                onCampaignNameClick={(id) => router.push(`/campaigns/${id}`)}
+                onEmptyCta={handleCreateNew}
+              />
+
+              {loadingMore ? (
+                <div className="mt-4 text-center text-sm font-medium tracking-wide text-indigo-400 animate-pulse">Loading more campaigns...</div>
+              ) : null}
+            </section>
+
+            <aside className="lg:col-span-2">
+              <div className="sticky top-6">
+                <InsightPanel
+                  totalCampaigns={campaignInsights.total}
+                  activeCampaigns={campaignInsights.activeCampaigns}
+                  performancePercent={campaignInsights.performancePercent}
+                  breakdown={{ confirmedCount: campaignInsights.confirmedCount, pendingCount: campaignInsights.pendingCount }}
+                />
+              </div>
+            </aside>
+          </div>
         </div>
-        {loadingMore ? (
-          <div className="mt-3 text-center text-sm text-slate-500">Loading more campaigns...</div>
-        ) : null}
       </div>
     </main>
   );

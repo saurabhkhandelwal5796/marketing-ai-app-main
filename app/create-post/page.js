@@ -224,6 +224,21 @@ export default function CreatePostPage() {
     syncDrafts([...new Set([...nextRecipients, ...selectedUserEmails])], baseEmailSubject, baseEmailBody);
   };
 
+  const removeRecipient = (emailToRemove) => {
+    if (recipientEmails.includes(emailToRemove)) {
+      removeManualRecipient(emailToRemove);
+      return;
+    }
+
+    const matchingUser = users.find((u) => normalizeEmail(u.email) === emailToRemove);
+    if (matchingUser) {
+      updateSelectedUsers(matchingUser.id, false);
+      return;
+    }
+
+    syncDrafts(allRecipients.filter((email) => email !== emailToRemove), baseEmailSubject, baseEmailBody);
+  };
+
   const updateSelectedUsers = (userId, checked) => {
     const next = checked ? [...selectedUserRecipients, userId] : selectedUserRecipients.filter((id) => id !== userId);
     setSelectedUserRecipients(next);
@@ -696,15 +711,28 @@ export default function CreatePostPage() {
                 <div className="mt-2 max-h-[42vh] space-y-1 overflow-y-auto pr-1">
                   {allRecipients.length ? (
                     allRecipients.map((email) => (
-                      <button
+                      <div
                         key={email}
-                        onClick={() => setActiveRecipient(email)}
-                        className={`w-full rounded-lg px-2.5 py-2 text-left text-sm ${
+                        className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm ${
                           activeRecipient === email ? "bg-blue-50 text-blue-700" : "hover:bg-slate-50"
                         }`}
                       >
-                        {email}
-                      </button>
+                        <button
+                          onClick={() => setActiveRecipient(email)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <span className="block truncate">{email}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeRecipient(email)}
+                          className="rounded-full px-1.5 py-0.5 text-xs font-semibold text-slate-500 hover:bg-white hover:text-red-600"
+                          title="Remove recipient"
+                          aria-label={`Remove ${email}`}
+                        >
+                          x
+                        </button>
+                      </div>
                     ))
                   ) : (
                     <p className="text-sm text-slate-500">No recipients selected.</p>

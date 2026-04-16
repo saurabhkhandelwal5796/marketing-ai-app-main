@@ -1,8 +1,7 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleUserRound } from "lucide-react";
 import Sidebar from "./Sidebar";
 
 export default function AppShell({ children }) {
@@ -14,7 +13,6 @@ export default function AppShell({ children }) {
   const [sidebarMode, setSidebarMode] = useState("expanded"); // expanded | collapsed
   const [sessionUser, setSessionUser] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -27,7 +25,6 @@ export default function AppShell({ children }) {
     newPassword: "",
     confirmPassword: "",
   });
-  const userMenuRef = useRef(null);
   const showTopHeader = pathname === "/dashboard";
 
   useEffect(() => {
@@ -82,16 +79,6 @@ export default function AppShell({ children }) {
     }
   }, [isAuthRoute, isPublicRoute, loadingSession, router, sessionUser]);
 
-  useEffect(() => {
-    const onClickOutside = (event) => {
-      if (!userMenuRef.current?.contains(event.target)) {
-        setIsUserMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
   const cycleCollapsed = () => {
     setSidebarMode((prev) => (prev === "expanded" ? "collapsed" : "expanded"));
   };
@@ -117,7 +104,6 @@ export default function AppShell({ children }) {
   };
 
   const openProfileModal = async () => {
-    setIsUserMenuOpen(false);
     setProfileError("");
     setProfileSuccess("");
     setProfileSubmitting(false);
@@ -198,6 +184,9 @@ export default function AppShell({ children }) {
         onToggleCollapsed={cycleCollapsed}
         onHoverExpand={expandSidebarOnHover}
         isAdmin={!!sessionUser?.is_admin}
+        currentUser={sessionUser}
+        onOpenProfileModal={openProfileModal}
+        onLogout={logout}
       />
       <div className={`max-w-full min-w-0 overflow-x-hidden transition-all ${sidebarWidthClass}`}>
         {showTopHeader ? (
@@ -218,31 +207,6 @@ export default function AppShell({ children }) {
                     Return to Admin
                   </button>
                 ) : null}
-                <div className="relative" ref={userMenuRef}>
-                  <button
-                    onClick={() => setIsUserMenuOpen((prev) => !prev)}
-                    className="rounded-full border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                    aria-label="Open profile menu"
-                  >
-                    <CircleUserRound className="h-5 w-5" />
-                  </button>
-                  {isUserMenuOpen ? (
-                    <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                      <button
-                        onClick={openProfileModal}
-                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-                      >
-                        Edit Profile
-                      </button>
-                      <button
-                        onClick={logout}
-                        className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
               </div>
             </div>
           </header>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, PencilLine, Trash2, Upload } from "lucide-react";
 
 const initialForm = {
   firstName: "",
@@ -16,6 +16,7 @@ const initialForm = {
 export default function MyProfilePage() {
   const router = useRouter();
   const formRef = useRef(null);
+  const firstNameInputRef = useRef(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -120,6 +121,34 @@ export default function MyProfilePage() {
     event.target.value = "";
   };
 
+  const removeAvatar = () => {
+    setAvatarPreview("");
+    setError("");
+  };
+
+  const startEditingProfile = () => {
+    setEditingInfo(true);
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => firstNameInputRef.current?.focus(), 150);
+  };
+
+  const cancelEditingProfile = () => {
+    setForm((prev) => ({
+      ...prev,
+      firstName: original.firstName,
+      lastName: original.lastName,
+      email: original.email,
+      company: original.company,
+      newPassword: "",
+      confirmPassword: "",
+    }));
+    setAvatarPreview(originalAvatar);
+    setEditingInfo(false);
+    setShowPasswordSection(false);
+    setTouched({});
+    setError("");
+  };
+
   const onSubmit = async (event) => {
     event.preventDefault();
     setTouched({
@@ -199,13 +228,11 @@ export default function MyProfilePage() {
             </div>
           </div>
           <button
-            onClick={() => {
-              setEditingInfo(true);
-              formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-            }}
+            onClick={startEditingProfile}
             className="rounded-lg border border-white/30 bg-white/10 px-3 py-2 text-sm font-semibold text-white hover:bg-white/20"
           >
-            Edit Profile
+            <PencilLine size={16} className="mr-2 inline" />
+            {editingInfo ? "Editing Profile" : "Edit Profile"}
           </button>
         </div>
       </section>
@@ -215,18 +242,37 @@ export default function MyProfilePage() {
 
         <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-900">Personal Info</h2>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">Personal Info</h2>
+              <p className="text-sm text-slate-500">
+                {editingInfo ? "You can now update your details and profile picture." : "Click Edit Profile to update your details."}
+              </p>
+            </div>
             {editingInfo ? (
-              <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                Upload Profile Picture
-                <input type="file" accept="image/*" className="hidden" onChange={onAvatarFile} />
-              </label>
+              <div className="flex flex-wrap gap-2">
+                <label className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                  <Upload size={14} className="mr-1 inline" />
+                  {avatarPreview ? "Change Picture" : "Upload Picture"}
+                  <input type="file" accept="image/*" className="hidden" onChange={onAvatarFile} />
+                </label>
+                {avatarPreview ? (
+                  <button
+                    type="button"
+                    onClick={removeAvatar}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                  >
+                    <Trash2 size={14} className="mr-1 inline" />
+                    Remove Picture
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">
               First Name
               <input
+                ref={firstNameInputRef}
                 required
                 disabled={!editingInfo}
                 value={form.firstName}
@@ -353,7 +399,16 @@ export default function MyProfilePage() {
           ) : null}
         </section>
 
-        <div className="flex items-center justify-end">
+        <div className="flex items-center justify-end gap-3">
+          {editingInfo ? (
+            <button
+              type="button"
+              onClick={cancelEditingProfile}
+              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          ) : null}
           <button
             type="submit"
             disabled={!canSubmit || (!editingInfo && !showPasswordSection)}
@@ -363,14 +418,14 @@ export default function MyProfilePage() {
           </button>
         </div>
 
-        <section className="rounded-2xl border border-red-200 bg-red-50/70 p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-red-800">Account Actions</h2>
-          <p className="mt-1 text-sm text-red-700">Log out from this device session.</p>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900">Account Actions</h2>
+          <p className="mt-1 text-sm text-slate-500">Log out safely from this device session.</p>
           <div>
             <button
               type="button"
               onClick={logout}
-              className="mt-4 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
+              className="mt-4 rounded-lg border border-slate-300 bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
             >
               Logout
             </button>
