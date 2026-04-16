@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
@@ -30,20 +31,28 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export default function Sidebar({ mode = "expanded", onToggleCollapsed, onToggleHidden, isAdmin = false }) {
+export default function Sidebar({ mode = "expanded", onToggleCollapsed, onHoverExpand, onToggleHidden, isAdmin = false }) {
   const pathname = usePathname();
   const collapsed = mode === "collapsed";
 
   return (
     <aside
+      onMouseEnter={onHoverExpand}
       className={`fixed left-0 top-0 z-40 h-screen border-r border-slate-200 bg-white/95 backdrop-blur transition-all ${
         collapsed ? "w-[78px]" : "w-64"
       }`}
     >
       <div className="flex h-16 items-center justify-between border-b border-slate-200 px-3">
-        <span className={`font-semibold text-slate-900 transition ${collapsed ? "hidden" : "block"}`}>
-          AI Marketing Studio
-        </span>
+        <div className={`transition ${collapsed ? "hidden" : "block"}`}>
+          <Image
+            src="/ai-workflow-logo.png"
+            alt="AI Marketing Workflow Studio logo"
+            width={180}
+            height={48}
+            className="h-8 w-auto object-contain"
+            priority
+          />
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onToggleCollapsed}

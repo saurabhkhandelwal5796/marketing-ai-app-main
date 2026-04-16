@@ -176,6 +176,34 @@ function buildEmployeeChannelPrompt(channel, employee) {
   return `Write a LinkedIn connection message for ${name}, ${title} at ${company}`;
 }
 
+function getLinkedinSearchUrl(name, company) {
+  const keywords = [name, company].filter(Boolean).join(" ").trim();
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(keywords)}`;
+}
+
+function resolveLinkedinUrl(rawUrl, name, company) {
+  const url = String(rawUrl || "").trim();
+  const isValidProfileUrl =
+    /^https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9\-_%]+\/?(\?.*)?$/i.test(url) && !/404/i.test(url);
+  if (isValidProfileUrl) return url;
+  return getLinkedinSearchUrl(name, company);
+}
+
+function parseEmailFromAssistantResponse(answer, fallbackSubject) {
+  const text = String(answer || "").replace(/\r\n/g, "\n").trim();
+  if (!text) return { subject: fallbackSubject, body: "" };
+
+  const withoutFences = text.replace(/```[\s\S]*?```/g, (match) => match.replace(/```/g, "").trim());
+  const subjectMatch = withoutFences.match(/^Subject:\s*(.+)$/im);
+  const subject = subjectMatch?.[1]?.trim() || fallbackSubject;
+
+  let body = withoutFences.replace(/^Subject:\s*.+$/im, "").trim();
+  const dearIndex = body.search(/^Dear\b/im);
+  if (dearIndex >= 0) body = body.slice(dearIndex).trim();
+
+  return { subject, body };
+}
+
 function initials(name) {
   const parts = String(name || "")
     .trim()
@@ -983,18 +1011,12 @@ export default function MarketingAnalysisOutput({
             <div className="space-y-4">
               {!hasMarketingPlan ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-                  <p className="text-base font-semibold text-slate-900">Generate Your Marketing Plan</p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Click to create a detailed AI-powered marketing plan
-                  </p>
-                  <button
-                    type="button"
-                    disabled={planLoading || typeof onGeneratePlan !== "function"}
-                    onClick={() => (typeof onGeneratePlan === "function" ? onGeneratePlan() : null)}
-                    className="mt-4 inline-flex items-center justify-center rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
+                  <p className="text-base font-semibold text-slate-900">
                     {planLoading ? "Generating..." : "Generate Your Marketing Plan"}
-                  </button>
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {planLoading ? "Please wait while AI builds your marketing plan" : "click on ask ai for marketing plan"}
+                  </p>
                 </div>
               ) : (
                 <SuggestionsPanel
@@ -1367,6 +1389,7 @@ export default function MarketingAnalysisOutput({
                         .trim()
                         .toLowerCase();
                       const outreach = getEmployeeOutreach(emp, companyOutreachByName[companyKey] || null);
+                      const linkedinUrl = resolveLinkedinUrl(outreach.linkedin, emp.name, emp.company);
                       const hasAnyOutreach =
                         !!outreach.linkedin || !!outreach.email || !!outreach.phone || !!outreach.website;
                       const defaultChannel = outreach.email ? "email" : outreach.phone ? "call" : "linkedin";
@@ -1443,17 +1466,17 @@ export default function MarketingAnalysisOutput({
                               ) : null}
                               {outreach.linkedin ? (
                                 <a
-                                  href={outreach.linkedin}
+                                  href={linkedinUrl}
                                   target="_blank"
                                   rel="noreferrer"
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
                                     applyEmployeeChannelContext(emp, "linkedin");
-                                    openContactPopup(e, "linkedin", emp.name || "employee", outreach.linkedin);
+                                    openContactPopup(e, "linkedin", emp.name || "employee", linkedinUrl);
                                   }}
                                   className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
-                                  title="LinkedIn"
+                                  title="Search on LinkedIn"
                                 >
                                   <Link size={12} />
                                   LinkedIn
@@ -1544,11 +1567,14 @@ export default function MarketingAnalysisOutput({
                             type="button"
                             onClick={() => {
                               const to = selectedEmployeeOutreach.email || "";
-                              const subject = encodeURIComponent(
-                                `Regarding ${campaign || "your campaign"} - ${company || "our team"}`
-                              );
-                              const body = encodeURIComponent(assistantAnswer);
-                              const mailtoUrl = `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`;
+                              const fallbackSubject = `Regarding ${campaign || "your campaign"} - ${company || "our team"}`;
+                              const structuredEmail = employeeAssistantData?.channelMessages?.email || null;
+                              const parsedFromAnswer = parseEmailFromAssistantResponse(assistantAnswer, fallbackSubject);
+                              const subject = String(structuredEmail?.subject || parsedFromAnswer.subject || fallbackSubject).trim();
+                              const body = String(structuredEmail?.body || parsedFromAnswer.body || "").trim();
+                              const mailtoUrl = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(
+                                body
+                              )}`;
                               window.open(mailtoUrl, "_self");
                             }}
                             className="inline-flex w-full items-center justify-center rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"

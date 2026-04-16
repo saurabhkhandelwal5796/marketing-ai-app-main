@@ -27,6 +27,7 @@ export default function AppShell({ children }) {
     confirmPassword: "",
   });
   const userMenuRef = useRef(null);
+  const showTopHeader = pathname === "/dashboard";
 
   useEffect(() => {
     try {
@@ -92,6 +93,9 @@ export default function AppShell({ children }) {
 
   const cycleCollapsed = () => {
     setSidebarMode((prev) => (prev === "expanded" ? "collapsed" : "expanded"));
+  };
+  const expandSidebarOnHover = () => {
+    setSidebarMode((prev) => (prev === "collapsed" ? "expanded" : prev));
   };
 
   const sidebarWidthClass = sidebarMode === "collapsed" ? "pl-[78px]" : "pl-64";
@@ -191,55 +195,60 @@ export default function AppShell({ children }) {
       <Sidebar
         mode={sidebarMode}
         onToggleCollapsed={cycleCollapsed}
+        onHoverExpand={expandSidebarOnHover}
         isAdmin={!!sessionUser?.is_admin}
       />
       <div className={`max-w-full min-w-0 overflow-x-hidden transition-all ${sidebarWidthClass}`}>
-        <header className="border-b border-slate-200 bg-white px-5 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{sessionUser?.name || "User"}</p>
-              <p className="text-xs text-slate-500">
-                {sessionUser?.admin_id ? `Logged in as ${sessionUser?.name || "User"}` : sessionUser?.is_admin ? "Admin" : "User"}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {sessionUser?.admin_id ? (
-                <button
-                  onClick={restoreAdmin}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Return to Admin
-                </button>
-              ) : null}
-              <div className="relative" ref={userMenuRef}>
-                <button
-                  onClick={() => setIsUserMenuOpen((prev) => !prev)}
-                  className="rounded-full border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                  aria-label="Open profile menu"
-                >
-                  <CircleUserRound className="h-5 w-5" />
-                </button>
-                {isUserMenuOpen ? (
-                  <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                    <button
-                      onClick={openProfileModal}
-                      className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-                    >
-                      Edit Profile
-                    </button>
-                    <button
-                      onClick={logout}
-                      className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                    >
-                      Logout
-                    </button>
-                  </div>
+        {showTopHeader ? (
+          <header className="border-b border-slate-200 bg-white px-5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">{sessionUser?.name || "User"}</p>
+                <p className="text-xs text-slate-500">
+                  {sessionUser?.admin_id ? `Logged in as ${sessionUser?.name || "User"}` : sessionUser?.is_admin ? "Admin" : "User"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {sessionUser?.admin_id ? (
+                  <button
+                    onClick={restoreAdmin}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Return to Admin
+                  </button>
                 ) : null}
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={() => setIsUserMenuOpen((prev) => !prev)}
+                    className="rounded-full border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+                    aria-label="Open profile menu"
+                  >
+                    <CircleUserRound className="h-5 w-5" />
+                  </button>
+                  {isUserMenuOpen ? (
+                    <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                      <button
+                        onClick={openProfileModal}
+                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
+                      >
+                        Edit Profile
+                      </button>
+                      <button
+                        onClick={logout}
+                        className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                      >
+                        Logout
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
-        </header>
-        <div className="min-h-[calc(100vh-57px)] max-w-full min-w-0 overflow-x-hidden">{children}</div>
+          </header>
+        ) : null}
+        <div className={`${showTopHeader ? "min-h-[calc(100vh-57px)]" : "min-h-screen"} max-w-full min-w-0 overflow-x-hidden`}>
+          {children}
+        </div>
       </div>
       {isProfileModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4">

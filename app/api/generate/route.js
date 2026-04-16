@@ -181,6 +181,8 @@ Rules:
 - Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), decisionMakerRole (single role).
 - employees: Return 20-40 REAL, specific employees across the target companies. Include likely outreach-ready roles (e.g., founder, marketing head, growth lead, sales lead, operations head).
 - Each employee must include: name, title, company, linkedin, email, phone, website.
+- For employee linkedin values, ONLY use this format: https://www.linkedin.com/in/firstname-lastname
+- Do NOT return linkedin.com/profile, linkedin.com/404, or any non-/in/ profile path for employees.
 - For linkedin/email/phone/website: include only if genuinely known; otherwise null (do NOT guess).
 - Prioritize finding employee email address and phone number where possible from reliable public business sources; keep null if not confidently available.
 - For outreach channels: include email/phone/linkedin/website only if genuinely known; otherwise use null (do NOT guess).
@@ -321,6 +323,15 @@ Rules:
 - Keep it practical, specific, and conversion-focused.
 - Decide the best channels and include them in suggestedChannels.
 - If Email is suggested, provide email.subject and email.body.
+- For Email channel, email.body must be ready-to-send and use this exact format:
+  Subject: [subject line here]
+
+  Dear [Name],
+
+  [email body paragraphs]
+
+  Best regards,
+  [sender name]
 - If LinkedIn is suggested, provide linkedin.message.
 - If Call is suggested, provide call.script.
 - Do not include channels that are not relevant.`;
