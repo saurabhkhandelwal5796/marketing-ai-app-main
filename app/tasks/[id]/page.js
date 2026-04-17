@@ -2,8 +2,8 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import ThinkingDisplay from "../../../components/ThinkingDisplay";
 
-const STATUSES = ["To Do", "In Progress", "Done"];
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 const TASK_TYPES = [
   "Generic Task",
@@ -17,6 +17,39 @@ const TASK_TYPES = [
   "Campaign Analysis",
   "Sales Coordination",
 ];
+const STATUS_STEPS = ["To Do", "In Progress", "Done"];
+
+function StatusPipeline({ value, onChange }) {
+  const currentIndex = STATUS_STEPS.indexOf(value);
+  const activeIdx = currentIndex >= 0 ? currentIndex : 0;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-xs">
+      {STATUS_STEPS.map((step, idx) => {
+        const isCurrent = idx === activeIdx;
+        const isCompleted = activeIdx === STATUS_STEPS.length - 1 ? true : idx < activeIdx;
+        const classes = isCurrent
+          ? "bg-blue-600 text-white border-blue-600"
+          : isCompleted
+          ? "bg-emerald-600 text-white border-emerald-600"
+          : "bg-slate-100 text-slate-500 border-slate-300";
+
+        return (
+          <div key={step} className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onChange(step)}
+              className={`rounded-full border px-3 py-1.5 font-semibold transition hover:opacity-90 ${classes}`}
+            >
+              {step}
+            </button>
+            {idx < STATUS_STEPS.length - 1 ? <span className="text-slate-400">→</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function todayYmd() {
   const d = new Date();
@@ -40,7 +73,7 @@ export default function TaskDetailPage({ params }) {
 
   // Next.js passes params as a Promise in this version.
   const resolvedParams = use(params);
-  const taskId = resolvedParams?.id;
+  const taskId = decodeURIComponent(resolvedParams?.id || "");
 
   const assignee = useMemo(() => {
     if (!task?.assignee_id) return null;
@@ -56,7 +89,7 @@ export default function TaskDetailPage({ params }) {
     if (!taskId) return;
     setError("");
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patchBody),
@@ -81,7 +114,7 @@ export default function TaskDetailPage({ params }) {
         return;
       }
       try {
-        const [taskRes, userRes] = await Promise.all([fetch(`/api/tasks/${taskId}`), fetch("/api/users")]);
+        const [taskRes, userRes] = await Promise.all([fetch(`/api/tasks/${encodeURIComponent(taskId)}`), fetch("/api/users")]);
         const taskData = await taskRes.json();
         const userData = await userRes.json();
         if (!taskRes.ok || taskData?.error) throw new Error(taskData?.error || "Failed to load task.");
@@ -232,17 +265,7 @@ export default function TaskDetailPage({ params }) {
             />
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <select
-                value={task.status}
-                onChange={(e) => patch({ status: e.target.value })}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+              <StatusPipeline value={task.status || "To Do"} onChange={(next) => patch({ status: next })} />
             </div>
 
             <div className="mt-4">
@@ -386,7 +409,7 @@ export default function TaskDetailPage({ params }) {
             <div className="mt-3">
               {guideLoading ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                  Generating...
+                  <ThinkingDisplay preset="general" />
                 </div>
               ) : null}
               {guideText ? (

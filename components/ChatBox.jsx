@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleHelp } from "lucide-react";
 import { motion } from "framer-motion";
+import ThinkingDisplay from "./ThinkingDisplay";
 
 export default function ChatBox({ messages, onSend, loading }) {
   const [input, setInput] = useState("");
@@ -66,8 +67,8 @@ export default function ChatBox({ messages, onSend, loading }) {
 
         {loading ? (
           <div className="flex justify-start">
-            <div className="w-40 animate-pulse rounded-2xl rounded-bl-md border border-slate-200 bg-slate-100 px-3.5 py-2.5 text-sm text-slate-500">
-              AI is thinking...
+            <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+              <ThinkingDisplay preset="milestone_refine" />
             </div>
           </div>
         ) : null}
