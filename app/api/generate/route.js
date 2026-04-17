@@ -131,6 +131,137 @@ export async function POST(req) {
       task = null,
     } = body || {};
 
+    if (step === "target_audience") {
+      const planStepsText = Array.isArray(selectedPlanSteps) ? selectedPlanSteps.filter(Boolean).slice(0, 20) : [];
+      const selectedDetailsText = Array.isArray(body?.selectedDetails)
+        ? body.selectedDetails.filter(Boolean).slice(0, 30)
+        : [];
+
+      const prompt = `Return ONLY valid JSON with this shape:
+{
+  "targetAudience": [
+    {
+      "name": "Notion",
+      "description": "Workspace software for notes, docs, and collaboration.",
+      "whyRelevant": "...",
+      "industry": "SaaS",
+      "sector": "SaaS",
+      "country": "United States",
+      "decisionMakerRole": "CMO",
+      "email": null,
+      "phone": null,
+      "linkedin": "https://www.linkedin.com/company/notionhq/",
+      "website": "https://www.notion.so"
+    }
+  ],
+  "employees": [
+    {
+      "name": "Jane Doe",
+      "title": "Head of Marketing",
+      "company": "Notion",
+      "linkedin": "https://www.linkedin.com/in/janedoe",
+      "email": null,
+      "phone": null,
+      "website": null
+    }
+  ]
+}
+
+Context:
+- Company: ${company}
+- Campaign Goal / Service: ${campaign}
+- Website: ${website}
+- Attachment: ${attachmentName}
+- Description: ${description}
+- Selected Marketing Plan Steps (may be empty):
+${planStepsText.length ? planStepsText.map((s) => `- ${s}`).join("\n") : "- (none)"}
+- Selected Marketing Detail Points (may be empty):
+${selectedDetailsText.length ? selectedDetailsText.map((s) => `- ${s}`).join("\n") : "- (none)"}
+
+Rules:
+- targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
+- Make the companies align with BOTH the description and the selected points above (if provided).
+- Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), sector (1 tag), decisionMakerRole (single role), country (1 country).
+- employees: Return 20-40 REAL, specific employees across the target companies. Include outreach-ready roles (founder, marketing head, growth lead, sales lead, operations head).
+- Each employee must include: name, title, company, linkedin, email, phone, website.
+- For employee linkedin values, ONLY use this format: https://www.linkedin.com/in/firstname-lastname
+- Do NOT return linkedin.com/profile, linkedin.com/404, or any non-/in/ profile path for employees.
+- For linkedin/email/phone/website: include only if genuinely known; otherwise null (do NOT guess).`;
+
+      const raw = await callOpenAI({
+        apiKey,
+        prompt,
+        schema: {
+          name: "target_audience_payload",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              targetAudience: {
+                type: "array",
+                minItems: 12,
+                maxItems: 16,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: "string" },
+                    description: { type: "string" },
+                    whyRelevant: { type: "string" },
+                    industry: { type: "string" },
+                    country: { type: ["string", "null"] },
+                    sector: { type: ["string", "null"] },
+                    decisionMakerRole: { type: "string" },
+                    email: { type: ["string", "null"] },
+                    phone: { type: ["string", "null"] },
+                    linkedin: { type: ["string", "null"] },
+                    website: { type: ["string", "null"] },
+                  },
+                  required: [
+                    "name",
+                    "description",
+                    "whyRelevant",
+                    "industry",
+                    "country",
+                    "sector",
+                    "decisionMakerRole",
+                    "email",
+                    "phone",
+                    "linkedin",
+                    "website",
+                  ],
+                },
+              },
+              employees: {
+                type: "array",
+                minItems: 20,
+                maxItems: 40,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: "string" },
+                    title: { type: "string" },
+                    company: { type: "string" },
+                    linkedin: { type: ["string", "null"] },
+                    email: { type: ["string", "null"] },
+                    phone: { type: ["string", "null"] },
+                    website: { type: ["string", "null"] },
+                  },
+                  required: ["name", "title", "company", "linkedin", "email", "phone", "website"],
+                },
+              },
+            },
+            required: ["targetAudience", "employees"],
+          },
+        },
+      });
+
+      const parsed = extractJson(raw);
+      if (!parsed) throw new Error("AI did not return valid JSON.");
+      return NextResponse.json(parsed);
+    }
+
     if (step === "analysis") {
       const prompt = `Return ONLY valid JSON with this shape:
 {
@@ -528,6 +659,291 @@ Rules:
 
       const parsed = extractJson(raw);
       if (!parsed?.answer) throw new Error("Model returned invalid company assistant format.");
+      return NextResponse.json(parsed);
+    }
+
+    if (step === "milestone_generate") {
+      const prompt = `Return ONLY valid JSON with this shape:
+{
+  "description": "2-3 detailed paragraphs describing the milestone scope and why it matters.",
+  "tasks": [
+    {
+      "title": "...",
+      "taskType": "..."
+    }
+  ]
+}
+
+Campaign context:
+- Company: ${company}
+- Campaign: ${campaign}
+- Additional context: ${description}
+
+Rules:
+- Write a practical milestone description tailored to the campaign context.
+- Include 4-6 suggested tasks that help execute the milestone.
+- taskType should be a short tag like Research, Outreach, Content, Review, Approval, Analysis, Operations, or Planning.
+- Keep tasks specific and actionable.`;
+
+      const raw = await callOpenAI({
+        apiKey,
+        prompt,
+        schema: {
+          name: "milestone_generate_payload",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              description: { type: "string" },
+              tasks: {
+                type: "array",
+                minItems: 4,
+                maxItems: 6,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    title: { type: "string" },
+                    taskType: { type: "string" },
+                  },
+                  required: ["title", "taskType"],
+                },
+              },
+            },
+            required: ["description", "tasks"],
+          },
+        },
+      });
+
+      const parsed = extractJson(raw);
+      if (!parsed?.description || !Array.isArray(parsed?.tasks)) {
+        throw new Error("Model returned invalid milestone generation format.");
+      }
+      return NextResponse.json(parsed);
+    }
+
+    if (step === "milestone_plan_generate") {
+      const prompt = `Return ONLY valid JSON with this shape:
+{
+  "duration_explanation": "First line must explain why this duration was chosen. You may add more lines afterwards.",
+  "milestones": [
+    {
+      "title": "...",
+      "description": "...",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "tasks": [
+        { "title": "...", "task_type": "Generic Task" }
+      ]
+    }
+  ]
+}
+
+Campaign context:
+- Company: ${company}
+- Goal / Service: ${campaign}
+- Website: ${website}
+- Description: ${description}
+
+Start date for the campaign plan:
+- start_date: ${today}
+
+Selected marketing plan checkpoints (drives milestone breakdown):
+${Array.isArray(selectedPlanSteps) ? selectedPlanSteps.map((s, i) => `- ${i + 1}. ${s.title}: ${s.explanation || ""}`).join("\n") : "(none provided)"}
+
+Rules:
+- AI MUST choose an appropriate campaign duration based on:
+  - campaign goal/service
+  - selected marketing plan checkpoints
+  - complexity of work implied by those checkpoints
+  - company/campaign description context
+- Choose duration from this set if it fits, otherwise choose the closest sensible option:
+  - 1 week, 2 weeks, 1 month, 2 months, 3 months, 6 months
+- First line of duration_explanation must clearly explain why that duration was chosen.
+- Use the chosen duration to set the overall plan end_date (end_date = start_date + chosen duration).
+- Choose the RIGHT number of milestones based on the campaign duration and complexity. Short campaigns (1-2 weeks) might need 2-3 milestones. Medium campaigns (1-3 months) might need 3-5. Long campaigns (3-6 months) might need 5-8. Do NOT always default to 3.
+- Milestones must be sequential and non-overlapping within the campaign timeline.
+- Each milestone must include 1-2 paragraphs description (no bullet-only content).
+- Each milestone must include 3-8 tasks depending on the milestone scope.
+- Each task_type must be one of: Generic Task, Company Research, LinkedIn Post, Social Media Post, Blog Post, Marketing Video, Cold Email Campaign, Email Newsletter, Campaign Analysis, Sales Coordination.
+- Be specific and actionable for THIS campaign and these checkpoints.`;
+
+      const raw = await callOpenAI({
+        apiKey,
+        prompt,
+        schema: {
+          name: "milestone_plan_generate_payload",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              milestones: {
+                type: "array",
+                minItems: 1,
+                maxItems: 12,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: "string" },
+                    start_date: { type: "string" },
+                    end_date: { type: "string" },
+                    tasks: {
+                      type: "array",
+                      minItems: 1,
+                      maxItems: 10,
+                      items: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          title: { type: "string" },
+                          task_type: { type: "string" },
+                        },
+                        required: ["title", "task_type"],
+                      },
+                    },
+                  },
+                  required: ["title", "description", "start_date", "end_date", "tasks"],
+                },
+              },
+              duration_explanation: { type: "string" },
+            },
+            required: ["duration_explanation", "milestones"],
+          },
+        },
+      });
+
+      const parsed = extractJson(raw);
+      if (!parsed?.milestones || !Array.isArray(parsed.milestones) || typeof parsed?.duration_explanation !== "string") {
+        throw new Error("Model returned invalid milestone plan format.");
+      }
+      return NextResponse.json(parsed);
+    }
+
+    if (step === "milestone_plan_refine") {
+      const currentPlan = body?.currentPlan || [];
+      const userMessage = String(body?.userMessage || "").trim();
+      const chatHistory = Array.isArray(body?.chatHistory) ? body.chatHistory : [];
+      const selectedPlanSteps = Array.isArray(body?.selectedPlanSteps) ? body.selectedPlanSteps : [];
+
+      if (!userMessage) {
+        return NextResponse.json({ error: "Please enter your change request." }, { status: 400 });
+      }
+
+      const currentPlanJson = JSON.stringify(currentPlan, null, 2);
+
+      const chatTranscript = chatHistory
+        .filter((m) => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
+        .slice(-30)
+        .map((m) => `${m.role.toUpperCase()}: ${m.content}`)
+        .join("\n");
+
+      const selectedPlanContext = selectedPlanSteps.length
+        ? selectedPlanSteps.map((s, i) => `- ${i + 1}. ${s.title}: ${s.explanation || ""}`).join("\n")
+        : "(none)";
+
+      const prompt = `You are refining an existing milestone plan based on the user's change request.
+
+You MUST return ONLY valid JSON with this EXACT shape:
+{
+  "milestones": [
+    {
+      "title": "...",
+      "description": "1-2 paragraphs describing the milestone",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "tasks": [
+        { "title": "specific actionable task name", "task_type": "Generic Task" }
+      ]
+    }
+  ],
+  "ai_message": "Brief 1-2 sentence explanation of exactly what changed and why."
+}
+
+=== CAMPAIGN CONTEXT ===
+- Company: ${company}
+- Goal / Service: ${campaign}
+- Website: ${website}
+- Description: ${description}
+
+=== SELECTED MARKETING PLAN STEPS ===
+${selectedPlanContext}
+
+=== CURRENT MILESTONE PLAN (FULL JSON) ===
+${currentPlanJson}
+
+=== CONVERSATION HISTORY ===
+${chatTranscript || "(none)"}
+
+=== USER'S CHANGE REQUEST ===
+${userMessage}
+
+=== RULES ===
+- You MUST return the COMPLETE updated milestone plan, not just the changes.
+- Apply the user's requested changes precisely.
+- If user asks to extend the timeline: ADD more milestones or extend end dates. Do NOT keep the same number with same dates.
+- If user asks to change a specific task: find and update that exact task.
+- If user asks to add milestones: add them with appropriate dates and tasks.
+- If user asks to remove milestones: remove them and adjust remaining dates.
+- If user asks to change duration: recalculate ALL milestone dates accordingly.
+- Choose the RIGHT number of milestones (2-12) based on the requested duration and complexity.
+- Milestones must be sequential and non-overlapping.
+- Each milestone must include 3-8 tasks depending on scope.
+- Each task_type must be one of: Generic Task, Company Research, LinkedIn Post, Social Media Post, Blog Post, Marketing Video, Cold Email Campaign, Email Newsletter, Campaign Analysis, Sales Coordination.
+- ai_message: be specific about what you changed (e.g. "Extended timeline from 3 to 6 months, added 3 new milestones for Q2 activities").
+- The milestones array must contain ALL milestones (both changed and unchanged ones).`;
+
+      const raw = await callOpenAI({
+        apiKey,
+        prompt,
+        schema: {
+          name: "milestone_plan_refine_payload",
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              milestones: {
+                type: "array",
+                minItems: 1,
+                maxItems: 12,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    title: { type: "string" },
+                    description: { type: "string" },
+                    start_date: { type: "string" },
+                    end_date: { type: "string" },
+                    tasks: {
+                      type: "array",
+                      minItems: 1,
+                      maxItems: 10,
+                      items: {
+                        type: "object",
+                        additionalProperties: false,
+                        properties: {
+                          title: { type: "string" },
+                          task_type: { type: "string" },
+                        },
+                        required: ["title", "task_type"],
+                      },
+                    },
+                  },
+                  required: ["title", "description", "start_date", "end_date", "tasks"],
+                },
+              },
+              ai_message: { type: "string" },
+            },
+            required: ["milestones", "ai_message"],
+          },
+        },
+      });
+
+      const parsed = extractJson(raw);
+      if (!parsed?.milestones || !Array.isArray(parsed.milestones)) {
+        throw new Error("Model returned invalid milestone plan refinement format.");
+      }
       return NextResponse.json(parsed);
     }
 

@@ -27,6 +27,7 @@ const FILTERS = [
   "Urgent",
   "Overdue",
 ];
+const STATUS_STEPS = ["To Do", "In Progress", "Done"];
 
 function ymd(d) {
   const yyyy = d.getFullYear();
@@ -78,6 +79,42 @@ function createdInLastDays(iso, days) {
   const d = new Date(iso);
   const now = new Date();
   return now.getTime() - d.getTime() <= days * 24 * 60 * 60 * 1000;
+}
+
+function StatusPipeline({ value, onChange, disabled = false, compact = false, onClick }) {
+  const currentIndex = STATUS_STEPS.indexOf(value);
+  const activeIdx = currentIndex >= 0 ? currentIndex : 0;
+  return (
+    <div className={`flex items-center gap-1 ${compact ? "text-[11px]" : "text-xs"}`} onClick={onClick}>
+      {STATUS_STEPS.map((step, idx) => {
+        const isCurrent = idx === activeIdx;
+        const isCompleted = activeIdx === STATUS_STEPS.length - 1 ? true : idx < activeIdx;
+        const classes = isCurrent
+          ? "bg-blue-600 text-white border-blue-600"
+          : isCompleted
+          ? "bg-emerald-600 text-white border-emerald-600"
+          : "bg-slate-100 text-slate-500 border-slate-300";
+        return (
+          <div key={step} className="flex items-center gap-1">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(step);
+              }}
+              className={`rounded-full border px-2.5 py-1 font-semibold transition ${classes} ${
+                disabled ? "cursor-not-allowed opacity-60" : "hover:opacity-90"
+              }`}
+            >
+              {step}
+            </button>
+            {idx < STATUS_STEPS.length - 1 ? <span className="text-slate-400">→</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function MyTasksPage() {
@@ -242,7 +279,7 @@ export default function MyTasksPage() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -266,7 +303,7 @@ export default function MyTasksPage() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete task.");
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
@@ -471,7 +508,7 @@ export default function MyTasksPage() {
                               setError("This task is missing an id (cannot open).");
                               return;
                             }
-                            router.push(`/tasks/${t.id}`);
+                            router.push(`/tasks/${encodeURIComponent(t.id)}`);
                           }}
                         >
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -484,8 +521,15 @@ export default function MyTasksPage() {
                             />
                           </td>
                           <td className="px-4 py-3">
-                            <div className="max-w-[360px] truncate font-semibold text-slate-900" title={t.title || ""}>
-                              {t.title}
+                            <div className="max-w-[360px]">
+                              <div className="truncate font-semibold text-slate-900" title={t.title || ""}>
+                                {t.title}
+                              </div>
+                              {t.milestone_name ? (
+                                <div className="truncate text-xs text-slate-500" title={t.milestone_name}>
+                                  Milestone: {t.milestone_name}
+                                </div>
+                              ) : null}
                             </div>
                           </td>
                           <td className="px-4 py-3">
@@ -539,7 +583,7 @@ export default function MyTasksPage() {
                             <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                               <button
                                 type="button"
-                                onClick={() => router.push(`/tasks/${t.id}`)}
+                                onClick={() => router.push(`/tasks/${encodeURIComponent(t.id)}`)}
                                 className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
                                 title="Edit"
                               >
@@ -581,7 +625,7 @@ export default function MyTasksPage() {
                             setError("This task is missing an id (cannot open).");
                             return;
                           }
-                          router.push(`/tasks/${t.id}`);
+                          router.push(`/tasks/${encodeURIComponent(t.id)}`);
                         }}
                         className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm hover:bg-slate-50"
                       >
@@ -615,6 +659,11 @@ export default function MyTasksPage() {
                           <span className="inline-flex rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
                             {assignee?.name || "Unassigned"}
                           </span>
+                          {t.milestone_name ? (
+                            <span className="inline-flex rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
+                              {t.milestone_name}
+                            </span>
+                          ) : null}
                           {t.due_date ? (
                             <span
                               className={`inline-flex rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs ${
@@ -646,16 +695,12 @@ export default function MyTasksPage() {
                         </div>
 
                         <div className="mt-3">
-                          <select
+                          <StatusPipeline
                             value={t.status || "To Do"}
-                            onChange={(e) => updateStatus(t.id, e.target.value)}
-                            className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                            onChange={(next) => updateStatus(t.id, next)}
+                            compact
                             onClick={(e) => e.stopPropagation()}
-                          >
-                            <option>To Do</option>
-                            <option>In Progress</option>
-                            <option>Done</option>
-                          </select>
+                          />
                         </div>
                       </article>
                     );

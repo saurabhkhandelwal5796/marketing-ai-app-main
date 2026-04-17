@@ -37,6 +37,7 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ error: "Unauthorized. Please log in again." }, { status: 401 });
     }
     const allowedKeys = new Set([
+      "name",
       "company",
       "goal",
       "website",
