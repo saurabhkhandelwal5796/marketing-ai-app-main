@@ -117,6 +117,7 @@ export async function PATCH(req) {
       is_admin: !!data.is_admin,
       admin_id: session.admin_id || null,
       admin_name: session.admin_name || null,
+      company: data.company,
     });
 
     return NextResponse.json({

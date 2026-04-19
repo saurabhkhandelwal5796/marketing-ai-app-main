@@ -1,8 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+
+function SortableHeader({ label, sortKey, sortBy, sortOrder, onSort }) {
+  const isActive = sortBy === sortKey;
+  const isAsc = isActive && sortOrder === "asc";
+  const isDesc = isActive && sortOrder === "desc";
+
+  return (
+    <th
+      className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500"
+      onClick={() => onSort(sortKey)}
+    >
+      <button
+        type="button"
+        className="group inline-flex items-center gap-1.5 transition-colors hover:text-slate-700"
+      >
+        <span>{label}</span>
+        {isAsc ? (
+          <ArrowUp size={14} className="text-indigo-600" />
+        ) : isDesc ? (
+          <ArrowDown size={14} className="text-indigo-600" />
+        ) : (
+          <ArrowUpDown size={14} className="text-slate-400 opacity-0 transition-opacity group-hover:opacity-100" />
+        )}
+      </button>
+    </th>
+  );
+}
 
 function previewBody(text) {
   const value = String(text || "").replace(/\s+/g, " ").trim();
@@ -31,7 +58,10 @@ export default function EmailTemplatesPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(10);
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [openActionId, setOpenActionId] = useState(null);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
@@ -44,13 +74,15 @@ export default function EmailTemplatesPage() {
       const params = new URLSearchParams({
         search: overrides.search ?? debouncedSearch,
         page: String(overrides.page ?? page),
-        pageSize: String(pageSize),
+        pageSize: String(overrides.pageSize ?? pageSize),
+        sortBy: overrides.sortBy ?? sortBy,
+        sortOrder: overrides.sortOrder ?? sortOrder,
       });
       const res = await fetch(`/api/email-templates?${params.toString()}`);
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load templates.");
       setTemplates(Array.isArray(data.templates) ? data.templates : []);
-      setPagination(data.pagination || { page: 1, pageSize, total: 0 });
+      setPagination(data.pagination || { page: 1, pageSize: overrides.pageSize ?? pageSize, total: 0 });
     } catch (e) {
       setError(e?.message || "Failed to load templates.");
     } finally {
@@ -67,12 +99,12 @@ export default function EmailTemplatesPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, pageSize, sortBy, sortOrder]);
 
   useEffect(() => {
-    load({ page, search: debouncedSearch });
+    load({ page, search: debouncedSearch, pageSize, sortBy, sortOrder });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, debouncedSearch]);
+  }, [page, debouncedSearch, pageSize, sortBy, sortOrder]);
 
   const saveTemplate = async (e) => {
     e.preventDefault();
@@ -175,20 +207,34 @@ export default function EmailTemplatesPage() {
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / pageSize));
+  const totalPages = useMemo(
+    () => Math.max(1, Math.ceil((pagination.total || 0) / (pagination.pageSize || pageSize))),
+    [pagination.total, pagination.pageSize, pageSize]
+  );
+
+  const onSort = (key) => {
+    setOpenActionId(null);
+    if (sortBy === key) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(key);
+    setSortOrder("asc");
+  };
 
   return (
-    <main className="space-y-6 p-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
+    <main className="min-h-full bg-slate-50 p-6">
+      <section className="rounded-xl bg-white p-6 shadow-md">
+        <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">Email Templates</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Email Templates</h1>
             <p className="mt-1 text-sm text-slate-500">Manage reusable email drafts for campaigns.</p>
           </div>
           <button
             onClick={openCreateForm}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:scale-105 hover:bg-slate-800 hover:shadow-md"
           >
+            <Plus size={16} />
             New Template
           </button>
         </div>
@@ -201,75 +247,106 @@ export default function EmailTemplatesPage() {
             {success}
           </div>
         ) : null}
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">All Templates</h2>
-          <div className="flex items-center gap-2">
+        <div className="mt-6">
+          <div className="flex items-center justify-end">
+            <div className="relative w-full max-w-sm">
+              <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, subject, or body"
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                placeholder="Search templates..."
+                className="w-full rounded-full border border-slate-200 py-2.5 pl-11 pr-4 text-sm text-slate-700 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-100"
             />
+            </div>
           </div>
-        </div>
 
         {loading ? <div className="mt-4 text-sm text-slate-500">Loading...</div> : null}
 
         {!loading ? (
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-100">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Template Name</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Subject</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Email Body</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Created At</th>
-                  <th className="px-3 py-2 text-right font-semibold text-slate-700">Actions</th>
+                    <SortableHeader label="Template Name" sortKey="name" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} />
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Subject</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Email Body</th>
+                    <SortableHeader label="Created At" sortKey="created_at" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} />
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="bg-white">
                 {templates.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 font-semibold text-blue-700">
-                      <button onClick={() => router.push(`/email-templates/${item.id}`)} className="hover:underline">
+                    <tr
+                      key={item.id}
+                      className="cursor-pointer border-t border-slate-100 transition-all duration-200 hover:bg-slate-50 hover:shadow-[inset_0_1px_0_rgba(15,23,42,0.02)]"
+                    >
+                      <td className="px-4 py-4 text-left text-base font-semibold text-indigo-700">
+                        <button
+                          onClick={() => router.push(`/email-templates/${item.id}`)}
+                          className="text-left transition-all duration-200 hover:underline"
+                        >
                         {item.name}
                       </button>
                     </td>
-                    <td className="px-3 py-2 text-slate-700">{item.subject || "-"}</td>
-                    <td className="px-3 py-2 text-slate-700">{previewBody(item.body)}</td>
-                    <td className="px-3 py-2 text-slate-700">{new Date(item.created_at).toLocaleString()}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex justify-end gap-2">
+                      <td className="px-4 py-4 text-left text-slate-700">{item.subject || "-"}</td>
+                      <td className="max-w-[320px] truncate px-4 py-4 text-left text-slate-600">{previewBody(item.body)}</td>
+                      <td className="px-4 py-4 text-left text-xs font-medium text-slate-500">
+                        {new Date(item.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="relative inline-block">
                         <button
-                          onClick={() => router.push(`/email-templates/${item.id}`)}
-                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            type="button"
+                            onClick={() => setOpenActionId((prev) => (prev === item.id ? null : item.id))}
+                            className="inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 transition-all duration-200 hover:bg-slate-50"
                         >
-                          View
+                            Actions
+                            <ChevronDown size={14} />
                         </button>
-                        <button
-                          onClick={() => openEditForm(item)}
-                          className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                          title="Edit template"
-                        >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={() => onDelete(item)}
-                          className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                          title="Delete template"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                          {openActionId === item.id ? (
+                            <div className="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenActionId(null);
+                                  router.push(`/email-templates/${item.id}`);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50"
+                              >
+                                <Eye size={14} />
+                                View
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenActionId(null);
+                                  openEditForm(item);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50"
+                              >
+                                <Pencil size={14} />
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setOpenActionId(null);
+                                  onDelete(item);
+                                }}
+                                className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-red-600 transition-colors hover:bg-red-50"
+                              >
+                                <Trash2 size={14} />
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
                     </td>
                   </tr>
                 ))}
                 {templates.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                    <td colSpan={5} className="px-4 py-8 text-center text-slate-500">
                       No templates found.
                     </td>
                   </tr>
@@ -279,26 +356,43 @@ export default function EmailTemplatesPage() {
           </div>
         ) : null}
 
-        <div className="mt-4 flex items-center justify-between">
-          <p className="text-sm text-slate-600">
+          <div className="mt-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <label className="text-sm text-slate-500">Rows per page</label>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPage(1);
+                  setPageSize(Number(e.target.value));
+                }}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-700 outline-none transition-all duration-200 focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+            <p className="text-sm text-slate-600">
             Showing page {pagination.page} of {totalPages} ({pagination.total} templates)
           </p>
           <div className="flex gap-2">
             <button
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm transition-all duration-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Previous
             </button>
             <button
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm transition-all duration-200 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Next
             </button>
           </div>
+        </div>
         </div>
       </section>
 

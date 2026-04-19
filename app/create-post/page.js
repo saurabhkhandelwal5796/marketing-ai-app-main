@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BriefcaseBusiness, Camera, ChevronDown, ChevronUp, FileText, Mail, MessageCircle, Megaphone, Send, Sparkles } from "lucide-react";
+import { BriefcaseBusiness, Camera, ChevronDown, ChevronUp, FileText, Mail, MessageCircle, Megaphone, Send, Sparkles, Bold, Italic, Link, Smile, Pencil, Copy } from "lucide-react";
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -25,8 +25,6 @@ export default function CreatePostPage() {
   const [input, setInput] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState([]);
-  const [hasSubmittedInput, setHasSubmittedInput] = useState(false);
-  const [hasSubmittedPlatforms, setHasSubmittedPlatforms] = useState(false);
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
   const [generatingContent, setGeneratingContent] = useState(false);
   const [activeType, setActiveType] = useState("");
@@ -107,16 +105,11 @@ export default function CreatePostPage() {
     };
   }, []);
 
-  const generateSuggestions = async () => {
+  const generateStrategy = async () => {
     if (!input.trim()) return;
     setGeneratingSuggestions(true);
     setMessage("");
-    setHasSubmittedInput(false);
-    setHasSubmittedPlatforms(false);
-    setSuggestions([]);
-    setSelectedTypes([]);
-    setContentByType({});
-    setActiveType("");
+    
     try {
       const res = await fetch("/api/create-post/suggestions", {
         method: "POST",
@@ -125,44 +118,105 @@ export default function CreatePostPage() {
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate suggestions.");
-      setSuggestions(data.suggestions || []);
-      setSelectedTypes(data.preselected || []);
-      setHasSubmittedInput(true);
+      
+      const suggestedList = data.suggestions || [];
+      const preselected = data.preselected || [];
+      setSuggestions(suggestedList);
+      
+      const typesToGenerate = preselected;
+      setSelectedTypes(typesToGenerate);
+      
+      if (typesToGenerate.length > 0) {
+        setGeneratingContent(true);
+        const res2 = await fetch("/api/create-post/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input, selectedTypes: typesToGenerate }),
+        });
+        const data2 = await res2.json();
+        if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to generate content.");
+
+        const next = { ...contentByType };
+        (data2.contents || []).forEach((item) => {
+          const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
+          next[item.typeId] = {
+            typeLabel: item.typeLabel,
+            content: `${item.main || ""}${hashtagsText}`.trim(),
+            subject: item.subject || "",
+            imageUrl: contentByType[item.typeId]?.imageUrl || "",
+          };
+        });
+        setContentByType(next);
+        if (!typesToGenerate.includes(activeType)) {
+           setActiveType(typesToGenerate[0] || "");
+        }
+        setImagePrompt(input.trim());
+      }
     } catch (e) {
-      setMessage(e?.message || "Failed to generate suggestions.");
+      setMessage(e?.message || "Failed to generate strategy.");
     } finally {
       setGeneratingSuggestions(false);
+      setGeneratingContent(false);
     }
   };
 
-  const submitPlatforms = async () => {
-    if (selectedTypes.length === 0) return;
+  const regenerateActiveContent = async () => {
+    if (!input.trim() || !activeType) return;
     setGeneratingContent(true);
     setMessage("");
     try {
-      const res = await fetch("/api/create-post/generate", {
+      const res2 = await fetch("/api/create-post/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, selectedTypes }),
+        body: JSON.stringify({ input, selectedTypes: [activeType] }),
       });
-      const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate content.");
-
-      const next = {};
-      (data.contents || []).forEach((item) => {
+      const data2 = await res2.json();
+      if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to regenerate content.");
+      const next = { ...contentByType };
+      (data2.contents || []).forEach((item) => {
         const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
         next[item.typeId] = {
           typeLabel: item.typeLabel,
           content: `${item.main || ""}${hashtagsText}`.trim(),
           subject: item.subject || "",
-          imageUrl: "",
+          imageUrl: contentByType[item.typeId]?.imageUrl || "",
         };
       });
       setContentByType(next);
-      const first = selectedTypes[0] || "";
-      setActiveType(first);
-      setImagePrompt(input.trim());
-      setHasSubmittedPlatforms(true);
+    } catch (e) {
+      setMessage(e?.message || "Failed to regenerate.");
+    } finally {
+      setGeneratingContent(false);
+    }
+  };
+
+  const generateContentForSelectedTypes = async () => {
+    if (!input.trim() || selectedTypes.length === 0) return;
+    setGeneratingContent(true);
+    setMessage("");
+    try {
+      const res2 = await fetch("/api/create-post/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input, selectedTypes }),
+      });
+      const data2 = await res2.json();
+      if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to generate content.");
+
+      const next = { ...contentByType };
+      (data2.contents || []).forEach((item) => {
+        const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
+        next[item.typeId] = {
+          typeLabel: item.typeLabel,
+          content: `${item.main || ""}${hashtagsText}`.trim(),
+          subject: item.subject || "",
+          imageUrl: contentByType[item.typeId]?.imageUrl || "",
+        };
+      });
+      setContentByType(next);
+      if (!selectedTypes.includes(activeType)) {
+         setActiveType(selectedTypes[0] || "");
+      }
     } catch (e) {
       setMessage(e?.message || "Failed to generate content.");
     } finally {
@@ -229,13 +283,11 @@ export default function CreatePostPage() {
       removeManualRecipient(emailToRemove);
       return;
     }
-
     const matchingUser = users.find((u) => normalizeEmail(u.email) === emailToRemove);
     if (matchingUser) {
       updateSelectedUsers(matchingUser.id, false);
       return;
     }
-
     syncDrafts(allRecipients.filter((email) => email !== emailToRemove), baseEmailSubject, baseEmailBody);
   };
 
@@ -354,322 +406,367 @@ export default function CreatePostPage() {
   };
 
   return (
-    <main className="space-y-5 p-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <h1 className="text-lg font-semibold text-slate-900">Create & Post</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Describe your requirement, get AI platform suggestions, generate content, then post or send.
-        </p>
-        {message ? <p className="mt-3 text-sm text-slate-700">{message}</p> : null}
-      </section>
+    <main className="min-h-full bg-[#F8FAFC] p-6 lg:p-8">
+      {message && (
+        <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 shadow-sm transition-all">
+          {message}
+        </div>
+      )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-900">Input</h2>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          rows={5}
-          placeholder="I want a LinkedIn post for our product launch..."
-          className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm"
-        />
-        <button
-          onClick={generateSuggestions}
-          disabled={generatingSuggestions || !input.trim()}
-          className="mt-3 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {generatingSuggestions ? "Submitting..." : "Submit"}
-        </button>
-      </section>
-
-      {hasSubmittedInput ? (
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-base font-semibold text-slate-900">Platform Suggestions</h2>
-          <p className="mt-1 text-sm text-slate-500">Select one or more suggested platforms, then submit to continue.</p>
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {suggestions.map((item) => {
-              const meta = PLATFORM_META[item.id];
-              const Icon = meta?.Icon;
-              const selected = selectedTypes.includes(item.id);
-              return (
+      <div className="mx-auto flex max-w-[1400px] flex-col gap-6 lg:flex-row">
+        {/* LEFT SIDE (65%) */}
+        <div className="flex w-full flex-col gap-6 lg:w-[65%]">
+           
+           {/* A. Creative Input Card */}
+           <section className="group relative rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
+             <h2 className="text-lg font-semibold text-slate-900">Campaign Goal</h2>
+             <textarea
+               value={input}
+               onChange={(e) => setInput(e.target.value)}
+               rows={4}
+               placeholder="Describe your campaign goal..."
+               className="mt-3 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+             />
+             <p className="mt-2 text-xs text-slate-400">AI Hint: Be specific about your target audience and key messaging.</p>
+             
+             <div className="mt-4 flex flex-col justify-between gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-center">
+                <div className="flex flex-wrap gap-2">
+                   <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Professional</span>
+                   <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Omnichannel</span>
+                </div>
                 <button
-                  key={item.id}
-                  onClick={() => toggleType(item.id)}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    selected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
+                   onClick={generateStrategy}
+                   disabled={generatingSuggestions || generatingContent || !input.trim()}
+                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[0.98] hover:bg-indigo-700 hover:shadow-md disabled:opacity-50 sm:w-auto"
                 >
-                  <div className="flex items-center gap-2">
-                    {Icon ? <Icon size={16} className={meta.color} /> : null}
-                    <p className="text-sm font-semibold text-slate-900">{item.label}</p>
+                   {generatingSuggestions || generatingContent ? <Sparkles size={16} className="animate-pulse" /> : <Sparkles size={16} />}
+                   {Object.keys(contentByType).length > 0 ? "Update Strategy" : "Generate Strategy"}
+                </button>
+             </div>
+           </section>
+
+           {/* B. AI Strategy / Platform Suggestions */}
+           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
+             <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-slate-900">Platform Strategy</h2>
+                {suggestions.length > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200"><Sparkles size={12} /> AI Optimized</span>}
+             </div>
+             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+               {suggestions.length > 0 ? suggestions.map(item => {
+                   const meta = PLATFORM_META[item.id] || { label: item.id, Icon: Sparkles, color: "text-slate-600" };
+                   const Icon = meta.Icon;
+                   const selected = selectedTypes.includes(item.id);
+                   return (
+                     <button
+                       key={item.id}
+                       onClick={() => toggleType(item.id)}
+                       className={`group relative flex flex-col items-start rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                         selected ? "border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600/20" : "border-slate-200 bg-white hover:border-slate-300"
+                       }`}
+                     >
+                       <div className="flex w-full items-start justify-between">
+                         <div className={`rounded-lg p-2 ${selected ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
+                           <Icon size={18} className={selected ? "text-indigo-700" : meta.color} />
+                         </div>
+                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                           92% Match
+                         </span>
+                       </div>
+                       <p className="mt-3 text-sm font-semibold text-slate-900">{item.label}</p>
+                       <p className="mt-1 line-clamp-2 text-xs text-slate-500">{item.hint}</p>
+                     </button>
+                   );
+               }) : (
+                 [1, 2, 3].map(i => (
+                   <div key={i} className="flex flex-col items-start rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-4 opacity-60">
+                     <div className="h-8 w-8 rounded-lg bg-slate-200"></div>
+                     <div className="mt-3 h-4 w-20 rounded bg-slate-200"></div>
+                     <div className="mt-1 h-3 w-full rounded bg-slate-200"></div>
+                   </div>
+                 ))
+               )}
+             </div>
+             {suggestions.length > 0 && (
+               <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
+                 <button
+                   onClick={generateContentForSelectedTypes}
+                   disabled={generatingContent || selectedTypes.length === 0}
+                   className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-50"
+                 >
+                   {generatingContent ? "Generating..." : "Confirm Platforms & Generate"}
+                 </button>
+               </div>
+             )}
+           </section>
+
+           {/* C. Content Editor */}
+           <section className={`rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 ${Object.keys(contentByType).length > 0 ? "opacity-100 hover:shadow-md" : "pointer-events-none opacity-50"}`}>
+             <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+               <div className="flex items-center gap-3">
+                 <h2 className="text-lg font-semibold text-slate-900">Generated Content</h2>
+                 {activeType && contentByType[activeType] && (
+                   <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200">
+                      <Sparkles size={12} /> High engagement potential
+                   </span>
+                 )}
+               </div>
+               {activeType && contentByType[activeType] && (
+                 <button
+                   onClick={() => {
+                     const isEmail = activeType === "email_campaign" || activeType === "newsletter";
+                     const subject = contentByType[activeType]?.subject;
+                     const body = contentByType[activeType]?.content || "";
+                     const textToCopy = isEmail && subject ? `Subject: ${subject}\n\n${body}` : body;
+                     navigator.clipboard.writeText(textToCopy);
+                     setMessage("Content copied to clipboard.");
+                   }}
+                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+                 >
+                   <Copy size={14} className="text-slate-500" />
+                   Copy
+                 </button>
+               )}
+             </div>
+             
+             {/* Tabs */}
+             <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {selectedTypes.length > 0 ? selectedTypes.map(typeId => {
+                  const meta = PLATFORM_META[typeId] || { label: typeId, Icon: FileText, color: "text-slate-600" };
+                  const Icon = meta.Icon;
+                  return (
+                     <button
+                       key={typeId}
+                       onClick={() => setActiveType(typeId)}
+                       className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                         activeType === typeId ? "bg-slate-900 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                       }`}
+                     >
+                       <Icon size={14} className={activeType === typeId ? "text-white" : meta.color} />
+                       {meta.label}
+                     </button>
+                  )
+                }) : (
+                  <div className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400">
+                     No platform selected
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">{item.hint}</p>
-                </button>
-              );
-            })}
-          </div>
-          <button
-            onClick={submitPlatforms}
-            disabled={generatingContent || selectedTypes.length === 0}
-            className="mt-4 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-          >
-            {generatingContent ? "Submitting..." : "Submit Platform Selection"}
-          </button>
-        </section>
-      ) : null}
+                )}
+             </div>
 
-      {hasSubmittedPlatforms ? (
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-semibold text-slate-900">Generated Platform Content</h2>
-        {selectedTypes.length === 0 || !activeType || !contentByType[activeType] ? (
-          <p className="mt-3 text-sm text-slate-500">Select suggestions and click "Create Content" to continue.</p>
-        ) : (
-          <>
-            <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-              {selectedTypes.map((typeId) => {
-                const meta = PLATFORM_META[typeId];
-                const Icon = meta?.Icon;
-                return (
-                <button
-                  key={typeId}
-                  onClick={() => setActiveType(typeId)}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                    activeType === typeId ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
-                  }`}
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    {Icon ? <Icon size={14} className={meta.color} /> : null}
-                    {contentByType[typeId]?.typeLabel || meta?.label || typeId}
-                  </span>
-                </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 rounded-xl border border-slate-200 p-3">
-              {activeType === "email_campaign" || activeType === "newsletter" ? (
-                <>
-                  <label className="block text-sm font-medium text-slate-700">
-                    Subject
-                    <input
-                      value={contentByType[activeType].subject}
-                      onChange={(e) =>
-                        setContentByType((prev) => ({
-                          ...prev,
-                          [activeType]: { ...prev[activeType], subject: e.target.value },
-                        }))
-                      }
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                    />
-                  </label>
-                  <label className="mt-3 block text-sm font-medium text-slate-700">
-                    Email Body
+             {/* Editor Area */}
+             <div className="mt-4 flex flex-col rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-3 flex gap-3 border-b border-slate-200 px-2 pb-3">
+                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Bold size={16}/></button>
+                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Italic size={16}/></button>
+                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Link size={16}/></button>
+                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Smile size={16}/></button>
+                </div>
+                {activeType && contentByType[activeType] ? (
+                  <>
+                    {(activeType === "email_campaign" || activeType === "newsletter") && (
+                      <input
+                        value={contentByType[activeType].subject}
+                        onChange={(e) => setContentByType(prev => ({...prev, [activeType]: {...prev[activeType], subject: e.target.value}}))}
+                        placeholder="Email Subject"
+                        className="mb-2 w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+                      />
+                    )}
                     <textarea
-                      rows={10}
                       value={contentByType[activeType].content}
-                      onChange={(e) =>
-                        setContentByType((prev) => ({
-                          ...prev,
-                          [activeType]: { ...prev[activeType], content: e.target.value },
-                        }))
-                      }
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      onChange={(e) => setContentByType(prev => ({...prev, [activeType]: {...prev[activeType], content: e.target.value}}))}
+                      rows={14}
+                      className="w-full resize-none bg-transparent px-2 py-1 text-sm text-slate-800 outline-none"
                     />
-                  </label>
-                  <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-2">
-                    {contentByType[activeType].imageUrl ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                        <img
-                          src={contentByType[activeType].imageUrl}
-                          alt={`${contentByType[activeType].typeLabel} generated visual`}
-                          className="h-[420px] w-full rounded-lg object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex h-[420px] items-center justify-center rounded-lg bg-slate-100 text-sm text-slate-500">
-                        No image generated yet.
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        value={imagePrompt}
-                        onChange={(e) => setImagePrompt(e.target.value)}
-                        placeholder="Enter image prompt (e.g. campaign hero visual for this email)"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      />
-                      <button
-                        onClick={generateImageForActiveType}
-                        disabled={generatingImageForType === activeType}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                      >
-                        {generatingImageForType === activeType ? "Generating..." : "Generate Image"}
-                      </button>
-                    </div>
+                  </>
+                ) : (
+                  <div className="flex h-72 items-center justify-center text-sm font-medium text-slate-400">
+                    Content will appear here...
                   </div>
-                </>
-              ) : (
-                <>
-                  <p className="text-sm font-semibold text-slate-900">{contentByType[activeType].typeLabel} Post</p>
-                  <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-2">
-                    {contentByType[activeType].imageUrl ? (
-                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                        <img
-                          src={contentByType[activeType].imageUrl}
-                          alt={`${contentByType[activeType].typeLabel} generated visual`}
-                          className="h-[420px] w-full rounded-lg object-contain"
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex h-[420px] items-center justify-center rounded-lg bg-slate-100 text-sm text-slate-500">
-                        No image generated yet.
-                      </div>
-                    )}
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        value={imagePrompt}
-                        onChange={(e) => setImagePrompt(e.target.value)}
-                        placeholder="Enter image prompt (e.g. modern product launch visual)"
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      />
-                      <button
-                        onClick={generateImageForActiveType}
-                        disabled={generatingImageForType === activeType}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                      >
-                        {generatingImageForType === activeType ? "Generating..." : "Generate Image"}
-                      </button>
-                    </div>
-                  </div>
-                  <textarea
-                    rows={10}
-                    value={contentByType[activeType].content}
-                    onChange={(e) =>
-                      setContentByType((prev) => ({
-                        ...prev,
-                        [activeType]: { ...prev[activeType], content: e.target.value },
-                      }))
-                    }
-                    className="mt-2 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                </>
-              )}
-              <div className="mt-3 flex flex-wrap gap-2">
+                )}
+             </div>
+           </section>
+        </div>
+
+        {/* RIGHT SIDE (35%) */}
+        <div className="flex w-full flex-col gap-6 lg:w-[35%]">
+           {/* E. Predictive Performance Card */}
+           <section className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-white p-5 shadow-sm">
+             <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 shadow-inner">
+                   <Sparkles size={20} />
+                </div>
+                <div>
+                   <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Predicted Performance</p>
+                   <p className="text-sm font-bold text-indigo-700">Top 5% Engagement Rate</p>
+                </div>
+             </div>
+           </section>
+
+           {/* D. AI Image Generator Card */}
+           <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 ${activeType ? "opacity-100" : "pointer-events-none opacity-50"}`}>
+             <h2 className="text-base font-semibold text-slate-900">Visual Assets</h2>
+             <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
+                {activeType && contentByType[activeType]?.imageUrl ? (
+                   <img src={contentByType[activeType].imageUrl} alt="Generated asset" className="h-[240px] w-full object-cover" />
+                ) : (
+                   <div className="flex h-[240px] flex-col items-center justify-center gap-2 text-slate-400">
+                      <Camera size={32} className="opacity-40" />
+                      <span className="text-xs font-medium">No visual generated</span>
+                   </div>
+                )}
+             </div>
+             <div className="mt-4 space-y-3">
+                <div className="relative">
+                   <input
+                     value={imagePrompt}
+                     onChange={(e) => setImagePrompt(e.target.value)}
+                     placeholder="Describe the image..."
+                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 pr-8 text-sm outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                   />
+                   <Pencil size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                   <span onClick={() => setImagePrompt("Minimalistic, clean layout, corporate")} className="shrink-0 cursor-pointer rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50">Minimal</span>
+                   <span onClick={() => setImagePrompt("Professional corporate setting, high quality")} className="shrink-0 cursor-pointer rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50">Corporate</span>
+                   <span onClick={() => setImagePrompt("Futuristic tech background, glowing lights")} className="shrink-0 cursor-pointer rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50">Futuristic</span>
+                </div>
                 <button
-                  onClick={submitPlatforms}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                   onClick={generateImageForActiveType}
+                   disabled={generatingImageForType === activeType || !activeType}
+                   className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:scale-[0.98] disabled:opacity-50"
                 >
-                  <Sparkles size={14} className="mr-1 inline" />
-                  Regenerate
+                   {generatingImageForType === activeType ? "Generating Image..." : "Generate Image"}
                 </button>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(contentByType[activeType].content || "");
-                    setMessage("Content copied.");
-                  }}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+             </div>
+           </section>
+
+           {/* F. Quick Actions Panel */}
+           <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 ${activeType && contentByType[activeType] ? "opacity-100" : "pointer-events-none opacity-50"}`}>
+             <h2 className="mb-4 text-base font-semibold text-slate-900">Quick Actions</h2>
+             <div className="flex flex-col gap-2.5">
+                <button 
+                   onClick={regenerateActiveContent}
+                   disabled={generatingContent}
+                   className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
                 >
-                  Copy
+                   <Sparkles size={16} className="text-indigo-600" />
+                   {generatingContent ? "Regenerating..." : "Regenerate Text"}
                 </button>
-                {activeType === "linkedin_post" ? (
-                  <button
-                    onClick={() => submitPostAction("post_linkedin")}
-                    disabled={submittingPost}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                  >
-                    <Send size={14} className="mr-1 inline" />
-                    Post LinkedIn
-                  </button>
-                ) : null}
-                {activeType === "linkedin_post" ? (
-                  <button
-                    onClick={() => {
-                      window.location.href = "/api/linkedin/connect";
-                    }}
-                    className="rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700"
-                  >
-                    {checkingLinkedinStatus ? "Checking..." : linkedinConnected ? "Reconnect LinkedIn" : "Connect LinkedIn"}
-                  </button>
-                ) : null}
-                {activeType === "instagram_post" ? (
-                  <button
-                    onClick={() => submitPostAction("post_instagram")}
-                    disabled={submittingPost}
-                    className="rounded-lg bg-pink-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-                  >
-                    <Send size={14} className="mr-1 inline" />
-                    Post Instagram
-                  </button>
-                ) : null}
-                {(activeType === "email_campaign" || activeType === "newsletter") ? (
-                  <button
-                    onClick={openEmailPopup}
-                    className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
-                  >
-                    <Mail size={14} className="mr-1 inline" />
-                    Open Email Popup
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          </>
-        )}
-      </section>
-      ) : null}
+                
+                <div className="my-1 border-t border-slate-100"></div>
+
+                {activeType === "linkedin_post" && (
+                   <button
+                      onClick={() => submitPostAction("post_linkedin")}
+                      disabled={submittingPost}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-blue-700 hover:shadow-md disabled:opacity-50"
+                   >
+                      <Send size={16} />
+                      Schedule LinkedIn Post
+                   </button>
+                )}
+                
+                {activeType === "instagram_post" && (
+                   <button
+                      onClick={() => submitPostAction("post_instagram")}
+                      disabled={submittingPost}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-pink-700 hover:shadow-md disabled:opacity-50"
+                   >
+                      <Send size={16} />
+                      Schedule Instagram Post
+                   </button>
+                )}
+
+                {(activeType === "email_campaign" || activeType === "newsletter") && (
+                   <button
+                      onClick={openEmailPopup}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-800 hover:shadow-md"
+                   >
+                      <Mail size={16} />
+                      Configure Email Campaign
+                   </button>
+                )}
+
+                {/* Generic publish fallback for other platforms */}
+                {activeType && activeType !== "linkedin_post" && activeType !== "instagram_post" && activeType !== "email_campaign" && activeType !== "newsletter" && (
+                   <button
+                      onClick={() => submitPostAction(`post_${activeType}`)}
+                      disabled={submittingPost}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-800 hover:shadow-md disabled:opacity-50"
+                   >
+                      <Send size={16} />
+                      Publish Content
+                   </button>
+                )}
+
+                {activeType === "linkedin_post" && !linkedinConnected && (
+                   <button
+                      onClick={() => window.location.href = "/api/linkedin/connect"}
+                      className="mt-2 text-center text-xs font-medium text-slate-500 underline decoration-slate-300 underline-offset-4 transition-colors hover:text-indigo-600"
+                   >
+                      Connect LinkedIn Account
+                   </button>
+                )}
+             </div>
+           </section>
+        </div>
+      </div>
 
       {showEmailPopup ? (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 p-4">
-          <div className="mx-auto flex h-[calc(100vh-2rem)] w-full max-w-6xl flex-col space-y-3 rounded-2xl bg-white p-5 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">Email Popup</h3>
-              <button onClick={() => setShowEmailPopup(false)} className="text-sm text-slate-500">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="flex h-full max-h-[90vh] w-full max-w-6xl flex-col space-y-3 rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-semibold text-slate-900">Email Campaign Setup</h3>
+              <button onClick={() => setShowEmailPopup(false)} className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-800">
                 Close
               </button>
             </div>
 
-            <div className="rounded-xl border border-slate-200 p-3">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   onClick={async () => {
                     await preparePostData();
                     setShowUsersPanel((prev) => !prev);
                   }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50"
                 >
-                  {showUsersPanel ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                  Users
+                  {showUsersPanel ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  Select Users
                 </button>
-                <input
-                  value={recipientInput}
-                  onChange={(e) => setRecipientInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addRecipientEmail();
-                    }
-                  }}
-                  placeholder="Add email manually"
-                  className="w-full max-w-sm rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={addRecipientEmail}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700"
-                >
-                  Add
-                </button>
+                <div className="relative w-full max-w-md">
+                   <input
+                     value={recipientInput}
+                     onChange={(e) => setRecipientInput(e.target.value)}
+                     onKeyDown={(e) => {
+                       if (e.key === "Enter") {
+                         e.preventDefault();
+                         addRecipientEmail();
+                       }
+                     }}
+                     placeholder="Add email manually..."
+                     className="w-full rounded-lg border border-slate-300 px-4 py-2 pr-16 text-sm outline-none transition-all focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                   />
+                   <button
+                     onClick={addRecipientEmail}
+                     className="absolute right-1 top-1 rounded-md bg-slate-900 px-3 py-1 text-xs font-semibold text-white transition-all hover:bg-slate-800"
+                   >
+                     Add
+                   </button>
+                </div>
               </div>
               {recipientEmails.length ? (
-                <div className="mt-3 flex flex-wrap gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   {recipientEmails.map((email) => (
                     <span
                       key={email}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm"
                     >
                       {email}
                       <button
                         onClick={() => removeManualRecipient(email)}
-                        className="font-semibold text-slate-500 hover:text-red-600"
-                        title="Remove recipient"
+                        className="font-bold text-slate-400 transition-colors hover:text-red-500"
                       >
-                        x
+                        ×
                       </button>
                     </span>
                   ))}
@@ -677,25 +774,26 @@ export default function CreatePostPage() {
               ) : null}
 
               {showUsersPanel ? (
-                <div className="mt-3 space-y-2">
+                <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                   <input
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
-                    placeholder="Search users by name or email"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    placeholder="Search users by name or email..."
+                    className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-sm outline-none transition-all focus:border-indigo-400 focus:bg-white"
                   />
-                  <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 p-2">
+                  <div className="max-h-56 overflow-y-auto pr-2">
                     <div className="space-y-2">
                       {filteredUsers.map((u) => (
-                        <label key={u.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                        <label key={u.id} className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 transition-colors hover:bg-slate-50">
                           <div>
-                            <p className="font-medium text-slate-800">{u.name}</p>
+                            <p className="text-sm font-semibold text-slate-800">{u.name}</p>
                             <p className="text-xs text-slate-500">{u.email}</p>
                           </div>
                           <input
                             type="checkbox"
                             checked={selectedUserRecipients.includes(u.id)}
                             onChange={(e) => updateSelectedUsers(u.id, e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                           />
                         </label>
                       ))}
@@ -705,99 +803,118 @@ export default function CreatePostPage() {
               ) : null}
             </div>
 
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-12">
-              <div className="rounded-xl border border-slate-200 p-3 lg:col-span-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Selected Recipients</p>
-                <div className="mt-2 max-h-[42vh] space-y-1 overflow-y-auto pr-1">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-12">
+              <div className="flex flex-col rounded-xl border border-slate-200 bg-slate-50 p-4 lg:col-span-4">
+                <p className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Selected Recipients</p>
+                <div className="flex-1 overflow-y-auto pr-1 space-y-1.5">
                   {allRecipients.length ? (
                     allRecipients.map((email) => (
                       <div
                         key={email}
-                        className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm ${
-                          activeRecipient === email ? "bg-blue-50 text-blue-700" : "hover:bg-slate-50"
+                        className={`group flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-all ${
+                          activeRecipient === email 
+                          ? "border-indigo-200 bg-indigo-50 text-indigo-800 shadow-sm" 
+                          : "border-transparent bg-white text-slate-600 hover:border-slate-200 hover:shadow-sm"
                         }`}
                       >
                         <button
                           onClick={() => setActiveRecipient(email)}
-                          className="min-w-0 flex-1 text-left"
+                          className="min-w-0 flex-1 text-left font-medium"
                         >
                           <span className="block truncate">{email}</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => removeRecipient(email)}
-                          className="rounded-full px-1.5 py-0.5 text-xs font-semibold text-slate-500 hover:bg-white hover:text-red-600"
-                          title="Remove recipient"
-                          aria-label={`Remove ${email}`}
+                          className="ml-2 rounded p-1 text-slate-400 opacity-0 transition-all hover:bg-red-50 hover:text-red-600 group-hover:opacity-100"
                         >
-                          x
+                          ×
                         </button>
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-slate-500">No recipients selected.</p>
+                    <div className="flex h-32 items-center justify-center rounded-lg border border-dashed border-slate-300 text-sm text-slate-400">
+                      No recipients selected
+                    </div>
                   )}
                 </div>
               </div>
 
-              <div className="overflow-y-auto rounded-xl border border-slate-200 p-3 lg:col-span-8">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  {activeRecipient ? `Editing email for ${activeRecipient}` : "Select a recipient to edit email"}
-                </p>
-                <label className="block text-sm font-medium text-slate-700">
-                  Subject
-                  <input
-                    disabled={!activeRecipient}
-                    value={activeRecipient ? recipientDrafts[activeRecipient]?.subject ?? baseEmailSubject : ""}
-                    onChange={(e) => updateRecipientDraft(activeRecipient, { subject: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
-                  />
-                </label>
-                <label className="mt-3 block text-sm font-medium text-slate-700">
-                  Email Body
-                  <textarea
-                    rows={10}
-                    disabled={!activeRecipient}
-                    value={activeRecipient ? recipientDrafts[activeRecipient]?.body ?? baseEmailBody : ""}
-                    onChange={(e) => updateRecipientDraft(activeRecipient, { body: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
-                  />
-                </label>
-                <div className="mt-3 rounded-lg border border-slate-200 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">AI Edit</p>
-                  <div className="mt-2 flex gap-2">
+              <div className="flex flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white p-5 lg:col-span-8 shadow-sm">
+                <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
+                   <p className="text-sm font-semibold text-slate-800">
+                     {activeRecipient ? (
+                        <>Editing email for <span className="text-indigo-600">{activeRecipient}</span></>
+                     ) : "Select a recipient to personalize"}
+                   </p>
+                </div>
+                
+                <div className="space-y-4">
+                   <div>
+                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Subject</label>
+                     <input
+                       disabled={!activeRecipient}
+                       value={activeRecipient ? recipientDrafts[activeRecipient]?.subject ?? baseEmailSubject : ""}
+                       onChange={(e) => updateRecipientDraft(activeRecipient, { subject: e.target.value })}
+                       className="w-full rounded-lg border border-slate-300 bg-slate-50 px-4 py-2.5 text-sm outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 disabled:opacity-60"
+                     />
+                   </div>
+                   
+                   <div className="flex-1">
+                     <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Email Body</label>
+                     <textarea
+                       rows={12}
+                       disabled={!activeRecipient}
+                       value={activeRecipient ? recipientDrafts[activeRecipient]?.body ?? baseEmailBody : ""}
+                       onChange={(e) => updateRecipientDraft(activeRecipient, { body: e.target.value })}
+                       className="w-full resize-none rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 disabled:opacity-60"
+                     />
+                   </div>
+                </div>
+
+                <div className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                     <Sparkles size={16} className="text-indigo-600" />
+                     <p className="text-xs font-bold uppercase tracking-wider text-indigo-900">AI Personalization</p>
+                  </div>
+                  <div className="flex gap-3">
                     <input
                       value={aiPromptForRecipient}
                       onChange={(e) => setAiPromptForRecipient(e.target.value)}
-                      placeholder="e.g. Make it more formal and concise"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      placeholder="e.g., Make it more formal, emphasize Q3 goals..."
+                      className="w-full rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm outline-none transition-all focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
                     />
                     <button
                       onClick={rewriteRecipientEmailWithAI}
                       disabled={!activeRecipient || !aiPromptForRecipient.trim() || aiEditingRecipient}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+                      className="whitespace-nowrap rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 disabled:opacity-50"
                     >
-                      {aiEditingRecipient ? "Applying..." : "AI"}
+                      {aiEditingRecipient ? "Applying..." : "Apply AI Edit"}
                     </button>
                   </div>
                 </div>
-                <button
-                  onClick={saveDraftForRecipient}
-                  disabled={!activeRecipient || savingRecipientDraft}
-                  className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
-                >
-                  {savingRecipientDraft ? "Saving..." : "Save as Draft"}
-                </button>
+
+                <div className="mt-4 flex justify-end">
+                   <button
+                     onClick={saveDraftForRecipient}
+                     disabled={!activeRecipient || savingRecipientDraft}
+                     className="rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-50"
+                   >
+                     {savingRecipientDraft ? "Saving..." : "Save Draft"}
+                   </button>
+                </div>
               </div>
             </div>
 
-            <button
-              onClick={() => submitPostAction("send_all")}
-              disabled={submittingPost || allRecipients.length === 0}
-              className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              Send All
-            </button>
+            <div className="pt-2">
+               <button
+                 onClick={() => submitPostAction("send_all")}
+                 disabled={submittingPost || allRecipients.length === 0}
+                 className="w-full rounded-xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[0.99] hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50"
+               >
+                 {submittingPost ? "Sending Campaign..." : `Send to ${allRecipients.length} Recipient${allRecipients.length !== 1 ? 's' : ''}`}
+               </button>
+            </div>
           </div>
         </div>
       ) : null}

@@ -149,6 +149,8 @@ export default function CampaignListPage() {
 
       const nameA = String(a?.name || "").toLowerCase();
       const nameB = String(b?.name || "").toLowerCase();
+      const createdByA = String(a?.created_by_name || a?.created_by || "").toLowerCase();
+      const createdByB = String(b?.created_by_name || b?.created_by || "").toLowerCase();
       const createdA = getTs(a?.created_at);
       const createdB = getTs(b?.created_at);
       const updatedA = getTs(a?.updated_at);
@@ -163,6 +165,10 @@ export default function CampaignListPage() {
           return nameA.localeCompare(nameB);
         case "name_desc":
           return nameB.localeCompare(nameA);
+        case "created_by_asc":
+          return createdByA.localeCompare(createdByB);
+        case "created_by_desc":
+          return createdByB.localeCompare(createdByA);
         case "last_activity_asc":
           return updatedA - updatedB;
         case "last_activity_desc":
@@ -233,17 +239,17 @@ export default function CampaignListPage() {
   };
 
   return (
-    <main className="bg-gradient-to-br from-[#0B0F1A] to-[#121826] p-6 lg:p-8 min-h-[calc(100vh)] text-slate-200">
+    <main className="space-y-6 px-4 py-8 md:px-8 bg-[#f8fafc] min-h-screen">
       <div className="mx-auto max-w-[1440px] space-y-6 md:space-y-8">
         <div
-          className={`rounded-[28px] border border-white/[0.08] bg-white/[0.02] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.12)] backdrop-blur-2xl transition-all duration-[800ms] ease-out transform-gpu ${
+          className={`rounded-[16px] border border-slate-200 bg-white p-8 shadow-sm transition-all duration-[800ms] ease-out transform-gpu ${
             mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-6"
           }`}
         >
           <div className="flex flex-col items-start justify-between gap-5 md:flex-row md:items-center">
             <div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-sm">Campaign Intelligence</h1>
-              <p className="mt-2 text-sm font-medium text-slate-400">Manage, analyze, and optimize your marketing campaigns in real-time.</p>
+              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">Campaign Intelligence</h1>
+              <p className="mt-2 text-sm font-medium text-slate-500">Manage, analyze, and optimize your marketing campaigns in real-time.</p>
             </div>
 
             <HeaderActions
@@ -268,7 +274,7 @@ export default function CampaignListPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search campaigns..."
-                  className="w-full rounded-[14px] border border-white/10 bg-white/5 pl-11 pr-4 py-3 text-sm text-white placeholder-slate-500 outline-none transition-all duration-300 focus:border-indigo-500/50 focus:bg-white/10 focus:ring-2 focus:ring-indigo-500/20 shadow-inner"
+                  className="w-full rounded-[14px] border border-slate-200 bg-white pl-11 pr-4 py-3 text-sm text-slate-900 placeholder-slate-400 outline-none transition-all duration-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 shadow-sm hover:bg-slate-50"
                 />
               </div>
             </div>
@@ -279,15 +285,15 @@ export default function CampaignListPage() {
                   <button
                     type="button"
                     onClick={() => setFilterOpen((p) => !p)}
-                    className="flex items-center gap-2 rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/10 hover:shadow-lg focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
+                    className="flex items-center gap-2 rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-md focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer shadow-sm"
                   >
-                    <Filter size={16} strokeWidth={2} className="text-slate-400" />
+                    <Filter size={16} strokeWidth={2} className="text-slate-500" />
                     Filter
-                    <ChevronDown size={16} strokeWidth={2} className={`text-slate-400 transition-transform duration-300 ${filterOpen ? "rotate-180" : ""}`} />
+                    <ChevronDown size={16} strokeWidth={2} className={`text-slate-500 transition-transform duration-300 ${filterOpen ? "rotate-180" : ""}`} />
                   </button>
 
                   {filterOpen ? (
-                    <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-[16px] border border-white/10 bg-[#121826]/95 p-2 shadow-[0_8px_30px_rgb(0,0,0,0.5)] backdrop-blur-xl">
+                    <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-[16px] border border-slate-200 bg-white p-2 shadow-[0_8px_30px_rgb(0,0,0,0.12)]">
                       {[
                         { key: "all", label: "All" },
                         { key: "confirmed", label: "Confirmed" },
@@ -305,8 +311,8 @@ export default function CampaignListPage() {
                             }}
                             className={`w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition-colors duration-200 cursor-pointer ${
                               active
-                                ? "bg-indigo-500/20 text-indigo-300 ring-1 ring-indigo-500/30"
-                                : "text-slate-400 hover:bg-white/5 hover:text-white"
+                                ? "bg-indigo-50 text-indigo-700"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                             }`}
                           >
                             {opt.label}
@@ -320,15 +326,17 @@ export default function CampaignListPage() {
                 <select
                   value={sortValue}
                   onChange={(e) => setSortValue(e.target.value)}
-                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-slate-300 outline-none transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/10 focus:border-indigo-500/50 focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-sm"
+                  className="rounded-[14px] border border-slate-200 bg-white px-4 py-3 pr-8 text-sm font-semibold text-slate-700 outline-none transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-50 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 cursor-pointer shadow-sm appearance-none"
                   aria-label="Sort campaigns"
                 >
-                  <option className="bg-[#121826] text-slate-300" value="last_activity_desc">Last Modified (Newest)</option>
-                  <option className="bg-[#121826] text-slate-300" value="last_activity_asc">Last Modified (Oldest)</option>
-                  <option className="bg-[#121826] text-slate-300" value="created_desc">Created (Newest)</option>
-                  <option className="bg-[#121826] text-slate-300" value="created_asc">Created (Oldest)</option>
-                  <option className="bg-[#121826] text-slate-300" value="name_asc">Name (A-Z)</option>
-                  <option className="bg-[#121826] text-slate-300" value="name_desc">Name (Z-A)</option>
+                  <option value="last_activity_desc">Last Modified (Newest)</option>
+                  <option value="last_activity_asc">Last Modified (Oldest)</option>
+                  <option value="created_desc">Created (Newest)</option>
+                  <option value="created_asc">Created (Oldest)</option>
+                  <option value="name_asc">Name (A-Z)</option>
+                  <option value="name_desc">Name (Z-A)</option>
+                  <option value="created_by_asc">Created By (A-Z)</option>
+                  <option value="created_by_desc">Created By (Z-A)</option>
                 </select>
               </div>
             </div>
@@ -348,6 +356,8 @@ export default function CampaignListPage() {
                 onRowClick={(id) => router.push(`/campaigns/${id}`)}
                 onCampaignNameClick={(id) => router.push(`/campaigns/${id}`)}
                 onEmptyCta={handleCreateNew}
+                sortValue={sortValue}
+                onSortChange={setSortValue}
               />
 
               {loadingMore ? (

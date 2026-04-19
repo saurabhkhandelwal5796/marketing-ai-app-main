@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Sparkles, ArrowRight, BarChart3, CheckCircle2, Clock } from "lucide-react";
 import CalendarHeader from "../../components/calendar/CalendarHeader";
 import CalendarGrid from "../../components/calendar/CalendarGrid";
 import MeetingFormModal from "../../components/calendar/MeetingFormModal";
@@ -75,10 +76,15 @@ export default function CalendarPage() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const openCreateModal = () => {
+  const openCreateModal = (date = null) => {
+    const baseDate = date ? new Date(date) : new Date();
+    if (date) {
+      baseDate.setHours(9, 0, 0, 0); // Default to 9 AM if a specific day is clicked
+    }
+    
     setEditingMeeting({
-      start_time: new Date().toISOString(),
-      end_time: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      start_time: baseDate.toISOString(),
+      end_time: new Date(baseDate.getTime() + 60 * 60 * 1000).toISOString(),
       attendees: sessionUser?.id ? [sessionUser.id] : [],
       external_attendees: [],
       meeting_type: "Online",
@@ -156,7 +162,8 @@ export default function CalendarPage() {
         onPrevious={() => setActiveDate((prev) => shiftDateByView(prev, view, -1))}
         onNext={() => setActiveDate((prev) => shiftDateByView(prev, view, 1))}
         onToday={() => setActiveDate(new Date())}
-        onCreateMeeting={openCreateModal}
+        onCreateMeeting={() => openCreateModal()}
+        totalEvents={meetings.length}
       />
 
       {error ? (
@@ -179,7 +186,102 @@ export default function CalendarPage() {
             setSelectedMeeting(meeting);
             setDetailsOpen(true);
           }}
+          onCreateMeeting={(date) => openCreateModal(date)}
         />
+      )}
+
+      {/* BOTTOM INSIGHTS SECTION */}
+      {!loading && (
+        <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+          
+          {/* 1. AI Recommendation Card */}
+          <div className="relative flex flex-col justify-between overflow-hidden rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-white p-5 shadow-sm transition-all hover:shadow-md">
+            <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-indigo-500 opacity-[0.04] blur-2xl"></div>
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
+                  <Sparkles size={16} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900">AI Insight</h3>
+              </div>
+              <p className="text-sm font-medium text-slate-700">
+                Post engagement for <span className="font-bold text-indigo-700">LinkedIn</span> is historically highest on Tuesdays at 10:00 AM.
+              </p>
+            </div>
+            <button className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-indigo-700">
+              Apply Suggestion <ArrowRight size={14} />
+            </button>
+          </div>
+
+          {/* 2. Campaign Mix Card */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:shadow-md">
+            <div className="mb-4 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                <BarChart3 size={16} />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Campaign Mix</h3>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <div className="mb-1.5 flex justify-between text-xs font-semibold">
+                  <span className="text-slate-700">Email</span>
+                  <span className="text-blue-600">65%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-blue-500" style={{ width: '65%' }}></div>
+                </div>
+              </div>
+              <div>
+                <div className="mb-1.5 flex justify-between text-xs font-semibold">
+                  <span className="text-slate-700">Social Media</span>
+                  <span className="text-purple-600">35%</span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div className="h-full rounded-full bg-purple-500" style={{ width: '35%' }}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Upcoming Tasks Card */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:shadow-md">
+            <div className="mb-4 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <CheckCircle2 size={16} />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Upcoming Tasks</h3>
+            </div>
+            
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-800">Finalize Ad Copy</span>
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                    <Clock size={10} /> Today, 2:00 PM
+                  </span>
+                </div>
+                <div className="flex -space-x-2">
+                  <div className="h-6 w-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-700">JD</div>
+                  <div className="h-6 w-6 rounded-full border-2 border-white bg-pink-100 flex items-center justify-center text-[8px] font-bold text-pink-700">AM</div>
+                </div>
+              </div>
+              
+              <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-800">Review Email Draft</span>
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                    <Clock size={10} /> Tomorrow, 10:00 AM
+                  </span>
+                </div>
+                <div className="flex -space-x-2">
+                  <div className="h-6 w-6 rounded-full border-2 border-white bg-emerald-100 flex items-center justify-center text-[8px] font-bold text-emerald-700">SJ</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+        </div>
       )}
 
       {formOpen ? (

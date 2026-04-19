@@ -73,7 +73,7 @@ export default function Sidebar({
                 <Sparkles size={20} className="text-white drop-shadow-md" />
               </div>
               <span className="text-[20px] font-extrabold tracking-wide text-white drop-shadow-sm">
-                Marketing<span className="font-medium text-[#818cf8]">AI</span>
+                Marketing<span className="font-medium text-[#818cf8]">Tool</span>
               </span>
             </div>
           </div>
