@@ -197,7 +197,7 @@ export default function AppShell({ children }) {
         onOpenProfileModal={openProfileModal}
         onLogout={logout}
       />
-      <div className={`max-w-full min-w-0 overflow-x-hidden transition-all ${sidebarWidthClass}`}>
+      <div className={`max-w-full min-w-0 overflow-x-hidden transition-all print:pl-0 ${sidebarWidthClass}`}>
         {(() => {
           if (!sessionUser) return null;
           const isImpersonating = !!sessionUser.admin_id;

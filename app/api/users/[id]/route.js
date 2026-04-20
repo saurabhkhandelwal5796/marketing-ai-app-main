@@ -17,13 +17,13 @@ export async function GET(_req, { params }) {
     const supabase = getSupabaseServerClient();
     let { data, error } = await supabase
       .from("users")
-      .select("id,name,email,role,avatar,is_admin,created_at")
+      .select("id,name,email,role,avatar,is_admin,status,created_at")
       .eq("id", id)
       .maybeSingle();
     if (error && String(error.message || "").includes("status")) {
       const fallback = await supabase
         .from("users")
-        .select("id,name,email,role,avatar,is_admin,created_at")
+        .select("id,name,email,role,avatar,is_admin,status,created_at")
         .eq("id", id)
         .maybeSingle();
       data = fallback.data;
@@ -70,7 +70,7 @@ export async function PATCH(req, { params }) {
       .from("users")
       .update(patch)
       .eq("id", id)
-      .select("id,name,email,role,avatar,is_admin,created_at")
+      .select("id,name,email,role,avatar,is_admin,status,created_at")
       .single();
     if (error && String(error.message || "").includes("status")) {
       delete patch.status;
@@ -78,7 +78,7 @@ export async function PATCH(req, { params }) {
         .from("users")
         .update(patch)
         .eq("id", id)
-        .select("id,name,email,role,avatar,is_admin,created_at")
+        .select("id,name,email,role,avatar,is_admin,status,created_at")
         .single();
       if (fallback.error) throw new Error(fallback.error.message);
       return NextResponse.json({ user: { ...fallback.data, status: body?.status || "Active" } });

@@ -30,8 +30,6 @@ const navItems = [
   { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
-  { href: "/history", label: "History", icon: History },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar({
@@ -60,7 +58,7 @@ export default function Sidebar({
   return (
     <aside
       onMouseEnter={onHoverExpand}
-      className={`fixed left-0 top-0 z-40 h-screen border-r border-[#1B1B2A] bg-gradient-to-b from-[#0B0F1A] to-[#121826] backdrop-blur transition-all duration-300 ease-in-out ${
+      className={`fixed left-0 top-0 z-40 h-screen border-r border-[#1B1B2A] bg-gradient-to-b from-[#0B0F1A] to-[#121826] backdrop-blur transition-all duration-300 ease-in-out print:hidden ${
         collapsed ? "w-[78px]" : "w-64"
       }`}
     >

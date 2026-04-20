@@ -15,6 +15,7 @@ export default function UsersPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [isViewMode, setIsViewMode] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -39,6 +40,7 @@ export default function UsersPage() {
 
   const toggleDropdown = (e, id) => {
     e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
     setOpenDropdownId((prev) => (prev === id ? null : id));
   };
 
@@ -93,12 +95,27 @@ export default function UsersPage() {
 
   const openCreateForm = () => {
     setEditingUser(null);
+    setIsViewMode(false);
     setForm({ name: "", email: "", password: "", role: "User", status: "Active" });
     setShowForm(true);
   };
 
   const openEditForm = (user) => {
     setEditingUser(user);
+    setIsViewMode(false);
+    setForm({
+      name: user.name || "",
+      email: user.email || "",
+      password: "",
+      role: user.is_admin ? "Admin" : "User",
+      status: user.status || "Active",
+    });
+    setShowForm(true);
+  };
+
+  const openViewForm = (user) => {
+    setEditingUser(user);
+    setIsViewMode(true);
     setForm({
       name: user.name || "",
       email: user.email || "",
@@ -351,17 +368,16 @@ export default function UsersPage() {
                             <div className="absolute right-0 top-10 z-[60] w-44 origin-top-right overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg animate-in fade-in slide-in-from-top-2">
                               <div className="flex flex-col py-1 text-left">
                                 <button
+                                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); openViewForm(u); }}
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
+                                >
+                                  <Users size={14} className="text-slate-400" /> View User
+                                </button>
+                                <button
                                   onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); openEditForm(u); }}
                                   className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
                                 >
                                   <Pencil size={14} className="text-slate-400" /> Edit User
-                                </button>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); switchAsUser(u); }}
-                                  disabled={u.is_admin || !isActive}
-                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                >
-                                  <LogIn size={14} className="text-slate-400" /> Login as User
                                 </button>
                                 <div className="my-1 border-t border-slate-100"></div>
                                 <button
@@ -414,7 +430,7 @@ export default function UsersPage() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
           <form onSubmit={onSave} className="w-full max-w-lg space-y-5 rounded-2xl bg-white p-6 shadow-xl animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-              <h3 className="text-lg font-bold text-slate-900">{editingUser ? "Edit User" : "Create User"}</h3>
+              <h3 className="text-lg font-bold text-slate-900">{isViewMode ? "View User" : editingUser ? "Edit User" : "Create User"}</h3>
               <button type="button" onClick={() => setShowForm(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600">
                 Close
               </button>
@@ -427,7 +443,8 @@ export default function UsersPage() {
                   value={form.name}
                   onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
                   required
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  disabled={isViewMode}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">
@@ -437,18 +454,20 @@ export default function UsersPage() {
                   value={form.email}
                   onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
                   required
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  disabled={isViewMode}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
                 />
               </label>
               <label className="block text-sm font-medium text-slate-700">
                 Password {editingUser && <span className="text-xs text-slate-400 font-normal">(Leave blank to keep current)</span>}
                 <input
                   type="password"
-                  value={form.password}
+                  value={isViewMode ? "********" : form.password}
                   onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-                  required={!editingUser}
+                  required={!editingUser && !isViewMode}
                   minLength={8}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                  disabled={isViewMode}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
                 />
               </label>
               <div className="grid grid-cols-2 gap-4">
@@ -457,7 +476,8 @@ export default function UsersPage() {
                   <select
                     value={form.role}
                     onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
-                    className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    disabled={isViewMode}
+                    className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
                   >
                     <option value="User">User</option>
                     <option value="Admin">Admin</option>
@@ -468,7 +488,8 @@ export default function UsersPage() {
                   <select
                     value={form.status}
                     onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
-                    className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    disabled={isViewMode}
+                    className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
                   >
                     <option value="Active">Active</option>
                     <option value="Inactive">Inactive</option>
@@ -481,17 +502,19 @@ export default function UsersPage() {
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                className={`rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 ${isViewMode ? "w-full" : "w-1/2"}`}
               >
-                Cancel
+                {isViewMode ? "Close" : "Cancel"}
               </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
-              >
-                {submitting ? "Saving..." : editingUser ? "Update User" : "Create User"}
-              </button>
+              {!isViewMode && (
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-1/2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {submitting ? "Saving..." : editingUser ? "Update User" : "Create User"}
+                </button>
+              )}
             </div>
           </form>
         </div>

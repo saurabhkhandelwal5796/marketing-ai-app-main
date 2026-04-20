@@ -21,12 +21,15 @@ function inferPreselected(input) {
   return [...new Set(picks)];
 }
 
-function buildDynamicSuggestions(input, preselected) {
+function buildDynamicSuggestions(input, preselected, refresh = false, previousSuggestionIds = []) {
   const value = String(input || "").toLowerCase();
+  const previousSet = new Set(Array.isArray(previousSuggestionIds) ? previousSuggestionIds : []);
   const scored = TYPE_CATALOG.map((item) => {
     const keywordHits = item.keywords.filter((word) => value.includes(word)).length;
-    const preselectedBoost = preselected.includes(item.id) ? 100 : 0;
-    return { ...item, _score: preselectedBoost + keywordHits };
+    const preselectedBoost = preselected.includes(item.id) ? 1.25 : 0;
+    const refreshExplorationBoost = refresh && !previousSet.has(item.id) ? 0.75 : 0;
+    const refreshRepeatPenalty = refresh && previousSet.has(item.id) ? -0.2 : 0;
+    return { ...item, _score: preselectedBoost + keywordHits + refreshExplorationBoost + refreshRepeatPenalty };
   })
     .sort((a, b) => b._score - a._score);
 
@@ -41,10 +44,12 @@ export async function POST(req) {
   try {
     const body = await req.json().catch(() => ({}));
     const input = String(body?.input || "").trim();
+    const refresh = Boolean(body?.refresh);
+    const previousSuggestionIds = Array.isArray(body?.previousSuggestionIds) ? body.previousSuggestionIds : [];
     if (!input) return NextResponse.json({ error: "Input is required." }, { status: 400 });
 
     const preselected = inferPreselected(input);
-    const suggestions = buildDynamicSuggestions(input, preselected).map((item) => ({
+    const suggestions = buildDynamicSuggestions(input, preselected, refresh, previousSuggestionIds).map((item) => ({
       ...item,
       selected: preselected.includes(item.id),
     }));

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BriefcaseBusiness, Camera, ChevronDown, ChevronUp, FileText, Mail, MessageCircle, Megaphone, Send, Sparkles, Bold, Italic, Link, Smile, Pencil, Copy } from "lucide-react";
+import { BriefcaseBusiness, Camera, ChevronDown, ChevronUp, FileText, Mail, MessageCircle, Megaphone, Send, Sparkles, Pencil, Copy } from "lucide-react";
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -20,6 +20,10 @@ const PLATFORM_META = {
   blog_post: { label: "Blog", Icon: FileText, color: "text-emerald-700" },
   whatsapp_message: { label: "WhatsApp", Icon: MessageCircle, color: "text-green-600" },
 };
+
+function LoadingSpinner({ size = "h-4 w-4" }) {
+  return <span className={`inline-block animate-spin rounded-full border-2 border-white/35 border-t-white ${size}`} />;
+}
 
 export default function CreatePostPage() {
   const [input, setInput] = useState("");
@@ -46,6 +50,7 @@ export default function CreatePostPage() {
   const [aiPromptForRecipient, setAiPromptForRecipient] = useState("");
   const [aiEditingRecipient, setAiEditingRecipient] = useState(false);
   const [linkedinConnected, setLinkedinConnected] = useState(false);
+  const [linkedinConnectedAccount, setLinkedinConnectedAccount] = useState("");
   const [checkingLinkedinStatus, setCheckingLinkedinStatus] = useState(false);
 
   const needsRecipients = useMemo(
@@ -92,9 +97,13 @@ export default function CreatePostPage() {
         const data = await res.json();
         if (mounted) {
           setLinkedinConnected(!!data?.connected);
+          setLinkedinConnectedAccount(String(data?.connectedAccount || ""));
         }
       } catch {
-        if (mounted) setLinkedinConnected(false);
+        if (mounted) {
+          setLinkedinConnected(false);
+          setLinkedinConnectedAccount("");
+        }
       } finally {
         if (mounted) setCheckingLinkedinStatus(false);
       }
@@ -107,6 +116,7 @@ export default function CreatePostPage() {
 
   const generateStrategy = async () => {
     if (!input.trim()) return;
+    const isRefresh = suggestions.length > 0;
     setGeneratingSuggestions(true);
     setMessage("");
     
@@ -114,49 +124,28 @@ export default function CreatePostPage() {
       const res = await fetch("/api/create-post/suggestions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input }),
+        body: JSON.stringify({
+          input,
+          refresh: isRefresh,
+          previousSuggestionIds: suggestions.map((item) => item.id),
+        }),
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate suggestions.");
       
       const suggestedList = data.suggestions || [];
-      const preselected = data.preselected || [];
       setSuggestions(suggestedList);
-      
-      const typesToGenerate = preselected;
-      setSelectedTypes(typesToGenerate);
-      
-      if (typesToGenerate.length > 0) {
-        setGeneratingContent(true);
-        const res2 = await fetch("/api/create-post/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input, selectedTypes: typesToGenerate }),
-        });
-        const data2 = await res2.json();
-        if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to generate content.");
-
-        const next = { ...contentByType };
-        (data2.contents || []).forEach((item) => {
-          const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
-          next[item.typeId] = {
-            typeLabel: item.typeLabel,
-            content: `${item.main || ""}${hashtagsText}`.trim(),
-            subject: item.subject || "",
-            imageUrl: contentByType[item.typeId]?.imageUrl || "",
-          };
-        });
-        setContentByType(next);
-        if (!typesToGenerate.includes(activeType)) {
-           setActiveType(typesToGenerate[0] || "");
-        }
-        setImagePrompt(input.trim());
-      }
+      // Strategy generation should only refresh suggestions.
+      // Platform selection and content generation happen after explicit confirmation.
+      setSelectedTypes([]);
+      setActiveType("");
+      setContentByType({});
+      setImagePrompt(input.trim());
+      setMessage(isRefresh ? "Platform strategy updated with fresh suggestions." : "");
     } catch (e) {
       setMessage(e?.message || "Failed to generate strategy.");
     } finally {
       setGeneratingSuggestions(false);
-      setGeneratingContent(false);
     }
   };
 
@@ -405,6 +394,11 @@ export default function CreatePostPage() {
     }
   };
 
+  const handleLinkedinConnect = () => {
+    if (linkedinConnected) return;
+    window.location.href = "/api/linkedin/connect";
+  };
+
   return (
     <main className="min-h-full bg-[#F8FAFC] p-6 lg:p-8">
       {message && (
@@ -439,8 +433,8 @@ export default function CreatePostPage() {
                    disabled={generatingSuggestions || generatingContent || !input.trim()}
                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[0.98] hover:bg-indigo-700 hover:shadow-md disabled:opacity-50 sm:w-auto"
                 >
-                   {generatingSuggestions || generatingContent ? <Sparkles size={16} className="animate-pulse" /> : <Sparkles size={16} />}
-                   {Object.keys(contentByType).length > 0 ? "Update Strategy" : "Generate Strategy"}
+                   {generatingSuggestions || generatingContent ? <LoadingSpinner /> : <Sparkles size={16} />}
+                   {suggestions.length > 0 ? "Update Strategy" : "Generate Strategy"}
                 </button>
              </div>
            </section>
@@ -493,7 +487,8 @@ export default function CreatePostPage() {
                    disabled={generatingContent || selectedTypes.length === 0}
                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-50"
                  >
-                   {generatingContent ? "Generating..." : "Confirm Platforms & Generate"}
+                  {generatingContent ? <LoadingSpinner /> : null}
+                  {generatingContent ? "Generating..." : "Confirm Platforms & Generate"}
                  </button>
                </div>
              )}
@@ -554,12 +549,6 @@ export default function CreatePostPage() {
 
              {/* Editor Area */}
              <div className="mt-4 flex flex-col rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="mb-3 flex gap-3 border-b border-slate-200 px-2 pb-3">
-                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Bold size={16}/></button>
-                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Italic size={16}/></button>
-                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Link size={16}/></button>
-                   <button className="text-slate-400 transition-colors hover:text-slate-700"><Smile size={16}/></button>
-                </div>
                 {activeType && contentByType[activeType] ? (
                   <>
                     {(activeType === "email_campaign" || activeType === "newsletter") && (
@@ -634,7 +623,10 @@ export default function CreatePostPage() {
                    disabled={generatingImageForType === activeType || !activeType}
                    className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:scale-[0.98] disabled:opacity-50"
                 >
-                   {generatingImageForType === activeType ? "Generating Image..." : "Generate Image"}
+                   <span className="inline-flex items-center gap-2">
+                    {activeType && generatingImageForType === activeType ? <LoadingSpinner /> : null}
+                    {activeType && generatingImageForType === activeType ? "Generating Image..." : "Generate Image"}
+                   </span>
                 </button>
              </div>
            </section>
@@ -648,21 +640,44 @@ export default function CreatePostPage() {
                    disabled={generatingContent}
                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
                 >
-                   <Sparkles size={16} className="text-indigo-600" />
+                   {generatingContent ? (
+                     <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600" />
+                   ) : (
+                     <Sparkles size={16} className="text-indigo-600" />
+                   )}
                    {generatingContent ? "Regenerating..." : "Regenerate Text"}
                 </button>
                 
                 <div className="my-1 border-t border-slate-100"></div>
 
                 {activeType === "linkedin_post" && (
-                   <button
-                      onClick={() => submitPostAction("post_linkedin")}
-                      disabled={submittingPost}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-blue-700 hover:shadow-md disabled:opacity-50"
-                   >
-                      <Send size={16} />
-                      Schedule LinkedIn Post
-                   </button>
+                   <>
+                     <button
+                        onClick={() => submitPostAction("post_linkedin")}
+                        disabled={submittingPost || checkingLinkedinStatus || !linkedinConnected}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-blue-700 hover:shadow-md disabled:opacity-50"
+                     >
+                        <Send size={16} />
+                        Post on LinkedIn
+                     </button>
+                     <button
+                        onClick={handleLinkedinConnect}
+                        disabled={checkingLinkedinStatus || linkedinConnected}
+                        className={`flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-semibold shadow-sm transition-all disabled:opacity-70 ${
+                          linkedinConnected
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                     >
+                        <BriefcaseBusiness size={16} />
+                        {linkedinConnected ? "LinkedIn Connected" : "Connect LinkedIn"}
+                     </button>
+                     <p className="text-xs text-slate-500">
+                        {linkedinConnected
+                          ? `Connected account: ${linkedinConnectedAccount || "LinkedIn profile"}`
+                          : "No LinkedIn account connected."}
+                     </p>
+                   </>
                 )}
                 
                 {activeType === "instagram_post" && (
@@ -672,7 +687,7 @@ export default function CreatePostPage() {
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-pink-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-pink-700 hover:shadow-md disabled:opacity-50"
                    >
                       <Send size={16} />
-                      Schedule Instagram Post
+                      Post on Instagram
                    </button>
                 )}
 
@@ -698,14 +713,6 @@ export default function CreatePostPage() {
                    </button>
                 )}
 
-                {activeType === "linkedin_post" && !linkedinConnected && (
-                   <button
-                      onClick={() => window.location.href = "/api/linkedin/connect"}
-                      className="mt-2 text-center text-xs font-medium text-slate-500 underline decoration-slate-300 underline-offset-4 transition-colors hover:text-indigo-600"
-                   >
-                      Connect LinkedIn Account
-                   </button>
-                )}
              </div>
            </section>
         </div>
@@ -889,7 +896,10 @@ export default function CreatePostPage() {
                       disabled={!activeRecipient || !aiPromptForRecipient.trim() || aiEditingRecipient}
                       className="whitespace-nowrap rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 disabled:opacity-50"
                     >
-                      {aiEditingRecipient ? "Applying..." : "Apply AI Edit"}
+                      <span className="inline-flex items-center gap-2">
+                        {aiEditingRecipient ? <LoadingSpinner /> : null}
+                        {aiEditingRecipient ? "Applying..." : "Apply AI Edit"}
+                      </span>
                     </button>
                   </div>
                 </div>

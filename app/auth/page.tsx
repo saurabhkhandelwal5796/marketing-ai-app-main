@@ -352,7 +352,7 @@ export default function AuthPage() {
         {/* Right Image Section */}
         <section className="relative hidden flex-1 overflow-hidden bg-slate-100 lg:flex">
           <Image
-            src="/auth-side-image.png"
+            src="/signup-right-panel-v2.png"
             alt="Authentication side illustration"
             fill
             priority

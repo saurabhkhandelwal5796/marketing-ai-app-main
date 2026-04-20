@@ -30,7 +30,7 @@ export async function GET(req) {
     const supabase = getSupabaseServerClient();
     let query = supabase
       .from("users")
-      .select("id,name,email,role,avatar,is_admin,created_at", { count: "exact" })
+      .select("id,name,email,role,avatar,is_admin,status,created_at", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(from, to);
     if (!session.is_admin) query = query.eq("id", session.id);
@@ -83,13 +83,13 @@ export async function POST(req) {
     const { data, error } = await supabase
       .from("users")
       .insert([{ name, email, role, avatar, password: passwordHash, is_admin: isAdmin, status }])
-      .select("id,name,email,role,avatar,is_admin,created_at")
+      .select("id,name,email,role,avatar,is_admin,status,created_at")
       .single();
     if (error && String(error.message || "").includes("status")) {
       const fallback = await supabase
         .from("users")
         .insert([{ name, email, role, avatar, password: passwordHash, is_admin: isAdmin }])
-        .select("id,name,email,role,avatar,is_admin,created_at")
+        .select("id,name,email,role,avatar,is_admin,status,created_at")
         .single();
       if (fallback.error) throw new Error(fallback.error.message);
       return NextResponse.json({ user: { ...fallback.data, status } });

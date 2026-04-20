@@ -134,7 +134,6 @@ export default function CampaignTable({ rows, campaigns = [], loading }) {
             <thead>
               <tr>
                 <SortableHeader label="Campaign Name" sortKey="campaign_name" currentSort={sortBy} sortDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Status" sortKey="status" currentSort={sortBy} sortDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Recipients / Target" sortKey="recipients" currentSort={sortBy} sortDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Open Rate" sortKey="opens" currentSort={sortBy} sortDir={sortDir} onSort={onSort} align="right" />
                 <SortableHeader label="Click Rate" sortKey="clicks" currentSort={sortBy} sortDir={sortDir} onSort={onSort} align="right" />
@@ -145,11 +144,6 @@ export default function CampaignTable({ rows, campaigns = [], loading }) {
                 <tr key={row.id} className="group transition-colors hover:bg-slate-50">
                   <td className="px-5 py-4 max-w-[200px] truncate font-medium text-slate-800" title={row.campaign_name}>
                     {row.campaign_name}
-                  </td>
-                  <td className="px-5 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider ring-1 ring-inset ${statusClass[row.status] || "bg-slate-100 text-slate-700 ring-slate-200"}`}>
-                      {row.status}
-                    </span>
                   </td>
                   <td className="px-5 py-4 max-w-[200px] truncate text-slate-500" title={row.recipients}>
                     {row.recipients}

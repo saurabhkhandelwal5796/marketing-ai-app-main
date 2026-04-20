@@ -3,7 +3,6 @@
 import { useMemo, useState, useEffect } from "react";
 import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import PrimaryKPIs from "../../components/dashboard/PrimaryKPIs";
-import SmartInsights from "../../components/dashboard/SmartInsights";
 import CampaignTable from "../../components/dashboard/CampaignTable";
 import DashboardCharts from "../../components/dashboard/DashboardCharts";
 
@@ -97,7 +96,6 @@ export default function DashboardPage() {
       <DashboardHeader days={days} setDays={setDays} refresh={refresh} loading={loading} />
       <PrimaryKPIs metrics={unifiedMetrics} loading={loading} />
       <DashboardCharts rows={filteredRows} campaigns={filteredCampaigns} loading={loading} />
-      <SmartInsights loading={loading} />
       <div>
         <CampaignTable rows={filteredRows} campaigns={filteredCampaigns} loading={loading} />
       </div>
