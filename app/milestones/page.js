@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
 
 function initials(name) {
   return String(name || "")
@@ -22,6 +23,7 @@ function formatDateLabel(value) {
 }
 
 export default function MilestonesPage() {
+  useAuditUserAndPage("Milestones");
   const router = useRouter();
   const [milestones, setMilestones] = useState([]);
   const [loadingMilestones, setLoadingMilestones] = useState(false);

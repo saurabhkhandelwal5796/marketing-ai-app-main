@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
 
 const formatDate = (value) => {
   if (!value) return "-";
@@ -11,6 +12,7 @@ const formatDate = (value) => {
 };
 
 export default function CampaignListPage() {
+  useAuditUserAndPage("Campaigns");
   const router = useRouter();
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);

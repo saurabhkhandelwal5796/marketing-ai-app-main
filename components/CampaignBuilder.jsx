@@ -6,6 +6,7 @@ import NextBestActions from "./NextBestActions";
 import OutputCard from "./OutputCard";
 import SendModal from "./SendModal";
 import MarketingAnalysisOutput from "./MarketingAnalysisOutput";
+import { useAuditSessionUserId } from "../lib/useAuditPageVisit";
 
 const DEFAULT_ACTIONS = ["LinkedIn", "Email", "WhatsApp", "Instagram", "Blog", "SMS"];
 
@@ -62,6 +63,7 @@ function HelpIcon({ text }) {
 }
 
 export default function CampaignBuilder({ campaignId }) {
+  const auditUserId = useAuditSessionUserId();
   const [campaignRecord, setCampaignRecord] = useState(null);
   const [loadingCampaign, setLoadingCampaign] = useState(true);
   const [savingCampaign, setSavingCampaign] = useState(false);
@@ -682,6 +684,7 @@ export default function CampaignBuilder({ campaignId }) {
               campaign={campaign}
               website={website}
               description={latestUserMessage}
+              campaignBriefDescription={description}
               attachmentName={attachmentName}
               marketingPlan={marketingPlan}
               selectedStepIds={selectedStepIds}
@@ -691,6 +694,7 @@ export default function CampaignBuilder({ campaignId }) {
               initialMarketingDetails={historyMarketingDetails}
               initialTargetAudience={historyTargetAudience}
               initialAiMessage={historyAiMessage}
+              auditUserId={auditUserId}
             />
 
             {/* Hidden per requirement: Next Best Actions card */}

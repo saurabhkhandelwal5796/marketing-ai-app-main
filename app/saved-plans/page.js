@@ -10,7 +10,8 @@ function formatDate(iso) {
   return d.toLocaleString(undefined, { year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export default function HistoryPage() {
+/** Saved marketing plan snapshots (formerly /history). */
+export default function SavedPlansPage() {
   const router = useRouter();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,12 +25,12 @@ export default function HistoryPage() {
       try {
         const res = await fetch("/api/campaign-history");
         const data = await res.json();
-        if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load history.");
+        if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load saved plans.");
         if (!mounted) return;
         setRecords(Array.isArray(data.records) ? data.records : []);
       } catch (e) {
         if (!mounted) return;
-        setError(e?.message || "Failed to load history.");
+        setError(e?.message || "Failed to load saved plans.");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -43,8 +44,8 @@ export default function HistoryPage() {
   return (
     <main className="p-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">History</h1>
-        <p className="mt-2 text-sm text-slate-500">Saved marketing plans and analysis snapshots.</p>
+        <h1 className="text-xl font-semibold text-slate-900">Saved campaign plans</h1>
+        <p className="mt-2 text-sm text-slate-500">Marketing plan and analysis snapshots.</p>
 
         {error ? (
           <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -53,7 +54,7 @@ export default function HistoryPage() {
 
         {!loading && records.length === 0 ? (
           <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-            No history saved yet.
+            No saved plans yet.
           </div>
         ) : null}
 
@@ -81,4 +82,3 @@ export default function HistoryPage() {
     </main>
   );
 }
-
