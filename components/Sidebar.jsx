@@ -16,7 +16,6 @@ import {
   Megaphone,
   ClipboardList,
   UsersRound,
-  Settings,
 } from "lucide-react";
 
 const navItems = [
@@ -30,7 +29,6 @@ const navItems = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
   { href: "/audit-trail", label: "Audit Trail", icon: ScrollText },
-  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar({ mode = "expanded", onToggleCollapsed, onHoverExpand, onToggleHidden, isAdmin = false }) {
