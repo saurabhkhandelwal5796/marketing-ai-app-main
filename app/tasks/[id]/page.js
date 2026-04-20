@@ -27,7 +27,7 @@ function StatusPipeline({ value, onChange }) {
   const activeIdx = currentIndex >= 0 ? currentIndex : 0;
 
   return (
-    <div className="flex flex-wrap items-center gap-1 text-xs">
+    <div className="flex flex-wrap items-center gap-1 text-xs w-full">
       {STATUS_STEPS.map((step, idx) => {
         const isCurrent = idx === activeIdx;
         const isCompleted = activeIdx === STATUS_STEPS.length - 1 ? true : idx < activeIdx;
@@ -38,11 +38,11 @@ function StatusPipeline({ value, onChange }) {
           : "bg-slate-100 text-slate-500 border-slate-300";
 
         return (
-          <div key={step} className="flex items-center gap-1">
+          <div key={step} className="flex min-w-[90px] flex-1 items-center gap-1">
             <button
               type="button"
               onClick={() => onChange(step)}
-              className={`rounded-full border px-3 py-1.5 font-semibold transition hover:opacity-90 ${classes}`}
+              className={`w-full rounded-full border px-3 py-1.5 text-center font-semibold transition hover:opacity-90 ${classes}`}
             >
               {step}
             </button>
