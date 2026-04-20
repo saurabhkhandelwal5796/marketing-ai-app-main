@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ensureAuditSessionAtLogin, trackEvent } from "../../lib/auditTracker";
 
 type AuthMode = "signup" | "signin";
 type SignupField = "firstName" | "lastName" | "email" | "company" | "password" | "confirmPassword";
@@ -150,6 +151,10 @@ export default function AuthPage() {
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Sign in failed.");
+      ensureAuditSessionAtLogin();
+      if (data?.user?.id) {
+        trackEvent(String(data.user.id), "login", { page_name: "Auth" });
+      }
       router.replace("/dashboard");
       router.refresh();
     } catch (err) {

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -67,6 +67,31 @@ export default function EmailTemplatesPage() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [form, setForm] = useState({ name: "", subject: "", body: "", case_studies: [] });
 
+  // Audit tracking - page visit
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Email Templates",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Email Templates page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
+
   const load = async (overrides = {}) => {
     setLoading(true);
     setError("");
@@ -106,6 +131,26 @@ export default function EmailTemplatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, debouncedSearch, pageSize, sortBy, sortOrder]);
 
+  const trackAction = async (actionName, details) => {
+    try {
+      const currentUserId = await getCurrentUserId();
+      await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "Email Templates",
+          action_name: actionName,
+          details: details,
+          session_id: getCurrentSessionId(),
+        }),
+      });
+    } catch {
+      // Ignore tracking errors
+    }
+  };
+
   const saveTemplate = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -125,6 +170,14 @@ export default function EmailTemplatesPage() {
           });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save template.");
+      
+      // Track action
+      if (editingTemplate) {
+        await trackAction("Edited Email Template", `Edited template: ${form.name}`);
+      } else {
+        await trackAction("Created Email Template", `Created template: ${form.name}`);
+      }
+      
       setShowForm(false);
       setEditingTemplate(null);
       setForm({ name: "", subject: "", body: "", case_studies: [] });
@@ -177,31 +230,32 @@ export default function EmailTemplatesPage() {
         }))
       );
       setForm((prev) => ({ ...prev, case_studies: [...(prev.case_studies || []), ...uploads] }));
-    } catch (e) {
-      setError(e?.message || "Failed to attach files.");
-    } finally {
-      event.target.value = "";
+    } catch (err) {
+      setError(err?.message || "Failed to upload attachments.");
     }
   };
 
   const removeAttachment = (index) => {
     setForm((prev) => ({
       ...prev,
-      case_studies: (prev.case_studies || []).filter((_, idx) => idx !== index),
+      case_studies: (prev.case_studies || []).filter((_, i) => i !== index),
     }));
   };
 
   const onDelete = async (item) => {
-    const ok = window.confirm(`Delete template "${item?.name}"?`);
+    const ok = window.confirm(`Delete "${item.name}"?`);
     if (!ok) return;
     setError("");
-    setSuccess("");
     try {
       const res = await fetch(`/api/email-templates/${item.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete template.");
+      
+      // Track action
+      await trackAction("Deleted Email Template", `Deleted template: ${item.name}`);
+      
       setSuccess("Template deleted.");
-      load({ page });
+      load({ page, search: debouncedSearch });
     } catch (e) {
       setError(e?.message || "Failed to delete template.");
     }
@@ -260,7 +314,12 @@ export default function EmailTemplatesPage() {
             </div>
           </div>
 
-        {loading ? <div className="mt-4 text-sm text-slate-500">Loading...</div> : null}
+        {error ? (
+          <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        ) : null}
+        {success ? (
+          <div className="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
+        ) : null}
 
         {!loading ? (
             <div className="mt-5 overflow-hidden rounded-xl border border-slate-100">

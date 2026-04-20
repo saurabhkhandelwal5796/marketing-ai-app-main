@@ -4,15 +4,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import SuggestionsPanel from "./SuggestionsPanel";
+import ThinkingDisplay from "./ThinkingDisplay";
 import {
   AtSign,
   Check,
+  ChevronDown,
+  ChevronUp,
   ClipboardCopy,
+  ChevronLeft,
+  ChevronRight,
   Globe,
   Mail,
   Link,
   MessageSquarePlus,
   MoreVertical,
+  Pencil,
   Phone,
   Sparkles,
   Trash2,
@@ -20,6 +26,9 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
+import CreatePostPage from "./CreatePostPage";
+import { getCurrentSessionId, getCurrentUserId } from "../lib/getCurrentUserId";
+import Avatar from "./Avatar";
 
 const TABS = [
   { id: "plan", label: "Marketing Plan", icon: ClipboardCopy },
@@ -124,6 +133,65 @@ function hasFilterTag(detailTags, filter) {
   return tags.some((t) => t.includes(f));
 }
 
+function buildGeneratePostRichContext({
+  campaignBriefDescription,
+  company,
+  campaign,
+  website,
+  marketingPlan,
+  selectedStepIds,
+  marketingDetails,
+}) {
+  const lines = [];
+  lines.push("=== Campaign overview ===");
+  if (String(company || "").trim()) lines.push(`Company name: ${String(company).trim()}`);
+  if (String(campaign || "").trim()) lines.push(`Campaign goal: ${String(campaign).trim()}`);
+  if (String(website || "").trim()) lines.push(`Website: ${String(website).trim()}`);
+  const brief = String(campaignBriefDescription || "").trim();
+  if (brief) {
+    lines.push("");
+    lines.push("=== Campaign description (brief field) ===");
+    lines.push(brief);
+  }
+
+  lines.push("");
+  lines.push("=== Marketing Plan (checked steps) ===");
+  const plan = Array.isArray(marketingPlan) ? marketingPlan : [];
+  const checked = plan.filter((step) => step?.id != null && selectedStepIds.includes(step.id));
+  if (!checked.length) {
+    lines.push("(No plan steps selected.)");
+  } else {
+    checked.forEach((step, i) => {
+      const title = String(step?.title || `Step ${i + 1}`).trim();
+      const body = String(step?.description || step?.explanation || "").trim();
+      lines.push(`${i + 1}. ${title}`);
+      if (body) lines.push(body);
+      if (Array.isArray(step?.channels) && step.channels.length) {
+        lines.push(`Channels: ${step.channels.join(", ")}`);
+      }
+      lines.push("");
+    });
+  }
+
+  lines.push("=== Selected Marketing Plans (all analysis points / current copy) ===");
+  const details = Array.isArray(marketingDetails) ? marketingDetails : [];
+  if (!details.length) {
+    lines.push("(No marketing analysis points yet — generate analysis first.)");
+  } else {
+    details.forEach((d, i) => {
+      const title = String(d?.title || `Point ${i + 1}`).trim();
+      const explanation = String(d?.explanation || "").trim();
+      lines.push(`${i + 1}. ${title}`);
+      if (explanation) lines.push(explanation);
+      const tags = normalizeTags(d?.tags);
+      if (tags.length) lines.push(`Tags: ${tags.join(", ")}`);
+      lines.push("");
+    });
+  }
+
+  return lines.join("\n").trim();
+}
+
 function tasksToExportText(tasks) {
   const lines = [];
   tasks.forEach((t, idx) => {
@@ -220,12 +288,43 @@ function templateKey(tpl) {
   return `${title}::${type}`;
 }
 
+function normalizeMilestoneStatus(status) {
+  const value = String(status || "").trim();
+  if (["Completed", "In Progress", "Overdue", "Not Started"].includes(value)) return value;
+  return "Not Started";
+}
+
+function milestoneNodeStyles(status) {
+  const normalized = normalizeMilestoneStatus(status);
+  if (normalized === "Completed") return "border-emerald-200 bg-emerald-500 text-white";
+  if (normalized === "In Progress") return "border-blue-200 bg-blue-500 text-white";
+  if (normalized === "Overdue") return "border-red-200 bg-red-500 text-white";
+  return "border-slate-300 bg-white text-slate-500";
+}
+
+function milestoneLineStyles(status) {
+  const normalized = normalizeMilestoneStatus(status);
+  if (normalized === "Completed") return "bg-emerald-400";
+  if (normalized === "In Progress") return "bg-blue-400";
+  if (normalized === "Overdue") return "bg-red-400";
+  return "bg-slate-300";
+}
+
+function formatMilestoneDate(value) {
+  if (!value) return "-";
+  const date = new Date(String(value).includes("T") ? value : `${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export default function MarketingAnalysisOutput({
   campaignId,
   company,
   campaign,
   website,
   description,
+  /** Raw campaign description from the left-panel textarea (not only the latest chat line). */
+  campaignBriefDescription = "",
   attachmentName,
   marketingPlan = [],
   selectedStepIds = [],
@@ -235,9 +334,63 @@ export default function MarketingAnalysisOutput({
   initialMarketingDetails = null,
   initialTargetAudience = null,
   initialAiMessage = "",
+  auditUserId = null,
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("plan");
+  const campaignAuditPageName = useMemo(() => {
+    const tab = TABS.find((t) => t.id === activeTab);
+    return tab ? `Campaign — ${tab.label}` : "Campaign";
+  }, [activeTab]);
+  const postAuditAction = async (actionName, pageName, details = null) => {
+    const uid = auditUserId || (await getCurrentUserId());
+    fetch("/api/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: uid || "anonymous",
+        event_type: "action",
+        page_name: pageName,
+        action_name: actionName,
+        details: details == null ? null : typeof details === "string" ? details : JSON.stringify(details),
+        session_id: getCurrentSessionId(),
+      }),
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const uid = auditUserId || (await getCurrentUserId());
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: uid || "anonymous",
+              event_type: "page_visit",
+              page_name: campaignAuditPageName,
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on ${campaignAuditPageName} page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, [auditUserId, campaignAuditPageName]);
+
+  useEffect(() => {
+    if (activeTab !== "audience") return;
+    postAuditAction(
+      "Viewed Target Audience",
+      "Campaign — Target Audience",
+      `Viewed target audience suggestions for ${company || "company"} - ${campaign || "campaign"}`
+    );
+  }, [activeTab, campaign, company]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [aiMessage, setAiMessage] = useState("");
@@ -245,10 +398,16 @@ export default function MarketingAnalysisOutput({
   const [targetAudience, setTargetAudience] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [audienceView, setAudienceView] = useState("companies"); // companies | employees
+  const [audienceLoading, setAudienceLoading] = useState(false);
+  const audienceAbortRef = useRef(null);
+  const audienceTimerRef = useRef(null);
+  const prevPlanLoadingRef = useRef(planLoading);
+  const didMountRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
   const [selectedDetailIds, setSelectedDetailIds] = useState(() => new Set());
+  const [persistedSelectedContentByPointId, setPersistedSelectedContentByPointId] = useState({});
   const [tagFilter, setTagFilter] = useState("");
 
   const [threadsByPointId, setThreadsByPointId] = useState({});
@@ -282,6 +441,10 @@ export default function MarketingAnalysisOutput({
   const [companyModalError, setCompanyModalError] = useState("");
   const [companyModalData, setCompanyModalData] = useState(null);
   const [activeCompany, setActiveCompany] = useState(null);
+
+  const [generatePostOpen, setGeneratePostOpen] = useState(false);
+  const [generatePostSessionKey, setGeneratePostSessionKey] = useState(0);
+  const [generatePostPrefill, setGeneratePostPrefill] = useState("");
 
   // Per-company AI assistant state (lives only inside the company detail modal).
   const [companyAssistantInput, setCompanyAssistantInput] = useState("");
@@ -322,6 +485,31 @@ export default function MarketingAnalysisOutput({
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(false);
   const [tasksLoading, setTasksLoading] = useState(false);
+  const [campaignMilestones, setCampaignMilestones] = useState([]);
+  const [milestonesLoading, setMilestonesLoading] = useState(false);
+  const [selectedCampaignMilestoneId, setSelectedCampaignMilestoneId] = useState("");
+  const [trackerDrawerMilestoneId, setTrackerDrawerMilestoneId] = useState("");
+  const [trackerTaskAssigningId, setTrackerTaskAssigningId] = useState("");
+  const [trackerAssignNoticeByTaskId, setTrackerAssignNoticeByTaskId] = useState({});
+  const [milestoneTrackerOffset, setMilestoneTrackerOffset] = useState(0);
+  const [milestoneModalOpen, setMilestoneModalOpen] = useState(false);
+  const [milestoneModalSaving, setMilestoneModalSaving] = useState(false);
+  const [milestoneAiLoading, setMilestoneAiLoading] = useState(false);
+  const [milestoneModalError, setMilestoneModalError] = useState("");
+  const [milestoneTitle, setMilestoneTitle] = useState("");
+  const [milestoneStartDate, setMilestoneStartDate] = useState("");
+  const [milestoneEndDate, setMilestoneEndDate] = useState("");
+  const [milestoneAssigneeId, setMilestoneAssigneeId] = useState("");
+  const [milestoneDescription, setMilestoneDescription] = useState("");
+  const [milestoneSuggestedTasks, setMilestoneSuggestedTasks] = useState([]);
+  const [milestoneReviewMilestones, setMilestoneReviewMilestones] = useState([]);
+  const [milestoneChatMessages, setMilestoneChatMessages] = useState([]);
+  const [milestoneChatInput, setMilestoneChatInput] = useState("");
+  const [milestoneChatLoading, setMilestoneChatLoading] = useState(false);
+  const [milestonePlanConfirmed, setMilestonePlanConfirmed] = useState(false);
+  const [expandedMilestoneIds, setExpandedMilestoneIds] = useState(new Set());
+  const [planUpdatedFlash, setPlanUpdatedFlash] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState(null);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [assistantChannelContext, setAssistantChannelContext] = useState("");
   const [employeePrompt, setEmployeePrompt] = useState("");
@@ -366,6 +554,53 @@ export default function MarketingAnalysisOutput({
     });
     return set;
   }, [campaignId, tasks]);
+  const sortedCampaignMilestones = useMemo(() => {
+    const rows = Array.isArray(campaignMilestones) ? [...campaignMilestones] : [];
+    rows.sort((a, b) => {
+      const ad = new Date(a?.start_date || a?.created_at || 0).getTime();
+      const bd = new Date(b?.start_date || b?.created_at || 0).getTime();
+      return ad - bd;
+    });
+    return rows;
+  }, [campaignMilestones]);
+
+  const trackerMilestones = useMemo(() => {
+    const offset = Number.isFinite(milestoneTrackerOffset) ? milestoneTrackerOffset : 0;
+    return sortedCampaignMilestones.slice(offset, offset + 5);
+  }, [sortedCampaignMilestones, milestoneTrackerOffset]);
+
+  useEffect(() => {
+    const total = sortedCampaignMilestones.length;
+    const maxOffset = Math.max(0, total - 5);
+    setMilestoneTrackerOffset((prev) => Math.min(Math.max(prev, 0), maxOffset));
+  }, [sortedCampaignMilestones.length]);
+
+  const selectedCampaignMilestone = useMemo(() => {
+    return (
+      campaignMilestones.find((milestone) => milestone.id === selectedCampaignMilestoneId) ||
+      sortedCampaignMilestones[0] ||
+      null
+    );
+  }, [campaignMilestones, selectedCampaignMilestoneId, sortedCampaignMilestones]);
+
+  const trackerDrawerMilestone = useMemo(() => {
+    if (!trackerDrawerMilestoneId) return null;
+    return campaignMilestones.find((milestone) => milestone.id === trackerDrawerMilestoneId) || null;
+  }, [campaignMilestones, trackerDrawerMilestoneId]);
+
+  useEffect(() => {
+    if (!selectedCampaignMilestoneId) return;
+    const idx = sortedCampaignMilestones.findIndex((m) => m.id === selectedCampaignMilestoneId);
+    if (idx === -1) return;
+
+    const visibleStart = milestoneTrackerOffset;
+    const visibleEnd = milestoneTrackerOffset + 4;
+    const maxOffset = Math.max(0, sortedCampaignMilestones.length - 5);
+
+    if (idx < visibleStart) setMilestoneTrackerOffset(Math.min(Math.max(0, idx), maxOffset));
+    else if (idx > visibleEnd)
+      setMilestoneTrackerOffset(Math.min(Math.max(0, idx - 4), maxOffset));
+  }, [selectedCampaignMilestoneId, sortedCampaignMilestones, milestoneTrackerOffset]);
 
   useEffect(() => {
     if (Array.isArray(initialMarketingDetails)) setMarketingDetails(initialMarketingDetails);
@@ -380,6 +615,112 @@ export default function MarketingAnalysisOutput({
   useEffect(() => {
     if (typeof initialAiMessage === "string") setAiMessage(initialAiMessage);
   }, [initialAiMessage]);
+
+  const generateTargetAudience = async ({ reason = "" } = {}) => {
+    const desc = String(description || "").trim();
+    if (!desc) return;
+
+    const planSteps = Array.isArray(marketingPlan)
+      ? marketingPlan
+          .filter((s) => selectedStepIds.includes(s.id))
+          .map((s) => `${s.title || ""}: ${s.description || ""}`.trim())
+          .filter(Boolean)
+      : [];
+
+    const selectedDetails = Array.isArray(marketingDetails)
+      ? marketingDetails
+          .filter((d) => selectedDetailIds.has(d.id))
+          .map((d) => `${d.title || ""}: ${d.explanation || ""}`.trim())
+          .filter(Boolean)
+      : [];
+
+    if (audienceAbortRef.current) {
+      try {
+        audienceAbortRef.current.abort();
+      } catch (_) {
+        // ignore
+      }
+    }
+    const controller = new AbortController();
+    audienceAbortRef.current = controller;
+
+    setAudienceLoading(true);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          company,
+          campaign,
+          website,
+          description: desc,
+          attachmentName,
+          step: "target_audience",
+          selectedPlanSteps: planSteps,
+          selectedDetails,
+          responseContext: reason,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate target audience.");
+      setTargetAudience(Array.isArray(data?.targetAudience) ? data.targetAudience : []);
+      setEmployees(Array.isArray(data?.employees) ? data.employees : []);
+      setAudienceView("companies");
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      setError(e?.message || "Failed to generate target audience.");
+    } finally {
+      setAudienceLoading(false);
+    }
+  };
+
+  const scheduleAudienceRefresh = ({ reason = "" } = {}) => {
+    if (audienceTimerRef.current) clearTimeout(audienceTimerRef.current);
+    audienceTimerRef.current = setTimeout(() => {
+      generateTargetAudience({ reason });
+    }, 650);
+  };
+
+  useEffect(() => {
+    // Ask AI finished (planLoading true -> false) -> refresh audience
+    const prev = !!prevPlanLoadingRef.current;
+    const next = !!planLoading;
+    prevPlanLoadingRef.current = next;
+    if (prev && !next) scheduleAudienceRefresh({ reason: "ask_ai" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planLoading]);
+
+  useEffect(() => {
+    // Selecting marketing plan steps -> refresh audience
+    if (!String(description || "").trim()) return;
+    if (!didMountRef.current) return;
+    scheduleAudienceRefresh({ reason: "plan_points_changed" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStepIds, description, marketingPlan]);
+
+  useEffect(() => {
+    // Selecting detailed points -> refresh audience
+    if (!String(description || "").trim()) return;
+    if (!didMountRef.current) return;
+    scheduleAudienceRefresh({ reason: "detail_points_changed" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDetailIds]);
+
+  useEffect(() => {
+    didMountRef.current = true;
+    return () => {
+      if (audienceTimerRef.current) clearTimeout(audienceTimerRef.current);
+      if (audienceAbortRef.current) {
+        try {
+          audienceAbortRef.current.abort();
+        } catch (_) {
+          // ignore
+        }
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -433,9 +774,136 @@ export default function MarketingAnalysisOutput({
     }
   };
 
+  const loadMilestones = async () => {
+    if (!campaignId) {
+      setCampaignMilestones([]);
+      return;
+    }
+    setMilestonesLoading(true);
+    try {
+      const res = await fetch(`/api/milestones?campaignId=${encodeURIComponent(campaignId)}`);
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load milestones.");
+      const rows = Array.isArray(data?.milestones) ? data.milestones : [];
+      setCampaignMilestones(rows);
+      setSelectedCampaignMilestoneId((prev) => prev || rows[0]?.id || "");
+    } catch (e) {
+      setError(e?.message || "Failed to load milestones.");
+    } finally {
+      setMilestonesLoading(false);
+    }
+  };
+
+  const openTrackerDetailDrawer = (milestoneId) => {
+    if (!milestoneId) return;
+    setTrackerDrawerMilestoneId(milestoneId);
+  };
+
+  const closeTrackerDetailDrawer = () => {
+    setTrackerDrawerMilestoneId("");
+  };
+
+  const assignMilestoneTrackerTask = async (milestone, task, assigneeIdValue) => {
+    if (!milestone?.id || !task?.id) return;
+    const assignee_id = assigneeIdValue || null;
+    const selectedUser = assignee_id ? users.find((u) => u.id === assignee_id) : null;
+
+    setTrackerTaskAssigningId(task.id);
+    setTrackerAssignNoticeByTaskId((prev) => ({ ...prev, [task.id]: "" }));
+
+    setCampaignMilestones((prev) =>
+      prev.map((m) =>
+        m.id !== milestone.id
+          ? m
+          : {
+              ...m,
+              tasks: (m.tasks || []).map((t) =>
+                t.id !== task.id
+                  ? t
+                  : {
+                      ...t,
+                      assignee_id,
+                      assignee_name: selectedUser?.name || "-",
+                    }
+              ),
+            }
+      )
+    );
+
+    try {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(`milestone:${task.id}`)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignee_id,
+          milestone_id: milestone.id,
+          campaign_id: milestone.campaign_id || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to assign milestone task.");
+
+      if (auditUserId && assignee_id) {
+        postAuditAction(
+          `Assigned Task to ${selectedUser?.name || "User"}`,
+          "Campaign — Marketing Plan",
+          `Assigned task "${task?.title || "Untitled task"}" to ${selectedUser?.name || "User"} in milestone "${milestone?.title || "Milestone"}"`
+        );
+      }
+
+      setCampaignMilestones((prev) =>
+        prev.map((m) =>
+          m.id !== milestone.id
+            ? m
+            : {
+                ...m,
+                tasks: (m.tasks || []).map((t) => (t.id === task.id ? { ...t, ...data.task } : t)),
+              }
+        )
+      );
+      setTrackerAssignNoticeByTaskId((prev) => ({ ...prev, [task.id]: "Assigned" }));
+      setTimeout(() => {
+        setTrackerAssignNoticeByTaskId((prev) => ({ ...prev, [task.id]: "" }));
+      }, 1200);
+    } catch (e) {
+      setError(e?.message || "Failed to assign milestone task.");
+    } finally {
+      setTrackerTaskAssigningId("");
+    }
+  };
+
+  const loadPersistedSelectedPoints = async () => {
+    if (!campaignId) {
+      setSelectedDetailIds(new Set());
+      setPersistedSelectedContentByPointId({});
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/campaign-selected-points?campaignId=${encodeURIComponent(campaignId)}`);
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load selected points.");
+
+      const points = Array.isArray(data?.points) ? data.points : [];
+      setSelectedDetailIds(new Set(points.map((p) => p?.point_id).filter(Boolean)));
+
+      const map = {};
+      points.forEach((p) => {
+        const key = String(p?.point_id || "").trim();
+        if (!key) return;
+        map[key] = p?.content || {};
+      });
+      setPersistedSelectedContentByPointId(map);
+    } catch (_) {
+      // If this fails we keep the current in-memory selection.
+    }
+  };
+
   useEffect(() => {
     loadUsers();
     loadTasks();
+    loadMilestones();
+    loadPersistedSelectedPoints();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaignId]);
 
@@ -526,6 +994,270 @@ export default function MarketingAnalysisOutput({
       setCompanyAssistantError(e?.message || "Failed to ask AI.");
     } finally {
       setCompanyAssistantLoading(false);
+    }
+  };
+
+  const openMilestoneModal = async () => {
+    setMilestoneModalError("");
+    setMilestoneReviewMilestones([]);
+    setMilestoneAiLoading(true);
+    setMilestoneModalSaving(false);
+    setMilestoneModalOpen(true);
+    setMilestoneChatMessages([]);
+    setMilestoneChatInput("");
+    setMilestoneChatLoading(false);
+    setMilestonePlanConfirmed(false);
+    setExpandedMilestoneIds(new Set());
+    setPlanUpdatedFlash(false);
+    setEditingTaskId(null);
+
+    try {
+      if (!campaignId) throw new Error("Campaign is required to generate milestones.");
+
+      const marketingPlanSelectedSteps = Array.isArray(marketingPlan)
+        ? marketingPlan
+            .filter((p) => selectedStepIds.includes(p?.id))
+            .map((p) => ({
+              id: p?.id,
+              title: String(p?.title || ""),
+              explanation: String(p?.explanation || p?.description || ""),
+              tags: Array.isArray(p?.tags) ? p.tags : [],
+            }))
+        : [];
+
+      const selectedMarketingPlansSelectedSteps = Array.from(selectedDetailIds).map((pointId) => {
+        const detail = marketingDetails.find((d) => String(d?.id || "") === String(pointId)) || null;
+        const saved = persistedSelectedContentByPointId[pointId] || null;
+        return {
+          id: pointId,
+          title: String(detail?.title || saved?.title || ""),
+          explanation: String(detail?.explanation || saved?.explanation || ""),
+          tags: Array.isArray(detail?.tags) ? detail.tags : Array.isArray(saved?.tags) ? saved.tags : [],
+        };
+      });
+
+      // Deduplicate by point id, keeping Selected Marketing Plans content if present (user-edited version).
+      const selectedPlanStepsById = new Map();
+      for (const p of marketingPlanSelectedSteps) {
+        if (!p?.id) continue;
+        selectedPlanStepsById.set(String(p.id), p);
+      }
+      for (const p of selectedMarketingPlansSelectedSteps) {
+        if (!p?.id) continue;
+        selectedPlanStepsById.set(String(p.id), p);
+      }
+      const selectedPlanSteps = Array.from(selectedPlanStepsById.values());
+
+      // Provide a stable start_date; AI decides duration/end_date itself.
+      const start = ymd(new Date());
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "milestone_plan_generate",
+          company,
+          campaign,
+          website,
+          description,
+          selectedPlanSteps,
+          today: start,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate milestone plan with AI.");
+
+      const defaultAssigneeId = users?.[0]?.id || "";
+      const generated = Array.isArray(data?.milestones) ? data.milestones : [];
+
+      setMilestoneReviewMilestones(
+        generated.map((m, idx) => ({
+          tmpId: `${Date.now()}-${idx}`,
+          title: String(m?.title || `Milestone ${idx + 1}`),
+          description: String(m?.description || ""),
+          start_date: m?.start_date || "",
+          end_date: m?.end_date || "",
+          assignee_id: defaultAssigneeId,
+          tasks: Array.isArray(m?.tasks)
+            ? m.tasks.map((t, tIdx) => ({
+                tmpId: `${Date.now()}-${idx}-${tIdx}`,
+                title: String(t?.title || `Task ${tIdx + 1}`),
+                task_type: String(t?.task_type || t?.taskType || "Generic Task"),
+              }))
+            : [],
+        }))
+      );
+    } catch (e) {
+      setMilestoneModalError(e?.message || "Failed to generate milestone plan with AI.");
+    } finally {
+      setMilestoneAiLoading(false);
+    }
+  };
+
+  const submitMilestoneChatRefine = async () => {
+    const userMessage = String(milestoneChatInput || "").trim();
+    if (!userMessage || milestoneChatLoading) return;
+
+    setMilestoneChatLoading(true);
+    setMilestoneModalError("");
+
+    const priorMessages = milestoneChatMessages;
+    setMilestoneChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setMilestoneChatInput("");
+
+    try {
+      const currentPlan = milestoneReviewMilestones.map((m) => ({
+        title: m.title,
+        description: m.description,
+        start_date: m.start_date,
+        end_date: m.end_date,
+        tasks: (m.tasks || []).map((t) => ({ title: t.title, task_type: t.task_type })),
+      }));
+
+      // Build selected plan steps context for full AI context (FIX 4)
+      const selectedPlanStepsPayload = Array.isArray(marketingPlan)
+        ? marketingPlan
+            .filter((p) => selectedStepIds.includes(p?.id))
+            .map((p) => ({
+              id: p?.id,
+              title: String(p?.title || ""),
+              explanation: String(p?.explanation || p?.description || ""),
+            }))
+        : [];
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          step: "milestone_plan_refine",
+          company,
+          campaign,
+          website,
+          description,
+          currentPlan,
+          userMessage,
+          chatHistory: [...priorMessages, { role: "user", content: userMessage }],
+          selectedPlanSteps: selectedPlanStepsPayload,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to refine plan.");
+
+      const aiMessage = data?.ai_message || "Plan updated.";
+      setMilestoneChatMessages((prev) => [...prev, { role: "assistant", content: aiMessage }]);
+
+      const defaultAssigneeId = users?.[0]?.id || "";
+      const generated = Array.isArray(data?.milestones) ? data.milestones : [];
+
+      setMilestoneReviewMilestones(
+        generated.map((m, idx) => ({
+          tmpId: `${Date.now()}-${idx}`,
+          title: String(m?.title || `Milestone ${idx + 1}`),
+          description: String(m?.description || ""),
+          start_date: m?.start_date || "",
+          end_date: m?.end_date || "",
+          assignee_id: defaultAssigneeId,
+          tasks: Array.isArray(m?.tasks)
+            ? m.tasks.map((t, tIdx) => ({
+                tmpId: `${Date.now()}-${idx}-${tIdx}`,
+                title: String(t?.title || `Task ${tIdx + 1}`),
+                task_type: String(t?.task_type || t?.taskType || "Generic Task"),
+              }))
+            : [],
+        }))
+      );
+
+      // Show "Plan updated" flash (FIX 1)
+      setPlanUpdatedFlash(true);
+      setTimeout(() => setPlanUpdatedFlash(false), 2500);
+    } catch (e) {
+      setMilestoneChatMessages((prev) => [...prev, { role: "assistant", content: `Error: ${e?.message || "Failed to refine plan."}` }]);
+    } finally {
+      setMilestoneChatLoading(false);
+    }
+  };
+
+  const createCampaignMilestonesFromReview = async () => {
+    if (!campaignId) {
+      setMilestoneModalError("Campaign is required.");
+      return;
+    }
+    if (!milestoneReviewMilestones.length) {
+      setMilestoneModalError("No AI milestones found to save.");
+      return;
+    }
+
+    setMilestoneModalError("");
+    setMilestoneModalSaving(true);
+
+    const createdIds = [];
+
+    try {
+      // Save each generated milestone, then its tasks.
+      for (const m of milestoneReviewMilestones) {
+        const milestoneRes = await fetch("/api/milestones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: m?.title || "",
+            description: m?.description || "",
+            campaign_id: campaignId,
+            assignee_id: m?.assignee_id || null,
+            start_date: m?.start_date || null,
+            end_date: m?.end_date || null,
+          }),
+        });
+
+        const milestoneData = await milestoneRes.json();
+        if (!milestoneRes.ok || milestoneData?.error) {
+          throw new Error(milestoneData?.error || "Failed to create milestone.");
+        }
+
+        const created = milestoneData?.milestone;
+        if (!created?.id) throw new Error("Milestone creation response was invalid.");
+        createdIds.push(created.id);
+
+        // Create the tasks inside the milestone.
+        const assigneeId = m?.assignee_id || null;
+        const tasks = Array.isArray(m?.tasks) ? m.tasks : [];
+        for (const t of tasks) {
+          const title = String(t?.title || "").trim();
+          if (!title) continue;
+          const taskRes = await fetch(`/api/milestones/${created.id}/tasks`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title,
+              task_type: String(t?.task_type || "Generic Task"),
+              assignee_id: assigneeId,
+              status: "Not Started",
+            }),
+          });
+          const taskData = await taskRes.json();
+          if (!taskRes.ok || taskData?.error) {
+            throw new Error(taskData?.error || "Failed to create milestone task.");
+          }
+        }
+      }
+
+      await loadMilestones();
+      if (createdIds.length) setSelectedCampaignMilestoneId(createdIds[0]);
+      setMilestoneModalOpen(false);
+      showToast("success", "Milestones created successfully.");
+      if (auditUserId) {
+        const count = createdIds.length;
+        postAuditAction(
+          "Created Milestone",
+          "Campaign — Marketing Plan",
+          `Created ${count} milestone${count === 1 ? "" : "s"} for campaign ${campaign || "Marketing Campaign"}`
+        );
+      }
+    } catch (e) {
+      setMilestoneModalError(e?.message || "Failed to save milestones.");
+    } finally {
+      setMilestoneModalSaving(false);
     }
   };
 
@@ -642,6 +1374,14 @@ export default function MarketingAnalysisOutput({
         if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
         setTaskModalOpen(false);
         showToast("success", "Task created successfully.");
+        if (auditUserId) {
+          const assigned = users.find((u) => u.id === formAssigneeId)?.name || "Unassigned";
+          postAuditAction(
+            "Created Task",
+            "Campaign — Task Assignment",
+            `Created task "${title || "Untitled task"}" and assigned to ${assigned}`
+          );
+        }
         await loadTasks();
       } else {
         const res = await fetch(`/api/tasks/${formId}`, {
@@ -653,6 +1393,14 @@ export default function MarketingAnalysisOutput({
         if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update task.");
         setTaskModalOpen(false);
         showToast("success", "Task updated successfully");
+        if (auditUserId && formAssigneeId) {
+          const selected = users.find((u) => u.id === formAssigneeId);
+          postAuditAction(
+            `Assigned Task to ${selected?.name || "User"}`,
+            "Campaign — Task Assignment",
+            `Assigned task "${formTitle || "Untitled task"}" to ${selected?.name || "User"}`
+          );
+        }
         await loadTasks();
       }
     } catch (e) {
@@ -669,32 +1417,155 @@ export default function MarketingAnalysisOutput({
   };
 
   const toggleSelected = (id) => {
+    const isCurrentlySelected = selectedDetailIds.has(id);
+    const willSelect = !isCurrentlySelected;
+
+    const detail =
+      marketingDetails.find((d) => String(d?.id || "") === String(id)) || persistedSelectedContentByPointId[id] || null;
+
+    const content = detail
+      ? {
+          title: String(detail?.title || ""),
+          explanation: String(detail?.explanation || ""),
+          tags: Array.isArray(detail?.tags) ? detail.tags : [],
+        }
+      : { title: "", explanation: "", tags: [] };
+
+    if (campaignId) {
+      (async () => {
+        try {
+          if (willSelect) {
+            await fetch("/api/campaign-selected-points", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ campaign_id: campaignId, point_id: id, content }),
+            });
+          } else {
+            await fetch("/api/campaign-selected-points", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ campaign_id: campaignId, point_id: id }),
+            });
+          }
+        } catch (_) {
+          // Ignore persistence failures; local selection still updates.
+        }
+      })();
+    }
+
     setSelectedDetailIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+
+    if (willSelect) {
+      setPersistedSelectedContentByPointId((prev) => ({ ...prev, [id]: content }));
+    } else {
+      setPersistedSelectedContentByPointId((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+    }
   };
 
   const selectAllVisible = () => {
+    const points = Array.isArray(filteredDetails) ? filteredDetails : [];
+    const toSelect = points.map((d) => d?.id).filter(Boolean);
+
     setSelectedDetailIds((prev) => {
       const next = new Set(prev);
-      filteredDetails.forEach((d) => next.add(d.id));
+      points.forEach((d) => next.add(d.id));
       return next;
     });
+
+    if (campaignId && toSelect.length) {
+      (async () => {
+        try {
+          await Promise.all(
+            points.map((d) =>
+              fetch("/api/campaign-selected-points", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  campaign_id: campaignId,
+                  point_id: d.id,
+                  content: {
+                    title: d.title || "",
+                    explanation: d.explanation || "",
+                    tags: Array.isArray(d.tags) ? d.tags : [],
+                  },
+                }),
+              })
+            )
+          );
+        } catch (_) {
+          // ignore
+        }
+      })();
+    }
   };
 
   const deselectAll = () => {
+    const existing = Array.from(selectedDetailIds);
     setSelectedDetailIds(new Set());
+
+    if (campaignId && existing.length) {
+      (async () => {
+        try {
+          await Promise.all(
+            existing.map((pointId) =>
+              fetch("/api/campaign-selected-points", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ campaign_id: campaignId, point_id: pointId }),
+              })
+            )
+          );
+        } catch (_) {
+          // ignore
+        }
+      })();
+    }
   };
 
   const selectTop10Visible = () => {
+    const points = Array.isArray(filteredDetails) ? filteredDetails.slice(0, 10) : [];
+    const toSelect = points.map((d) => d?.id).filter(Boolean);
+
     setSelectedDetailIds((prev) => {
       const next = new Set(prev);
-      filteredDetails.slice(0, 10).forEach((d) => next.add(d.id));
+      points.forEach((d) => next.add(d.id));
       return next;
     });
+
+    if (campaignId && toSelect.length) {
+      (async () => {
+        try {
+          await Promise.all(
+            points.map((d) =>
+              fetch("/api/campaign-selected-points", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  campaign_id: campaignId,
+                  point_id: d.id,
+                  content: {
+                    title: d.title || "",
+                    explanation: d.explanation || "",
+                    tags: Array.isArray(d.tags) ? d.tags : [],
+                  },
+                }),
+              })
+            )
+          );
+        } catch (_) {
+          // ignore
+        }
+      })();
+    }
   };
 
   const handleGenerate = async () => {
@@ -754,6 +1625,18 @@ export default function MarketingAnalysisOutput({
         });
       } catch (_) {
         // ignore history failures
+      }
+
+      const meaningful =
+        (typeof data?.aiMessage === "string" && data.aiMessage.trim()) ||
+        (Array.isArray(data?.marketingDetails) && data.marketingDetails.length) ||
+        (Array.isArray(data?.targetAudience) && data.targetAudience.length);
+      if (auditUserId && meaningful) {
+        postAuditAction(
+          "Generated Marketing Plan",
+          "Campaign — Selected Marketing Plans",
+          `Generated marketing plan for ${company || "Company"} - ${campaign || "Campaign"}`
+        );
       }
     } catch (err) {
       setError(err?.message || "Failed to generate analysis.");
@@ -962,6 +1845,35 @@ export default function MarketingAnalysisOutput({
     });
   };
 
+  const openGeneratePostModal = () => {
+    const combined = buildGeneratePostRichContext({
+      campaignBriefDescription,
+      company,
+      campaign,
+      website,
+      marketingPlan,
+      selectedStepIds,
+      marketingDetails,
+    });
+    try {
+      localStorage.setItem("autoGeneratePostContent", combined);
+    } catch {
+      // ignore
+    }
+    setGeneratePostPrefill(combined);
+    setGeneratePostSessionKey((k) => k + 1);
+    setGeneratePostOpen(true);
+  };
+
+  useEffect(() => {
+    if (!generatePostOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [generatePostOpen]);
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       {toast ? (
@@ -1022,7 +1934,7 @@ export default function MarketingAnalysisOutput({
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
-                    router.push("/history");
+                    router.push("/saved-plans");
                   }}
                   className="w-full px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
@@ -1033,6 +1945,12 @@ export default function MarketingAnalysisOutput({
           </div>
         </div>
       </div>
+
+      {loading ? (
+        <div className="border-b border-slate-200 bg-slate-50 px-5 py-3">
+          <ThinkingDisplay preset="marketing_analysis" />
+        </div>
+      ) : null}
 
       {aiMessage ? (
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 text-sm text-slate-700">
@@ -1062,6 +1980,14 @@ export default function MarketingAnalysisOutput({
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={openGeneratePostModal}
+              className="ml-1 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-violet-500 hover:via-purple-500 hover:to-fuchsia-500"
+            >
+              <Sparkles size={16} className="shrink-0 opacity-95" aria-hidden />
+              Generate Post
+            </button>
           </div>
         </div>
 
@@ -1074,14 +2000,235 @@ export default function MarketingAnalysisOutput({
 
           {activeTab === "plan" ? (
             <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Campaign Milestones</p>
+                    <p className="mt-1 text-xs text-slate-500">Track key delivery checkpoints for this campaign.</p>
+                  </div>
+                  {/* Hide button when milestones already exist */}
+                  {!milestonesLoading && sortedCampaignMilestones.length === 0 && (
+                    <button
+                      type="button"
+                      onClick={openMilestoneModal}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      <Wand2 size={16} />
+                      Create Milestone with AI
+                    </button>
+                  )}
+                </div>
+
+                {milestonesLoading ? (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading milestones...</div>
+                ) : trackerMilestones.length === 0 ? (
+                  <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                    No milestones created for this campaign yet.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMilestoneTrackerOffset((prev) => Math.max(0, prev - 5))}
+                        disabled={sortedCampaignMilestones.length <= 5 || milestoneTrackerOffset <= 0}
+                        className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Previous milestones"
+                      >
+                        <ChevronLeft size={16} />
+                      </button>
+
+                      <div className="flex min-w-[420px] flex-1 items-start justify-between gap-0 relative">
+                        {trackerMilestones.map((milestone, idx) => {
+                          const active = selectedCampaignMilestone?.id === milestone.id;
+                          const globalIndex = milestoneTrackerOffset + idx;
+                          const shortTitle = String(milestone.title || "")
+                            .split(/\s+/)
+                            .filter(Boolean)
+                            .slice(0, 2)
+                            .join(" ");
+
+                          const selectedSortedIndex = sortedCampaignMilestones.findIndex((m) => m.id === milestone.id);
+                          return (
+                            <button
+                              key={milestone.id}
+                              type="button"
+                              onClick={() => {
+                                // Toggle popup: click same node = close, click different = open that one
+                                setSelectedCampaignMilestoneId((prev) => prev === milestone.id ? null : milestone.id);
+
+                                // Keep the selected node visible in the 5-node window.
+                                if (selectedSortedIndex === -1) return;
+                                if (selectedSortedIndex < milestoneTrackerOffset) {
+                                  setMilestoneTrackerOffset(selectedSortedIndex);
+                                } else if (selectedSortedIndex > milestoneTrackerOffset + 4) {
+                                  setMilestoneTrackerOffset(selectedSortedIndex - 4);
+                                }
+                              }}
+                              className="flex flex-1 items-center text-left"
+                            >
+                              <div className="flex flex-col items-center">
+                                <div
+                                  className={cx(
+                                    "flex h-11 w-11 items-center justify-center rounded-full border text-sm font-semibold shadow-sm transition cursor-pointer hover:scale-110 hover:shadow-md",
+                                    milestoneNodeStyles(milestone.status),
+                                    active ? "ring-2 ring-blue-400 scale-110" : ""
+                                  )}
+                                >
+                                  {String(globalIndex + 1).padStart(2, "0")}
+                                </div>
+                                <p className="mt-3 max-w-[110px] text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                  {shortTitle || "-"}
+                                </p>
+                              </div>
+                              {idx < trackerMilestones.length - 1 ? (
+                                <div className={cx("mx-3 h-1 flex-1 rounded-full", milestoneLineStyles(milestone.status))} />
+                              ) : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setMilestoneTrackerOffset((prev) => Math.min(sortedCampaignMilestones.length - 5, prev + 5))}
+                        disabled={sortedCampaignMilestones.length <= 5 || milestoneTrackerOffset + 5 >= sortedCampaignMilestones.length}
+                        className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="Next milestones"
+                      >
+                        <ChevronRight size={16} />
+                      </button>
+                    </div>
+
+                    {/* Milestone detail popup */}
+                    {selectedCampaignMilestone ? (
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg" style={{ animation: "fadeIn 0.25s ease-out" }}>
+                        <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-900">{selectedCampaignMilestone.title}</p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              {formatMilestoneDate(selectedCampaignMilestone.start_date)} to{" "}
+                              {formatMilestoneDate(selectedCampaignMilestone.end_date)}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cx(
+                                "rounded-full border px-3 py-1 text-xs font-semibold",
+                                selectedCampaignMilestone.status === "Completed"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : selectedCampaignMilestone.status === "In Progress"
+                                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                                  : selectedCampaignMilestone.status === "Overdue"
+                                  ? "border-red-200 bg-red-50 text-red-700"
+                                  : "border-slate-300 bg-white text-slate-700"
+                              )}
+                            >
+                              {selectedCampaignMilestone.status}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedCampaignMilestoneId(null)}
+                              className="rounded-lg border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-50"
+                              title="Close"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {selectedCampaignMilestone.description ? (
+                          <p className="mt-3 text-sm leading-6 text-slate-700">
+                            {selectedCampaignMilestone.description}
+                          </p>
+                        ) : null}
+
+                        {/* Progress bar */}
+                        <div className="mt-3">
+                          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
+                            <span>Progress</span>
+                            <span>{selectedCampaignMilestone.progress || 0}%</span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={cx(
+                                "h-full rounded-full transition-all duration-500",
+                                selectedCampaignMilestone.status === "Completed" ? "bg-emerald-500"
+                                  : selectedCampaignMilestone.status === "In Progress" ? "bg-blue-500"
+                                  : selectedCampaignMilestone.status === "Overdue" ? "bg-red-500"
+                                  : "bg-slate-400"
+                              )}
+                              style={{ width: `${selectedCampaignMilestone.progress || 0}%` }}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                          <span>
+                            Tasks done: {selectedCampaignMilestone.tasks_done || 0}/{selectedCampaignMilestone.task_count || 0}
+                          </span>
+                          <span>Owner: {selectedCampaignMilestone.assignee_name || "-"}</span>
+                        </div>
+
+                        {/* Tasks list */}
+                        {Array.isArray(selectedCampaignMilestone.tasks) && selectedCampaignMilestone.tasks.length > 0 ? (
+                          <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Tasks</p>
+                            <div className="space-y-1.5">
+                              {selectedCampaignMilestone.tasks.map((task) => {
+                                const isDone = task.status === "Completed";
+                                return (
+                                  <div key={task.id} className="flex items-center gap-2.5 rounded-lg bg-white px-3 py-2 border border-slate-100">
+                                    <div className={cx(
+                                      "h-4 w-4 rounded flex items-center justify-center border shrink-0",
+                                      isDone ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300 bg-white"
+                                    )}>
+                                      {isDone ? <Check size={10} strokeWidth={3} /> : null}
+                                    </div>
+                                    <span className={cx(
+                                      "flex-1 text-xs",
+                                      isDone ? "text-slate-400 line-through" : "text-slate-700"
+                                    )}>
+                                      {task.title}
+                                    </span>
+                                    {task.task_type ? (
+                                      <span className="shrink-0 rounded-full bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
+                                        {task.task_type}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="mt-3 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => openTrackerDetailDrawer(selectedCampaignMilestone.id)}
+                                className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+                              >
+                                View in Detail
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
               {!hasMarketingPlan ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
                   <p className="text-base font-semibold text-slate-900">
-                    {planLoading ? "Generating..." : "Generate Your Marketing Plan"}
+                    {planLoading ? "Generating your marketing plan" : "Generate Your Marketing Plan"}
                   </p>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {planLoading ? "Please wait while AI builds your marketing plan" : "click on ask ai for marketing plan"}
-                  </p>
+                  <div className="mt-3 flex justify-center">
+                    {planLoading ? <ThinkingDisplay preset="marketing_analysis" className="justify-center" /> : null}
+                  </div>
+                  {!planLoading ? (
+                    <p className="mt-1 text-sm text-slate-500">click on ask ai for marketing plan</p>
+                  ) : null}
                 </div>
               ) : (
                 <SuggestionsPanel
@@ -1265,8 +2412,8 @@ export default function MarketingAnalysisOutput({
                                 })}
                                 {isBusy ? (
                                   <div className="mb-2 flex justify-start">
-                                    <div className="w-36 animate-pulse rounded-2xl rounded-bl-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500">
-                                      AI is thinking...
+                                    <div className="rounded-2xl rounded-bl-md border border-slate-200 bg-white px-3 py-2">
+                                      <ThinkingDisplay preset="milestone_refine" className="text-xs" />
                                     </div>
                                   </div>
                                 ) : null}
@@ -1339,7 +2486,11 @@ export default function MarketingAnalysisOutput({
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   {targetAudience.length === 0 ? (
                     <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                      Generate analysis to see target audience segments.
+                      {audienceLoading ? (
+                        <ThinkingDisplay preset="marketing_analysis" />
+                      ) : (
+                        "Target audience will update when you Ask AI and when you select points."
+                      )}
                     </div>
                   ) : null}
                   {targetAudience.map((c, idx) => (
@@ -2393,14 +3544,465 @@ export default function MarketingAnalysisOutput({
 
                     {companyAssistantLoading ? (
                       <div className="flex justify-start">
-                        <div className="max-w-[92%] rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-500">
-                          AI is thinking...
+                        <div className="max-w-[92%] rounded-2xl border border-slate-200 bg-white px-3 py-2">
+                          <ThinkingDisplay preset="marketing_analysis" className="text-xs" />
                         </div>
                       </div>
                     ) : null}
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {trackerDrawerMilestone ? (
+        <div className="fixed inset-0 z-[72]">
+          <button
+            type="button"
+            aria-label="Close milestone detail drawer"
+            onClick={closeTrackerDetailDrawer}
+            className="absolute inset-0 bg-slate-900/45"
+          />
+          <div className="absolute inset-y-0 right-0 w-full max-w-[480px] border-l border-slate-200 bg-white shadow-2xl transition-transform duration-300 ease-out">
+            <div className="flex h-full flex-col" style={{ animation: "slideInFromRight 0.28s ease-out" }}>
+              <style>{`@keyframes slideInFromRight { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }`}</style>
+              <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-4">
+                <div>
+                  <p className="text-lg font-bold text-slate-900">{trackerDrawerMilestone.title || "-"}</p>
+                  <div className="mt-2 inline-flex items-center gap-2">
+                    <span
+                      className={cx(
+                        "rounded-full border px-3 py-1 text-xs font-semibold",
+                        trackerDrawerMilestone.status === "Completed"
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          : trackerDrawerMilestone.status === "In Progress"
+                          ? "border-blue-200 bg-blue-50 text-blue-700"
+                          : trackerDrawerMilestone.status === "Overdue"
+                          ? "border-red-200 bg-red-50 text-red-700"
+                          : "border-slate-300 bg-white text-slate-700"
+                      )}
+                    >
+                      {trackerDrawerMilestone.status || "Not Started"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeTrackerDetailDrawer}
+                  className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-500 hover:bg-slate-50"
+                  title="Close"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Start Date</p>
+                    <p className="mt-1 text-sm text-slate-700">{formatMilestoneDate(trackerDrawerMilestone.start_date)}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Due Date</p>
+                    <p className="mt-1 text-sm text-slate-700">{formatMilestoneDate(trackerDrawerMilestone.end_date)}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Owner</p>
+                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
+                      <Avatar
+                        name={trackerDrawerMilestone.assignee_name || "Unassigned"}
+                        imageUrl={trackerDrawerMilestone.assignee_avatar}
+                        size="sm"
+                      />
+                      {trackerDrawerMilestone.assignee_name || "Unassigned"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Description</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                      {trackerDrawerMilestone.description || "-"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="my-4 h-px w-full bg-slate-200" />
+
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                    TASKS ({Array.isArray(trackerDrawerMilestone.tasks) ? trackerDrawerMilestone.tasks.length : 0})
+                  </p>
+                  <div className="space-y-2">
+                    {(Array.isArray(trackerDrawerMilestone.tasks) ? trackerDrawerMilestone.tasks : []).map((task, idx) => (
+                      <div
+                        key={`drawer-task-${task.id}`}
+                        className={cx(
+                          "rounded-lg border border-slate-200 px-3 py-2",
+                          idx % 2 === 0 ? "bg-slate-50" : "bg-slate-100/50"
+                        )}
+                      >
+                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                          <span className="font-semibold text-slate-800">{task.title}</span>
+                          <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-600">
+                            {task.task_type || "Generic Task"}
+                          </span>
+                          <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-600">
+                            Priority: {task.priority || "Medium"}
+                          </span>
+                          <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-600">
+                            Status: {task.status || "Not Started"}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <select
+                            value={task.assignee_id || ""}
+                            onChange={(e) => assignMilestoneTrackerTask(trackerDrawerMilestone, task, e.target.value)}
+                            disabled={trackerTaskAssigningId === task.id}
+                            className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                          >
+                            <option value="">Assign to...</option>
+                            {users.map((u) => (
+                              <option key={`drawer-user-${u.id}`} value={u.id}>
+                                {u.name}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="text-xs text-slate-600">
+                            {task.assignee_name && task.assignee_name !== "-" ? task.assignee_name : "Unassigned"}
+                          </span>
+                          {trackerAssignNoticeByTaskId[task.id] ? (
+                            <span className="text-[11px] font-semibold text-emerald-600">
+                              {trackerAssignNoticeByTaskId[task.id]}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {milestoneModalOpen ? (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-base font-semibold text-slate-900">Create Milestone with AI</p>
+                <p className="mt-1 text-sm text-slate-500">AI will generate a milestone plan for your campaign.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMilestoneModalOpen(false)}
+                className="rounded-xl border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="max-h-[80vh] overflow-y-auto px-5 py-4">
+              {milestoneModalError ? (
+                <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-800">
+                  {milestoneModalError}
+                </div>
+              ) : null}
+
+              {/* AI Loading State with typing indicator */}
+              {milestoneAiLoading ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-6">
+                  <p className="text-sm font-semibold text-slate-900 text-center">Generating milestone plan</p>
+                  <div className="mt-3 flex justify-center">
+                    <ThinkingDisplay preset="milestone_generate" className="justify-center" />
+                  </div>
+                </div>
+              ) : milestoneReviewMilestones.length ? (
+                <div className="space-y-4" style={{ animation: "fadeIn 0.4s ease-out" }}>
+                  <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+
+                  {/* Plan updated flash */}
+                  {planUpdatedFlash && (
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 text-center" style={{ animation: "fadeIn 0.3s ease-out" }}>
+                      ✓ Plan updated successfully
+                    </div>
+                  )}
+
+                  {/* AI Plan Summary Card — expandable */}
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-semibold text-slate-900 mb-3">Here is what I have planned:</p>
+                    <div className="space-y-2">
+                      {milestoneReviewMilestones.map((m, idx) => {
+                        const borderColors = ["border-l-blue-500", "border-l-purple-500", "border-l-violet-500", "border-l-indigo-500", "border-l-teal-500", "border-l-cyan-500", "border-l-sky-500", "border-l-emerald-500"];
+                        const borderColor = idx === 0 ? "border-l-blue-500" : idx === milestoneReviewMilestones.length - 1 ? "border-l-teal-500" : borderColors[Math.min(idx, borderColors.length - 1)];
+                        const isExpanded = expandedMilestoneIds.has(m.tmpId);
+                        return (
+                          <div key={m.tmpId} className={`rounded-lg border border-slate-200 border-l-4 ${borderColor} bg-white overflow-hidden transition-all`}>
+                            {/* Clickable header */}
+                            <div
+                              className="flex items-center justify-between gap-2 px-4 py-3 cursor-pointer hover:bg-slate-50/50 transition-colors"
+                              onClick={() => {
+                                setExpandedMilestoneIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(m.tmpId)) next.delete(m.tmpId);
+                                  else next.add(m.tmpId);
+                                  return next;
+                                });
+                              }}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs font-bold text-slate-400">{String(idx + 1).padStart(2, "0")}.</span>
+                                  <span className="text-sm font-semibold text-slate-900">{m.title}</span>
+                                </div>
+                                <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
+                                  <span>{formatMilestoneDate(m.start_date)} → {formatMilestoneDate(m.end_date)}</span>
+                                  <span>•</span>
+                                  <span>{m.tasks?.length || 0} tasks</span>
+                                </div>
+                              </div>
+                              {isExpanded ? <ChevronUp size={14} className="text-slate-400 shrink-0" /> : <ChevronDown size={14} className="text-slate-400 shrink-0" />}
+                            </div>
+
+                            {/* Expanded tasks list */}
+                            {isExpanded && (
+                              <div className="border-t border-slate-100 px-4 py-3 space-y-1.5" style={{ animation: "fadeIn 0.2s ease-out" }}>
+                                {(m.tasks || []).map((t) => {
+                                  const isEditing = editingTaskId === t.tmpId;
+                                  return (
+                                    <div key={t.tmpId} className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 group">
+                                      <div className="h-1.5 w-1.5 rounded-full bg-slate-300 shrink-0" />
+                                      {isEditing ? (
+                                        <input
+                                          autoFocus
+                                          defaultValue={t.title}
+                                          onBlur={(e) => {
+                                            const newTitle = e.target.value.trim();
+                                            if (newTitle && newTitle !== t.title) {
+                                              setMilestoneReviewMilestones((prev) =>
+                                                prev.map((ms) =>
+                                                  ms.tmpId === m.tmpId
+                                                    ? { ...ms, tasks: ms.tasks.map((tk) => (tk.tmpId === t.tmpId ? { ...tk, title: newTitle } : tk)) }
+                                                    : ms
+                                                )
+                                              );
+                                            }
+                                            setEditingTaskId(null);
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter") e.target.blur();
+                                            if (e.key === "Escape") setEditingTaskId(null);
+                                          }}
+                                          className="flex-1 rounded-md border border-blue-300 bg-white px-2 py-1 text-xs text-slate-900 outline-none focus:ring-2 focus:ring-blue-100"
+                                        />
+                                      ) : (
+                                        <>
+                                          <span className="flex-1 text-xs text-slate-700">{t.title}</span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => { e.stopPropagation(); setEditingTaskId(t.tmpId); }}
+                                            className="opacity-0 group-hover:opacity-100 rounded p-0.5 text-slate-400 hover:text-blue-500 transition"
+                                            title="Edit task title"
+                                          >
+                                            <Pencil size={12} />
+                                          </button>
+                                        </>
+                                      )}
+                                      <span className="shrink-0 rounded-full bg-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">{t.task_type}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+                      <span>📅 {milestoneReviewMilestones.length} milestones</span>
+                      <span>•</span>
+                      <span>{formatMilestoneDate(milestoneReviewMilestones[0]?.start_date)} → {formatMilestoneDate(milestoneReviewMilestones[milestoneReviewMilestones.length - 1]?.end_date)}</span>
+                    </div>
+
+                    {!milestonePlanConfirmed && (
+                      <p className="mt-3 text-xs text-slate-500 italic">Click a milestone to see tasks. Use the chat below to refine the plan.</p>
+                    )}
+                  </div>
+
+                  {/* Conversation Panel — only shown before confirm */}
+                  {!milestonePlanConfirmed && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-3">Refine the plan</p>
+
+                      {/* Chat messages */}
+                      {milestoneChatMessages.length > 0 && (
+                        <div className="mb-3 max-h-48 overflow-y-auto space-y-2 rounded-lg bg-slate-50 p-3">
+                          {milestoneChatMessages.map((m, idx) => (
+                            <div key={`chat-${idx}`} className={cx("flex", m.role === "user" ? "justify-end" : "justify-start")}>
+                              <div
+                                className={cx(
+                                  "max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-5",
+                                  m.role === "user"
+                                    ? "bg-slate-900 text-white"
+                                    : "border border-slate-200 bg-white text-slate-700"
+                                )}
+                              >
+                                {m.content}
+                              </div>
+                            </div>
+                          ))}
+
+                          {milestoneChatLoading && (
+                            <div className="flex justify-start">
+                              <div className="inline-flex items-center rounded-2xl border border-slate-200 bg-white px-3.5 py-2">
+                                <ThinkingDisplay preset="milestone_refine" className="text-xs" />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Chat input */}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={milestoneChatInput}
+                          onChange={(e) => setMilestoneChatInput(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitMilestoneChatRefine(); } }}
+                          placeholder="Tell me what to change..."
+                          disabled={milestoneChatLoading}
+                          className="flex-1 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                        />
+                        <button
+                          type="button"
+                          onClick={submitMilestoneChatRefine}
+                          disabled={milestoneChatLoading || !String(milestoneChatInput || "").trim()}
+                          className="rounded-xl bg-slate-900 p-2.5 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Send"
+                        >
+                          <Wand2 size={16} />
+                        </button>
+                      </div>
+
+                      {/* Confirm button */}
+                      <button
+                        type="button"
+                        onClick={() => setMilestonePlanConfirmed(true)}
+                        className="mt-3 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                      >
+                        Looks good, create milestones →
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Assignee selection — only shown after confirm */}
+                  {milestonePlanConfirmed && (
+                    <div className="rounded-xl border border-slate-200 bg-white p-4" style={{ animation: "fadeIn 0.3s ease-out" }}>
+                      <p className="text-sm font-semibold text-slate-900 mb-3">Assign owners to each milestone:</p>
+                      <div className="space-y-3">
+                        {milestoneReviewMilestones.map((m, idx) => (
+                          <div key={m.tmpId} className="flex items-center gap-3">
+                            <span className="text-xs font-bold text-slate-400 w-8">{String(idx + 1).padStart(2, "0")}.</span>
+                            <p className="flex-1 text-sm font-medium text-slate-700 truncate">{m.title}</p>
+                            <select
+                              value={m.assignee_id}
+                              onChange={(e) =>
+                                setMilestoneReviewMilestones((prev) =>
+                                  prev.map((x) => (x.tmpId === m.tmpId ? { ...x, assignee_id: e.target.value } : x))
+                                )
+                              }
+                              className="w-44 rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              disabled={usersLoading}
+                            >
+                              <option value="">{usersLoading ? "Loading..." : "Select assignee"}</option>
+                              {users.map((user) => (
+                                <option key={`milestone-user-${user.id}`} value={user.id}>
+                                  {user.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Start Over */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMilestoneReviewMilestones([]);
+                      setMilestoneModalError("");
+                      setMilestonePlanConfirmed(false);
+                      setMilestoneChatMessages([]);
+                      openMilestoneModal();
+                    }}
+                    className="text-xs font-medium text-slate-500 hover:text-slate-900 transition underline underline-offset-2"
+                  >
+                    Start over — regenerate plan
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                  No milestones were generated. Try again.
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setMilestoneModalOpen(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={milestoneModalSaving || milestoneAiLoading || !milestoneReviewMilestones.length || !milestonePlanConfirmed}
+                onClick={createCampaignMilestonesFromReview}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {milestoneAiLoading ? (
+                  <>
+                    <ThinkingDisplay preset="milestone_generate" className="text-sm text-white" />
+                  </>
+                ) : milestoneModalSaving ? "Saving..." : "Save All Milestones"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {generatePostOpen ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/60 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="generate-post-modal-title"
+        >
+          <div
+            className="flex max-h-[85vh] max-w-[96vw] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            style={{ width: "80vw", height: "85vh" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <h2 id="generate-post-modal-title" className="text-base font-semibold text-slate-900">
+                Generate Post
+              </h2>
+              <button
+                type="button"
+                onClick={() => setGeneratePostOpen(false)}
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
+              <CreatePostPage key={generatePostSessionKey} embedded initialInput={generatePostPrefill} />
             </div>
           </div>
         </div>

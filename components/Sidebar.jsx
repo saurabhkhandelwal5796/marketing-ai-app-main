@@ -11,7 +11,8 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
-  History,
+  Flag,
+  ScrollText,
   Mail,
   Megaphone,
   ClipboardList,
@@ -23,6 +24,7 @@ import {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/campaigns", label: "Campaign", icon: Megaphone },
+  { href: "/milestones", label: "Milestones", icon: Flag },
   { href: "/email-templates", label: "Email Templates", icon: Mail },
   { href: "/create-post", label: "Create & Post", icon: Sparkles },
   { href: "/learning", label: "Learning", icon: BookOpen },

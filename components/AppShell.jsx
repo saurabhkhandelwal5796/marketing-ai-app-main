@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
+import { getAuditSessionDurationMs, trackLogout } from "../lib/auditTracker";
+import Avatar from "./Avatar";
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
@@ -70,7 +72,23 @@ export default function AppShell({ children }) {
 
   useEffect(() => {
     if (loadingSession) return;
-    if (!sessionUser && !isPublicRoute) {
+    if (!sessionUser?.is_admin) return;
+    try {
+      const key = "auditTrail.lastCleanupAt";
+      const last = Number(window.localStorage.getItem(key) || "0");
+      const day = 24 * 60 * 60 * 1000;
+      if (last && Date.now() - last < day) return;
+      window.localStorage.setItem(key, String(Date.now()));
+      fetch("/api/audit/cleanup", { method: "POST" }).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, [loadingSession, sessionUser?.is_admin]);
+
+  useEffect(() => {
+    if (loadingSession) return;
+    const shouldRedirectToAuth = !sessionUser && !isAuthRoute;
+    if (shouldRedirectToAuth) {
       router.replace("/auth");
       return;
     }

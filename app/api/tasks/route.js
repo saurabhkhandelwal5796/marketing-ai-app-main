@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../lib/supabaseServer";
 import { getSessionFromCookies } from "../../../lib/authSession";
+import { getAuditSessionId } from "../../../lib/auditTracker";
 
 export async function GET(req) {
   try {
@@ -27,7 +28,45 @@ export async function GET(req) {
 
     const { data, error } = await query;
     if (error) throw new Error(error.message);
-    return NextResponse.json({ tasks: data || [] });
+
+    let milestoneQuery = supabase
+      .from("milestone_tasks")
+      .select("id,title,task_type,assignee_id,status,created_at,milestones!inner(title,campaign_id,end_date,description)")
+      .order("created_at", { ascending: false });
+
+    if (session.is_admin) {
+      if (userId) milestoneQuery = milestoneQuery.eq("assignee_id", userId);
+    } else {
+      milestoneQuery = milestoneQuery.eq("assignee_id", session.id);
+    }
+    if (campaignId) milestoneQuery = milestoneQuery.eq("milestones.campaign_id", campaignId);
+
+    const { data: milestoneRows, error: milestoneError } = await milestoneQuery;
+    if (milestoneError) throw new Error(milestoneError.message);
+
+    const normalizedMilestoneTasks = (milestoneRows || []).map((row) => {
+      const m = row?.milestones || {};
+      const status =
+        row?.status === "Completed" ? "Done" : row?.status === "In Progress" ? "In Progress" : "To Do";
+      return {
+        id: `milestone:${row.id}`,
+        title: row?.title || "",
+        description: m?.description || null,
+        assignee_id: row?.assignee_id || null,
+        assignee_team: null,
+        priority: "Medium",
+        status,
+        task_type: row?.task_type || "Generic Task",
+        due_date: m?.end_date || null,
+        milestone_name: m?.title || null,
+        channel_tags: [],
+        campaign_context: "Milestone task",
+        campaign_id: m?.campaign_id || null,
+        created_at: row?.created_at,
+      };
+    });
+
+    return NextResponse.json({ tasks: [...(data || []), ...normalizedMilestoneTasks] });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to fetch tasks." }, { status: 500 });
   }
@@ -73,6 +112,23 @@ export async function POST(req) {
       error = res.error;
     }
     if (error) throw new Error(error.message);
+
+    // Track task creation in audit log
+    try {
+      const sessionId = getAuditSessionId();
+      await supabase.from("audit_logs").insert({
+        user_id: session.id,
+        event_type: "action",
+        page_name: "My Tasks",
+        action_name: "Created Task",
+        details: JSON.stringify({ taskId: data.id, title: data.title, campaign_id }),
+        session_id: sessionId,
+      });
+    } catch (auditErr) {
+      // eslint-disable-next-line no-console
+      console.error("[audit] task creation log failed", auditErr);
+    }
+
     return NextResponse.json({ task: data });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to create task." }, { status: 500 });

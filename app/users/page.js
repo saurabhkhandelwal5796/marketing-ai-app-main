@@ -88,6 +88,30 @@ export default function UsersPage() {
   }, []);
 
   useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Users",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Users page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!sessionUser?.is_admin) return;
     load({ page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -173,6 +197,14 @@ export default function UsersPage() {
     setSuccess("");
     try {
       const payload = { ...form };
+      const originalUser = editingUser
+        ? {
+            name: editingUser.name || "",
+            email: editingUser.email || "",
+            is_admin: !!editingUser.is_admin,
+            status: editingUser.status || "Active",
+          }
+        : null;
       const res = editingUser
         ? await fetch(`/api/users/${editingUser.id}`, {
             method: "PATCH",
@@ -187,6 +219,23 @@ export default function UsersPage() {
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save user.");
       setSuccess(editingUser ? "User updated." : "User created.");
+      const currentUserId = await getCurrentUserId();
+      const actionName = editingUser ? "Edited User" : "Created New User";
+      const details = editingUser
+        ? buildUserEditDetails(originalUser, payload)
+        : `Created user ${String(form.name || "").trim()} (${String(form.email || "").trim()}) with role ${String(form.role || "User")} and status ${String(form.status || "Active")}`;
+      fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "Users",
+          action_name: actionName,
+          details,
+          session_id: getCurrentSessionId(),
+        }),
+      }).catch(() => {});
       setShowForm(false);
       setEditingUser(null);
       load({ page: 1 });

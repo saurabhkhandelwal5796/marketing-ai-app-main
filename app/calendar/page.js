@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles, ArrowRight, BarChart3, CheckCircle2, Clock } from "lucide-react";
@@ -7,11 +7,17 @@ import CalendarGrid from "../../components/calendar/CalendarGrid";
 import MeetingFormModal from "../../components/calendar/MeetingFormModal";
 import MeetingDetailsModal from "../../components/calendar/MeetingDetailsModal";
 import { addDays, addMonths, CALENDAR_VIEWS, getRangeForView } from "../../lib/calendarUtils";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
 function shiftDateByView(date, view, direction) {
   if (view === CALENDAR_VIEWS.DAY) return addDays(date, direction);
   if (view === CALENDAR_VIEWS.WEEK) return addDays(date, direction * 7);
   return addMonths(date, direction);
+}
+
+function formatDateLabel(date) {
+  if (!date) return "";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function CalendarPage() {
@@ -31,6 +37,31 @@ export default function CalendarPage() {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
 
   const userMap = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+
+  // Audit tracking - page visit
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Calendar",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Calendar page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
 
   const loadMeetings = async (date = activeDate, mode = view) => {
     setLoading(true);
@@ -122,6 +153,15 @@ export default function CalendarPage() {
           });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save meeting.");
+      
+      // Track action
+      if (editingMeeting?.id) {
+        await trackAction("Updated Calendar Event", `Updated event: ${payload.title}`);
+      } else {
+        const eventDate = formatDateLabel(new Date(payload.start_time));
+        await trackAction("Created Calendar Event", `Created event: ${payload.title} on ${eventDate}`);
+      }
+      
       setFormOpen(false);
       setEditingMeeting(null);
       setSelectedMeeting(null);

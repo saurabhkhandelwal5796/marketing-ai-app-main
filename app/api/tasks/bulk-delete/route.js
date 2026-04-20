@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
+import { getSessionFromCookies } from "../../../../lib/authSession";
+import { getAuditSessionId } from "../../../../lib/auditTracker";
 
 export async function POST(req) {
   try {
+    const session = await getSessionFromCookies();
+    if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+
     const supabase = getSupabaseServerClient();
     const body = await req.json();
     const idsRaw = body?.ids;
@@ -30,6 +35,22 @@ export async function POST(req) {
 
     const { error } = await supabase.from("tasks").delete().in("id", ids);
     if (error) throw new Error(error.message);
+
+    // Track bulk task deletion in audit log
+    try {
+      const sessionId = getAuditSessionId();
+      await supabase.from("audit_logs").insert({
+        user_id: session.id,
+        event_type: "action",
+        page_name: "My Tasks",
+        action_name: "Bulk Deleted Tasks",
+        details: JSON.stringify({ taskIds: ids, count: ids.length }),
+        session_id: sessionId,
+      });
+    } catch (auditErr) {
+      // eslint-disable-next-line no-console
+      console.error("[audit] task bulk deletion log failed", auditErr);
+    }
 
     return NextResponse.json({ ok: true, deletedCount: ids.length });
   } catch (e) {

@@ -2,8 +2,11 @@
 
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import ThinkingDisplay from "../../../components/ThinkingDisplay";
+import { getCurrentSessionId, getCurrentUserId } from "../../../lib/getCurrentUserId";
 
-const STATUSES = ["To Do", "In Progress", "Done"];
+const PENDING_VIEW_TASK_KEY = "audit.pendingViewedTask";
+
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 const TASK_TYPES = [
   "Generic Task",
@@ -17,6 +20,39 @@ const TASK_TYPES = [
   "Campaign Analysis",
   "Sales Coordination",
 ];
+const STATUS_STEPS = ["To Do", "In Progress", "Done"];
+
+function StatusPipeline({ value, onChange }) {
+  const currentIndex = STATUS_STEPS.indexOf(value);
+  const activeIdx = currentIndex >= 0 ? currentIndex : 0;
+
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-xs">
+      {STATUS_STEPS.map((step, idx) => {
+        const isCurrent = idx === activeIdx;
+        const isCompleted = activeIdx === STATUS_STEPS.length - 1 ? true : idx < activeIdx;
+        const classes = isCurrent
+          ? "bg-blue-600 text-white border-blue-600"
+          : isCompleted
+          ? "bg-emerald-600 text-white border-emerald-600"
+          : "bg-slate-100 text-slate-500 border-slate-300";
+
+        return (
+          <div key={step} className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => onChange(step)}
+              className={`rounded-full border px-3 py-1.5 font-semibold transition hover:opacity-90 ${classes}`}
+            >
+              {step}
+            </button>
+            {idx < STATUS_STEPS.length - 1 ? <span className="text-slate-400">→</span> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function todayYmd() {
   const d = new Date();
@@ -40,7 +76,7 @@ export default function TaskDetailPage({ params }) {
 
   // Next.js passes params as a Promise in this version.
   const resolvedParams = use(params);
-  const taskId = resolvedParams?.id;
+  const taskId = decodeURIComponent(resolvedParams?.id || "");
 
   const assignee = useMemo(() => {
     if (!task?.assignee_id) return null;
@@ -56,7 +92,8 @@ export default function TaskDetailPage({ params }) {
     if (!taskId) return;
     setError("");
     try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
+      const prevStatus = task?.status || "";
+      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patchBody),
@@ -65,6 +102,25 @@ export default function TaskDetailPage({ params }) {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save.");
       setTask(data.task);
       showSaved();
+
+      if (patchBody && Object.prototype.hasOwnProperty.call(patchBody, "status")) {
+        const nextStatus = String(patchBody.status || "");
+        if (nextStatus && nextStatus !== prevStatus) {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "action",
+              page_name: "My Tasks",
+              action_name: "Changed Task Status",
+              details: `Task "${String(data?.task?.title || task?.title || "Untitled task")}" moved from ${prevStatus || "Unknown"} to ${nextStatus}`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        }
+      }
     } catch (e) {
       setError(e?.message || "Failed to save.");
     }
@@ -81,7 +137,7 @@ export default function TaskDetailPage({ params }) {
         return;
       }
       try {
-        const [taskRes, userRes] = await Promise.all([fetch(`/api/tasks/${taskId}`), fetch("/api/users")]);
+        const [taskRes, userRes] = await Promise.all([fetch(`/api/tasks/${encodeURIComponent(taskId)}`), fetch("/api/users")]);
         const taskData = await taskRes.json();
         const userData = await userRes.json();
         if (!taskRes.ok || taskData?.error) throw new Error(taskData?.error || "Failed to load task.");
@@ -96,6 +152,48 @@ export default function TaskDetailPage({ params }) {
     };
     load();
   }, [taskId]);
+
+  useEffect(() => {
+    if (!taskId) return undefined;
+    let timer = null;
+    try {
+      const raw = window.localStorage.getItem(PENDING_VIEW_TASK_KEY);
+      if (!raw) return undefined;
+      const pending = JSON.parse(raw);
+      if (!pending || String(pending.taskId || "") !== String(taskId)) return undefined;
+      const title = String(pending.taskTitle || task?.title || "");
+      const startedAt = Number(pending.startedAt || 0);
+      if (!startedAt) return undefined;
+
+      const remaining = Math.max(0, 10_000 - (Date.now() - startedAt));
+      timer = window.setTimeout(() => {
+        getCurrentUserId().then((currentUserId) => {
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "action",
+              page_name: "My Tasks",
+              action_name: "Viewed Task",
+              details: `Viewed task "${title || "Untitled task"}" for at least 10 seconds`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        });
+        try {
+          window.localStorage.removeItem(PENDING_VIEW_TASK_KEY);
+        } catch {
+          // ignore
+        }
+      }, remaining);
+    } catch {
+      // ignore
+    }
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [taskId, task?.title]);
 
   const suggestDueDate = async () => {
     if (!task) return;
@@ -174,6 +272,20 @@ export default function TaskDetailPage({ params }) {
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate guide.");
       setGuideText(data.guide || "");
+
+      const currentUserId = await getCurrentUserId();
+      fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "My Tasks",
+          action_name: "Asked AI Suggestion",
+          details: `Requested AI suggestion for task "${String(task.title || "Untitled task")}"`,
+          session_id: getCurrentSessionId(),
+        }),
+      }).catch(() => {});
     } catch (e) {
       setError(e?.message || "Failed to generate guide.");
     } finally {
@@ -232,17 +344,7 @@ export default function TaskDetailPage({ params }) {
             />
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <select
-                value={task.status}
-                onChange={(e) => patch({ status: e.target.value })}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+              <StatusPipeline value={task.status || "To Do"} onChange={(next) => patch({ status: next })} />
             </div>
 
             <div className="mt-4">
@@ -386,7 +488,7 @@ export default function TaskDetailPage({ params }) {
             <div className="mt-3">
               {guideLoading ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                  Generating...
+                  <ThinkingDisplay preset="general" />
                 </div>
               ) : null}
               {guideText ? (
