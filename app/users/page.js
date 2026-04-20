@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, UserPlus } from "lucide-react";
+import { trackAction } from "../../lib/auditTracker";
+import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
 
 export default function UsersPage() {
+  useAuditUserAndPage("Users");
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -141,6 +144,9 @@ export default function UsersPage() {
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save user.");
       setSuccess(editingUser ? "User updated." : "User created.");
+      if (!editingUser && sessionUser?.id) {
+        trackAction(String(sessionUser.id), "Created User", "Users", { email: form.email });
+      }
       setShowForm(false);
       setEditingUser(null);
       load({ page: 1 });

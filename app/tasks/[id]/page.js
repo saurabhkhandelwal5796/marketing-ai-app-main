@@ -3,6 +3,10 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ThinkingDisplay from "../../../components/ThinkingDisplay";
+import { useAuditSessionUserId, useAuditUserAndPage } from "../../../lib/useAuditPageVisit";
+import { trackAction } from "../../../lib/auditTracker";
+
+const PENDING_VIEW_TASK_KEY = "audit.pendingViewedTask";
 
 const PRIORITIES = ["Low", "Medium", "High", "Urgent"];
 const TASK_TYPES = [
@@ -60,7 +64,9 @@ function todayYmd() {
 }
 
 export default function TaskDetailPage({ params }) {
+  useAuditUserAndPage("My Tasks");
   const router = useRouter();
+  const auditUserId = useAuditSessionUserId();
   const [task, setTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -89,6 +95,7 @@ export default function TaskDetailPage({ params }) {
     if (!taskId) return;
     setError("");
     try {
+      const prevStatus = task?.status || "";
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -98,6 +105,18 @@ export default function TaskDetailPage({ params }) {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save.");
       setTask(data.task);
       showSaved();
+
+      if (auditUserId && patchBody && Object.prototype.hasOwnProperty.call(patchBody, "status")) {
+        const nextStatus = String(patchBody.status || "");
+        if (nextStatus && nextStatus !== prevStatus) {
+          trackAction(
+            auditUserId,
+            "Changed Task Status",
+            "My Tasks",
+            `Task: ${String(data?.task?.title || task?.title || "")} | From: ${prevStatus} | To: ${nextStatus}`
+          );
+        }
+      }
     } catch (e) {
       setError(e?.message || "Failed to save.");
     }
@@ -129,6 +148,35 @@ export default function TaskDetailPage({ params }) {
     };
     load();
   }, [taskId]);
+
+  useEffect(() => {
+    if (!auditUserId || !taskId) return undefined;
+    let timer = null;
+    try {
+      const raw = window.localStorage.getItem(PENDING_VIEW_TASK_KEY);
+      if (!raw) return undefined;
+      const pending = JSON.parse(raw);
+      if (!pending || String(pending.taskId || "") !== String(taskId)) return undefined;
+      const title = String(pending.taskTitle || task?.title || "");
+      const startedAt = Number(pending.startedAt || 0);
+      if (!startedAt) return undefined;
+
+      const remaining = Math.max(0, 10_000 - (Date.now() - startedAt));
+      timer = window.setTimeout(() => {
+        trackAction(auditUserId, "Viewed Task", "My Tasks", `Task: ${title}`);
+        try {
+          window.localStorage.removeItem(PENDING_VIEW_TASK_KEY);
+        } catch {
+          // ignore
+        }
+      }, remaining);
+    } catch {
+      // ignore
+    }
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [auditUserId, taskId, task?.title]);
 
   const suggestDueDate = async () => {
     if (!task) return;
@@ -207,6 +255,10 @@ export default function TaskDetailPage({ params }) {
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate guide.");
       setGuideText(data.guide || "");
+
+      if (auditUserId) {
+        trackAction(auditUserId, "Asked AI Suggestion", "My Tasks", `Task: ${String(task.title || "")}`);
+      }
     } catch (e) {
       setError(e?.message || "Failed to generate guide.");
     } finally {

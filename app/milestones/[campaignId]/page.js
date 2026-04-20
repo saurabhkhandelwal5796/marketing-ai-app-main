@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAuditUserAndPage } from "../../../lib/useAuditPageVisit";
 import { ArrowLeft, Check, ChevronDown, ChevronRight } from "lucide-react";
 
 function initials(name) {
@@ -50,6 +51,7 @@ function progressBarStyles(status) {
 }
 
 export default function CampaignMilestonesPage() {
+  useAuditUserAndPage("Milestones");
   const { campaignId } = useParams();
   const router = useRouter();
   

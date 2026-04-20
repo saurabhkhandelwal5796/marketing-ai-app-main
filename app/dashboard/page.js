@@ -1,10 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState, useEffect } from "react";
 import KPISection from "../../components/dashboard/KPISection";
 import ChartsSection from "../../components/dashboard/ChartsSection";
 import CampaignTable from "../../components/dashboard/CampaignTable";
 import ActivityPanel from "../../components/dashboard/ActivityPanel";
+import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
 
 const toPct = (num, den) => {
   if (!den) return 0;
@@ -19,6 +20,7 @@ const withinDays = (dateStr, days) => {
 };
 
 export default function DashboardPage() {
+  useAuditUserAndPage("Dashboard");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState("30");

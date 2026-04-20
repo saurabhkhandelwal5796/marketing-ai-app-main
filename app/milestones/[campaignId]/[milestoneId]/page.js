@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useAuditUserAndPage } from "../../../../lib/useAuditPageVisit";
 import { ArrowLeft, Check, Trash2, Plus, Save, Send } from "lucide-react";
 
 function initials(name) {
@@ -58,6 +59,7 @@ const TASK_TYPES = [
 ];
 
 export default function MilestoneDetailPage() {
+  useAuditUserAndPage("Milestones");
   const { campaignId, milestoneId } = useParams();
   const router = useRouter();
 

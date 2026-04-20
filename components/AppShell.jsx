@@ -1,9 +1,10 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { CircleUserRound } from "lucide-react";
 import Sidebar from "./Sidebar";
+import { getAuditSessionDurationMs, trackLogout } from "../lib/auditTracker";
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
@@ -72,6 +73,21 @@ export default function AppShell({ children }) {
 
   useEffect(() => {
     if (loadingSession) return;
+    if (!sessionUser?.is_admin) return;
+    try {
+      const key = "auditTrail.lastCleanupAt";
+      const last = Number(window.localStorage.getItem(key) || "0");
+      const day = 24 * 60 * 60 * 1000;
+      if (last && Date.now() - last < day) return;
+      window.localStorage.setItem(key, String(Date.now()));
+      fetch("/api/audit/cleanup", { method: "POST" }).catch(() => {});
+    } catch {
+      // ignore
+    }
+  }, [loadingSession, sessionUser?.is_admin]);
+
+  useEffect(() => {
+    if (loadingSession) return;
     if (!sessionUser && !isAuthRoute) {
       router.replace("/auth");
       return;
@@ -109,6 +125,9 @@ export default function AppShell({ children }) {
   };
 
   const logout = async () => {
+    const uid = sessionUser?.id;
+    const dur = getAuditSessionDurationMs();
+    await trackLogout(uid, dur);
     await fetch("/api/auth/logout", { method: "POST" });
     setSessionUser(null);
     router.replace("/auth");

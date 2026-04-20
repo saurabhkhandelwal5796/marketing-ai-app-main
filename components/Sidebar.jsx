@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import Image from "next/image";
@@ -11,7 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Flag,
-  History,
+  ScrollText,
   Mail,
   Megaphone,
   ClipboardList,
@@ -29,7 +29,7 @@ const navItems = [
   { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
-  { href: "/history", label: "History", icon: History },
+  { href: "/audit-trail", label: "Audit Trail", icon: ScrollText },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

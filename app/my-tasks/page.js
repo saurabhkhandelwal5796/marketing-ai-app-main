@@ -2,7 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuditSessionUserId, useAuditUserAndPage } from "../../lib/useAuditPageVisit";
+import { trackAction } from "../../lib/auditTracker";
 import { Pencil, Trash2 } from "lucide-react";
+
+const PENDING_VIEW_TASK_KEY = "audit.pendingViewedTask";
 
 const PRIORITY_STYLES = {
   Low: "border-slate-300 bg-white text-slate-700",
@@ -118,7 +122,9 @@ function StatusPipeline({ value, onChange, disabled = false, compact = false, on
 }
 
 export default function MyTasksPage() {
+  useAuditUserAndPage("My Tasks");
   const router = useRouter();
+  const auditUserId = useAuditSessionUserId();
   const [users, setUsers] = useState([]);
   const [userId, setUserId] = useState("");
   const [tasks, setTasks] = useState([]);
@@ -278,6 +284,9 @@ export default function MyTasksPage() {
   const updateStatus = async (taskId, status) => {
     setError("");
     setSuccess("");
+    const existing = tasks.find((t) => t.id === taskId);
+    const oldStatus = existing?.status || "";
+    const taskTitle = existing?.title || "";
     try {
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
         method: "PATCH",
@@ -288,9 +297,36 @@ export default function MyTasksPage() {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update task.");
       setTasks((prev) => prev.map((t) => (t.id === taskId ? data.task : t)));
       setSuccess("Task updated.");
+
+      if (auditUserId) {
+        trackAction(
+          auditUserId,
+          "Changed Task Status",
+          "My Tasks",
+          `Task: ${taskTitle} | From: ${oldStatus} | To: ${status}`
+        );
+      }
     } catch (e) {
       setError(e?.message || "Failed to update task.");
     }
+  };
+
+  const openTaskDetail = (t) => {
+    if (!t?.id) return;
+    try {
+      window.localStorage.setItem(
+        PENDING_VIEW_TASK_KEY,
+        JSON.stringify({
+          taskId: String(t.id),
+          taskTitle: String(t.title || ""),
+          fromPage: "My Tasks",
+          startedAt: Date.now(),
+        })
+      );
+    } catch {
+      // ignore
+    }
+    router.push(`/tasks/${encodeURIComponent(t.id)}`);
   };
 
   const deleteTask = async (taskId) => {
@@ -508,7 +544,7 @@ export default function MyTasksPage() {
                               setError("This task is missing an id (cannot open).");
                               return;
                             }
-                            router.push(`/tasks/${encodeURIComponent(t.id)}`);
+                            openTaskDetail(t);
                           }}
                         >
                           <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
@@ -583,7 +619,7 @@ export default function MyTasksPage() {
                             <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                               <button
                                 type="button"
-                                onClick={() => router.push(`/tasks/${encodeURIComponent(t.id)}`)}
+                                onClick={() => openTaskDetail(t)}
                                 className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
                                 title="Edit"
                               >
@@ -625,7 +661,7 @@ export default function MyTasksPage() {
                             setError("This task is missing an id (cannot open).");
                             return;
                           }
-                          router.push(`/tasks/${encodeURIComponent(t.id)}`);
+                          openTaskDetail(t);
                         }}
                         className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-3 shadow-sm hover:bg-slate-50"
                       >

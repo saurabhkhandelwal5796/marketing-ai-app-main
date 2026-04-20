@@ -26,6 +26,9 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
+import CreatePostPage from "./CreatePostPage";
+import { trackAction } from "../lib/auditTracker";
+import { useAuditPageVisit } from "../lib/useAuditPageVisit";
 
 const TABS = [
   { id: "plan", label: "Marketing Plan", icon: ClipboardCopy },
@@ -128,6 +131,65 @@ function hasFilterTag(detailTags, filter) {
   const f = (filter || "").toLowerCase();
   if (!f) return true;
   return tags.some((t) => t.includes(f));
+}
+
+function buildGeneratePostRichContext({
+  campaignBriefDescription,
+  company,
+  campaign,
+  website,
+  marketingPlan,
+  selectedStepIds,
+  marketingDetails,
+}) {
+  const lines = [];
+  lines.push("=== Campaign overview ===");
+  if (String(company || "").trim()) lines.push(`Company name: ${String(company).trim()}`);
+  if (String(campaign || "").trim()) lines.push(`Campaign goal: ${String(campaign).trim()}`);
+  if (String(website || "").trim()) lines.push(`Website: ${String(website).trim()}`);
+  const brief = String(campaignBriefDescription || "").trim();
+  if (brief) {
+    lines.push("");
+    lines.push("=== Campaign description (brief field) ===");
+    lines.push(brief);
+  }
+
+  lines.push("");
+  lines.push("=== Marketing Plan (checked steps) ===");
+  const plan = Array.isArray(marketingPlan) ? marketingPlan : [];
+  const checked = plan.filter((step) => step?.id != null && selectedStepIds.includes(step.id));
+  if (!checked.length) {
+    lines.push("(No plan steps selected.)");
+  } else {
+    checked.forEach((step, i) => {
+      const title = String(step?.title || `Step ${i + 1}`).trim();
+      const body = String(step?.description || step?.explanation || "").trim();
+      lines.push(`${i + 1}. ${title}`);
+      if (body) lines.push(body);
+      if (Array.isArray(step?.channels) && step.channels.length) {
+        lines.push(`Channels: ${step.channels.join(", ")}`);
+      }
+      lines.push("");
+    });
+  }
+
+  lines.push("=== Selected Marketing Plans (all analysis points / current copy) ===");
+  const details = Array.isArray(marketingDetails) ? marketingDetails : [];
+  if (!details.length) {
+    lines.push("(No marketing analysis points yet — generate analysis first.)");
+  } else {
+    details.forEach((d, i) => {
+      const title = String(d?.title || `Point ${i + 1}`).trim();
+      const explanation = String(d?.explanation || "").trim();
+      lines.push(`${i + 1}. ${title}`);
+      if (explanation) lines.push(explanation);
+      const tags = normalizeTags(d?.tags);
+      if (tags.length) lines.push(`Tags: ${tags.join(", ")}`);
+      lines.push("");
+    });
+  }
+
+  return lines.join("\n").trim();
 }
 
 function tasksToExportText(tasks) {
@@ -261,6 +323,8 @@ export default function MarketingAnalysisOutput({
   campaign,
   website,
   description,
+  /** Raw campaign description from the left-panel textarea (not only the latest chat line). */
+  campaignBriefDescription = "",
   attachmentName,
   marketingPlan = [],
   selectedStepIds = [],
@@ -270,9 +334,21 @@ export default function MarketingAnalysisOutput({
   initialMarketingDetails = null,
   initialTargetAudience = null,
   initialAiMessage = "",
+  auditUserId = null,
 }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("plan");
+  const campaignAuditPageName = useMemo(() => {
+    const tab = TABS.find((t) => t.id === activeTab);
+    return tab ? `Campaign — ${tab.label}` : "Campaign";
+  }, [activeTab]);
+  useAuditPageVisit(auditUserId, campaignAuditPageName);
+
+  useEffect(() => {
+    if (!auditUserId || activeTab !== "audience") return;
+    trackAction(auditUserId, "Viewed Target Audience", "Campaign — Target Audience", null);
+  }, [activeTab, auditUserId]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [aiMessage, setAiMessage] = useState("");
@@ -323,6 +399,10 @@ export default function MarketingAnalysisOutput({
   const [companyModalError, setCompanyModalError] = useState("");
   const [companyModalData, setCompanyModalData] = useState(null);
   const [activeCompany, setActiveCompany] = useState(null);
+
+  const [generatePostOpen, setGeneratePostOpen] = useState(false);
+  const [generatePostSessionKey, setGeneratePostSessionKey] = useState(0);
+  const [generatePostPrefill, setGeneratePostPrefill] = useState("");
 
   // Per-company AI assistant state (lives only inside the company detail modal).
   const [companyAssistantInput, setCompanyAssistantInput] = useState("");
@@ -721,6 +801,13 @@ export default function MarketingAnalysisOutput({
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to assign milestone task.");
 
+      if (auditUserId && assignee_id) {
+        trackAction(auditUserId, "Assigned Task", "Campaign — Marketing Plan", {
+          milestoneId: milestone.id,
+          taskId: task.id,
+        });
+      }
+
       setCampaignMilestones((prev) =>
         prev.map((m) =>
           m.id !== milestone.id
@@ -1116,6 +1203,11 @@ export default function MarketingAnalysisOutput({
       if (createdIds.length) setSelectedCampaignMilestoneId(createdIds[0]);
       setMilestoneModalOpen(false);
       showToast("success", "Milestones created successfully.");
+      if (auditUserId) {
+        trackAction(auditUserId, "Created Milestone", "Campaign — Marketing Plan", {
+          count: createdIds.length,
+        });
+      }
     } catch (e) {
       setMilestoneModalError(e?.message || "Failed to save milestones.");
     } finally {
@@ -1236,6 +1328,9 @@ export default function MarketingAnalysisOutput({
         if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
         setTaskModalOpen(false);
         showToast("success", "Task created successfully.");
+        if (auditUserId && formAssigneeId) {
+          trackAction(auditUserId, "Assigned Task", "Campaign — Task Assignment", { taskId: data?.task?.id });
+        }
         await loadTasks();
       } else {
         const res = await fetch(`/api/tasks/${formId}`, {
@@ -1247,6 +1342,9 @@ export default function MarketingAnalysisOutput({
         if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update task.");
         setTaskModalOpen(false);
         showToast("success", "Task updated successfully");
+        if (auditUserId && formAssigneeId) {
+          trackAction(auditUserId, "Assigned Task", "Campaign — Task Assignment", { taskId: formId });
+        }
         await loadTasks();
       }
     } catch (e) {
@@ -1472,6 +1570,14 @@ export default function MarketingAnalysisOutput({
       } catch (_) {
         // ignore history failures
       }
+
+      const meaningful =
+        (typeof data?.aiMessage === "string" && data.aiMessage.trim()) ||
+        (Array.isArray(data?.marketingDetails) && data.marketingDetails.length) ||
+        (Array.isArray(data?.targetAudience) && data.targetAudience.length);
+      if (auditUserId && meaningful) {
+        trackAction(auditUserId, "Generated Marketing Plan", "Campaign — Selected Marketing Plans", { campaignId });
+      }
     } catch (err) {
       setError(err?.message || "Failed to generate analysis.");
     } finally {
@@ -1679,6 +1785,35 @@ export default function MarketingAnalysisOutput({
     });
   };
 
+  const openGeneratePostModal = () => {
+    const combined = buildGeneratePostRichContext({
+      campaignBriefDescription,
+      company,
+      campaign,
+      website,
+      marketingPlan,
+      selectedStepIds,
+      marketingDetails,
+    });
+    try {
+      localStorage.setItem("autoGeneratePostContent", combined);
+    } catch {
+      // ignore
+    }
+    setGeneratePostPrefill(combined);
+    setGeneratePostSessionKey((k) => k + 1);
+    setGeneratePostOpen(true);
+  };
+
+  useEffect(() => {
+    if (!generatePostOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [generatePostOpen]);
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       {toast ? (
@@ -1739,7 +1874,7 @@ export default function MarketingAnalysisOutput({
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
-                    router.push("/history");
+                    router.push("/saved-plans");
                   }}
                   className="w-full px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
@@ -1785,6 +1920,14 @@ export default function MarketingAnalysisOutput({
                 </button>
               );
             })}
+            <button
+              type="button"
+              onClick={openGeneratePostModal}
+              className="ml-1 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-violet-500 hover:via-purple-500 hover:to-fuchsia-500"
+            >
+              <Sparkles size={16} className="shrink-0 opacity-95" aria-hidden />
+              Generate Post
+            </button>
           </div>
         </div>
 
@@ -3768,6 +3911,38 @@ export default function MarketingAnalysisOutput({
                   </>
                 ) : milestoneModalSaving ? "Saving..." : "Save All Milestones"}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {generatePostOpen ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/60 p-3"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="generate-post-modal-title"
+        >
+          <div
+            className="flex max-h-[85vh] max-w-[96vw] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            style={{ width: "80vw", height: "85vh" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <h2 id="generate-post-modal-title" className="text-base font-semibold text-slate-900">
+                Generate Post
+              </h2>
+              <button
+                type="button"
+                onClick={() => setGeneratePostOpen(false)}
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50">
+              <CreatePostPage key={generatePostSessionKey} embedded initialInput={generatePostPrefill} />
             </div>
           </div>
         </div>
