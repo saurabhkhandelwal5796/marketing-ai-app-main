@@ -393,7 +393,7 @@ export default function AuditTrailPage() {
   const statCards = statsPayload?.stats;
 
   return (
-    <main className="space-y-8 p-6">
+    <main className="space-y-8 p-6 text-slate-900">
       <div>
         <h1 className="text-2xl font-semibold text-slate-900">Audit Trail</h1>
         <p className="mt-1 text-sm text-slate-500">Session activity, page visits, and key actions across the app.</p>
