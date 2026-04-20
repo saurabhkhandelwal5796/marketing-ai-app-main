@@ -18,7 +18,12 @@ export async function GET() {
     const connected = !!(data?.linkedin_access_token && data?.linkedin_member_urn);
     const expiresAt = data?.linkedin_token_expires_at ? new Date(data.linkedin_token_expires_at).getTime() : 0;
     const expired = !!(expiresAt && Date.now() >= expiresAt);
-    return NextResponse.json({ connected: connected && !expired, expired });
+    const isConnected = connected && !expired;
+    return NextResponse.json({
+      connected: isConnected,
+      expired,
+      connectedAccount: isConnected ? data?.linkedin_member_urn || "" : "",
+    });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to load LinkedIn status." }, { status: 500 });
   }

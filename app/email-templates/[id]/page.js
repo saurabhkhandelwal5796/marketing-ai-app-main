@@ -155,54 +155,26 @@ export default function EmailTemplateDetailPage() {
               </button>
               {showActionsMenu ? (
                 <div className="absolute right-0 top-11 z-20 w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-                  {editing ? (
-                    <>
-                      <button
-                        onClick={() => {
-                          setShowActionsMenu(false);
-                          onSave();
-                        }}
-                        disabled={saving}
-                        className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50"
-                      >
-                        <Save size={14} />
-                        {saving ? "Saving..." : "Save"}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowActionsMenu(false);
-                          setEditing(false);
-                        }}
-                        className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        <X size={14} />
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => {
-                          setShowActionsMenu(false);
-                          setEditing(true);
-                        }}
-                        className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        <PencilLine size={14} />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowActionsMenu(false);
-                          onDelete();
-                        }}
-                        className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50"
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
-                    </>
-                  )}
+                  <button
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      setEditing(true);
+                    }}
+                    className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  >
+                    <PencilLine size={14} />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowActionsMenu(false);
+                      onDelete();
+                    }}
+                    className="inline-flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -332,6 +304,35 @@ export default function EmailTemplateDetailPage() {
                 )}
               </label>
               <p className="text-xs text-slate-500">Created: {new Date(template.created_at).toLocaleString()}</p>
+              {editing ? (
+                <div className="flex justify-end gap-2 border-t border-slate-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditing(false);
+                      setForm({
+                        name: template?.name || "",
+                        subject: template?.subject || "",
+                        body: template?.body || "",
+                        case_studies: Array.isArray(template?.case_studies) ? template.case_studies : [],
+                      });
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    <X size={14} />
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onSave}
+                    disabled={saving}
+                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  >
+                    <Save size={14} />
+                    {saving ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         ) : null}

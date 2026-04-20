@@ -166,11 +166,12 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="min-h-dvh bg-slate-100">
-      <div className="grid min-h-dvh grid-cols-1 lg:grid-cols-2">
-        <section className="flex items-start justify-center p-6 pt-8 lg:p-12 lg:pt-12">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl sm:p-8">
-            <h1 className="text-2xl font-bold text-slate-900">{mode === "signup" ? "Create your account" : "Welcome back"}</h1>
+    <main className="flex h-dvh overflow-hidden bg-slate-50 text-slate-900">
+      <div className="flex h-full w-full flex-col overflow-hidden lg:flex-row">
+        {/* Left Form Section */}
+        <section className="flex flex-1 flex-col items-center justify-center overflow-hidden px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 shadow-xl sm:p-7">
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{mode === "signup" ? "Create an account" : "Welcome back"}</h1>
             <p className="mt-1 text-sm text-slate-500">
               {mode === "signup" ? "Start managing your marketing workflows today." : "Sign in to continue to your dashboard."}
             </p>
@@ -185,13 +186,14 @@ export default function AuthPage() {
             ) : null}
 
             {mode === "signup" ? (
-              <form onSubmit={onSignup} className="mt-5 space-y-3">
+              <form onSubmit={onSignup} autoComplete="off" className="mt-5 space-y-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <label className="block text-sm font-medium text-slate-700">
                     First Name
                     <input
                       required
                       maxLength={15}
+                      autoComplete="off"
                       value={signup.firstName}
                       onChange={(e) => setSignup((p) => ({ ...p, firstName: e.target.value }))}
                       onBlur={() => markTouched("firstName")}
@@ -208,6 +210,7 @@ export default function AuthPage() {
                     <input
                       required
                       maxLength={15}
+                      autoComplete="off"
                       value={signup.lastName}
                       onChange={(e) => setSignup((p) => ({ ...p, lastName: e.target.value }))}
                       onBlur={() => markTouched("lastName")}
@@ -225,6 +228,7 @@ export default function AuthPage() {
                   <input
                     type="email"
                     required
+                    autoComplete="off"
                     value={signup.email}
                     onChange={(e) => setSignup((p) => ({ ...p, email: e.target.value }))}
                     onBlur={() => markTouched("email")}
@@ -241,6 +245,7 @@ export default function AuthPage() {
                   <input
                     required
                     maxLength={30}
+                    autoComplete="off"
                     value={signup.company}
                     onChange={(e) => setSignup((p) => ({ ...p, company: e.target.value }))}
                     onBlur={() => markTouched("company")}
@@ -258,6 +263,7 @@ export default function AuthPage() {
                     type="password"
                     minLength={8}
                     required
+                    autoComplete="new-password"
                     value={signup.password}
                     onChange={(e) => setSignup((p) => ({ ...p, password: e.target.value }))}
                     onBlur={() => markTouched("password")}
@@ -275,6 +281,7 @@ export default function AuthPage() {
                     type="password"
                     minLength={8}
                     required
+                    autoComplete="new-password"
                     value={signup.confirmPassword}
                     onChange={(e) => setSignup((p) => ({ ...p, confirmPassword: e.target.value }))}
                     onBlur={() => markTouched("confirmPassword")}
@@ -302,12 +309,13 @@ export default function AuthPage() {
                 </button>
               </form>
             ) : (
-              <form onSubmit={onSignin} className="mt-5 space-y-3">
+              <form onSubmit={onSignin} autoComplete="off" className="mt-5 space-y-3">
                 <label className="block text-sm font-medium text-slate-700">
                   Email
                   <input
                     type="email"
                     required
+                    autoComplete="off"
                     value={signin.email}
                     onChange={(e) => setSignin((p) => ({ ...p, email: e.target.value }))}
                     className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -318,6 +326,7 @@ export default function AuthPage() {
                   <input
                     type="password"
                     required
+                    autoComplete="new-password"
                     value={signin.password}
                     onChange={(e) => setSignin((p) => ({ ...p, password: e.target.value }))}
                     className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -345,14 +354,15 @@ export default function AuthPage() {
           </div>
         </section>
 
-        <section className="relative hidden min-h-dvh lg:block">
+        {/* Right Image Section */}
+        <section className="relative hidden flex-1 overflow-hidden bg-slate-100 lg:flex">
           <Image
-            src="/auth-side.png"
+            src="/signup-right-panel-v2.png"
             alt="Authentication side illustration"
             fill
-            sizes="50vw"
-            className="object-cover"
             priority
+            sizes="(min-width: 1536px) 50vw, (min-width: 1024px) 50vw, 100vw"
+            className="object-cover object-center"
           />
         </section>
       </div>

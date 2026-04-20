@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { getAuditSessionDurationMs, trackLogout } from "../lib/auditTracker";
@@ -15,7 +15,6 @@ export default function AppShell({ children }) {
   const [sidebarMode, setSidebarMode] = useState("expanded"); // expanded | collapsed
   const [sessionUser, setSessionUser] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [profileError, setProfileError] = useState("");
@@ -28,7 +27,6 @@ export default function AppShell({ children }) {
     newPassword: "",
     confirmPassword: "",
   });
-  const userMenuRef = useRef(null);
   const showTopHeader = pathname === "/dashboard";
 
   useEffect(() => {
@@ -99,16 +97,6 @@ export default function AppShell({ children }) {
     }
   }, [isAuthRoute, isPublicRoute, loadingSession, router, sessionUser]);
 
-  useEffect(() => {
-    const onClickOutside = (event) => {
-      if (!userMenuRef.current?.contains(event.target)) {
-        setIsUserMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
-  }, []);
-
   const cycleCollapsed = () => {
     setSidebarMode((prev) => (prev === "expanded" ? "collapsed" : "expanded"));
   };
@@ -127,25 +115,30 @@ export default function AppShell({ children }) {
   };
 
   const logout = async () => {
-    const uid = sessionUser?.id;
-    const dur = getAuditSessionDurationMs();
-    await trackLogout(uid, dur);
-    await fetch("/api/auth/logout", { method: "POST" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch (err) {
+      console.error("Logout error", err);
+    }
     setSessionUser(null);
-    router.replace("/auth");
-    router.refresh();
+    window.location.href = "/auth";
   };
 
   const openProfileModal = async () => {
-    setIsUserMenuOpen(false);
     setProfileError("");
     setProfileSuccess("");
     setProfileSubmitting(false);
+
+    // Pre-fill synchronously using session data so there is no blank flash
+    const nameParts = (sessionUser?.name || "").split(/\s+/).filter(Boolean);
+    const fallbackFirst = nameParts[0] || "";
+    const fallbackLast = nameParts.slice(1).join(" ") || "";
+
     setProfileForm({
-      firstName: "",
-      lastName: "",
-      email: "",
-      company: "",
+      firstName: fallbackFirst,
+      lastName: fallbackLast,
+      email: sessionUser?.email || "",
+      company: sessionUser?.company || "",
       newPassword: "",
       confirmPassword: "",
     });
@@ -155,14 +148,13 @@ export default function AppShell({ children }) {
       const res = await fetch("/api/auth/profile");
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load profile.");
-      setProfileForm({
-        firstName: data?.user?.firstName || "",
-        lastName: data?.user?.lastName || "",
-        email: data?.user?.email || "",
-        company: data?.user?.company || "",
-        newPassword: "",
-        confirmPassword: "",
-      });
+      setProfileForm(prev => ({
+        ...prev,
+        firstName: data?.user?.firstName || prev.firstName,
+        lastName: data?.user?.lastName || prev.lastName,
+        email: data?.user?.email || prev.email,
+        company: data?.user?.company || prev.company,
+      }));
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load profile.";
       setProfileError(message);
@@ -193,6 +185,7 @@ export default function AppShell({ children }) {
         ...prev,
         name: data?.user?.name || prev?.name,
         email: data?.user?.email || prev?.email,
+        company: data?.user?.company || prev?.company,
       }));
       setProfileForm((prev) => ({ ...prev, newPassword: "", confirmPassword: "" }));
       setProfileSuccess("Profile updated successfully.");
@@ -218,64 +211,72 @@ export default function AppShell({ children }) {
         onToggleCollapsed={cycleCollapsed}
         onHoverExpand={expandSidebarOnHover}
         isAdmin={!!sessionUser?.is_admin}
-        sessionUser={sessionUser}
+        currentUser={sessionUser}
+        onOpenProfileModal={openProfileModal}
+        onLogout={logout}
       />
-      <div className={`max-w-full min-w-0 overflow-x-hidden transition-all ${sidebarWidthClass}`}>
-        {showTopHeader ? (
-          <header className="border-b border-slate-200 bg-white px-5 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">{sessionUser?.name || "User"}</p>
-                <p className="text-xs text-slate-500">
-                  {sessionUser?.admin_id ? `Logged in as ${sessionUser?.name || "User"}` : sessionUser?.is_admin ? "Admin" : "User"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {sessionUser?.admin_id ? (
-                  <button
-                    onClick={restoreAdmin}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Return to Admin
-                  </button>
-                ) : null}
-                <div className="relative" ref={userMenuRef}>
-                  <button
-                    onClick={() => setIsUserMenuOpen((prev) => !prev)}
-                    className="rounded-full border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                    aria-label="Open profile menu"
-                  >
-                    <Avatar
-                      name={sessionUser?.name || "User"}
-                      imageUrl={sessionUser?.avatar}
-                      size="sm"
-                      className="border border-slate-200"
-                    />
-                  </button>
-                  {isUserMenuOpen ? (
-                    <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                      <button
-                        onClick={openProfileModal}
-                        className="block w-full px-3 py-2 text-left text-sm text-slate-700 hover:bg-slate-100"
-                      >
-                        Edit Profile
-                      </button>
-                      <button
-                        onClick={logout}
-                        className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  ) : null}
+      <div className={`max-w-full min-w-0 overflow-x-hidden transition-all print:pl-0 ${sidebarWidthClass}`}>
+        {(() => {
+          if (!sessionUser) return null;
+          const isImpersonating = !!sessionUser.admin_id;
+          const isNormalAdmin = !isImpersonating && !!sessionUser.is_admin;
+          const isNormalUser = !isImpersonating && !sessionUser.is_admin;
+
+          // CASE 1: Normal user -> Remove completely
+          if (isNormalUser) return null;
+
+          // CASE 3: Admin impersonation -> Show a top banner/header on all pages
+          if (isImpersonating) {
+            return (
+              <header className="border-b border-indigo-200 bg-indigo-50 px-5 py-3 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></div>
+                    <p className="text-sm font-bold text-indigo-900">
+                      Logged in as {sessionUser.name || "User"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={restoreAdmin}
+                      className="rounded-lg border border-indigo-200 bg-white px-4 py-1.5 text-xs font-bold text-indigo-700 shadow-sm transition-all hover:bg-indigo-100 hover:scale-[0.98]"
+                    >
+                      Return to Admin
+                    </button>
+                  </div>
                 </div>
-              </div>
+              </header>
+            );
+          }
+
+          // CASE 2: Normal Admin -> KEEP existing functionality EXACTLY the same
+          if (isNormalAdmin && showTopHeader) {
+            return (
+              <header className="border-b border-slate-200 bg-white px-5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{sessionUser.name || "User"}</p>
+                    <p className="text-xs text-slate-500">Admin</p>
+                  </div>
+                </div>
+              </header>
+            );
+          }
+
+          return null;
+        })()}
+
+        {(() => {
+          const isImpersonating = !!sessionUser?.admin_id;
+          const isNormalAdmin = !isImpersonating && !!sessionUser?.is_admin;
+          const headerIsRendered = isImpersonating || (isNormalAdmin && showTopHeader);
+          
+          return (
+            <div className={`${headerIsRendered ? "min-h-[calc(100vh-57px)]" : "min-h-screen"} max-w-full min-w-0 overflow-x-hidden`}>
+              {children}
             </div>
-          </header>
-        ) : null}
-        <div className={`${showTopHeader ? "min-h-[calc(100vh-57px)]" : "min-h-screen"} max-w-full min-w-0 overflow-x-hidden`}>
-          {children}
-        </div>
+          );
+        })()}
       </div>
       {isProfileModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4">

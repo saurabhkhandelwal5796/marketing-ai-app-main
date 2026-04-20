@@ -2,30 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, UserPlus } from "lucide-react";
-import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
-import Avatar from "../../components/Avatar";
-
-function buildUserEditDetails(beforeUser, payload) {
-  const changes = [];
-  const beforeName = String(beforeUser?.name || "");
-  const beforeEmail = String(beforeUser?.email || "");
-  const beforeRole = beforeUser?.is_admin ? "Admin" : "User";
-  const beforeStatus = String(beforeUser?.status || "Active");
-
-  const nextName = String(payload?.name || "");
-  const nextEmail = String(payload?.email || "");
-  const nextRole = String(payload?.role || beforeRole);
-  const nextStatus = String(payload?.status || beforeStatus);
-
-  if (beforeName !== nextName) changes.push(`Changed name from ${beforeName} to ${nextName}`);
-  if (beforeEmail !== nextEmail) changes.push(`Changed email from ${beforeEmail} to ${nextEmail}`);
-  if (beforeRole !== nextRole) changes.push(`Changed role from ${beforeRole} to ${nextRole}`);
-  if (beforeStatus !== nextStatus) changes.push(`Changed status from ${beforeStatus} to ${nextStatus}`);
-
-  if (!changes.length) return `Updated user ${nextName || beforeName}`;
-  return `${changes.join(". ")} for ${nextName || beforeName}.`;
-}
+import { Pencil, Trash2, UserPlus, Search, MoreHorizontal, LogIn, Users } from "lucide-react";
 
 export default function UsersPage() {
   const router = useRouter();
@@ -38,6 +15,7 @@ export default function UsersPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [isViewMode, setIsViewMode] = useState(false);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -51,6 +29,20 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
+
+  const [openDropdownId, setOpenDropdownId] = useState(null);
+
+  useEffect(() => {
+    const handleClickOutside = () => setOpenDropdownId(null);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  const toggleDropdown = (e, id) => {
+    e.stopPropagation();
+    e.nativeEvent.stopImmediatePropagation();
+    setOpenDropdownId((prev) => (prev === id ? null : id));
+  };
 
   const load = async (overrides = {}) => {
     const params = new URLSearchParams({
@@ -127,12 +119,27 @@ export default function UsersPage() {
 
   const openCreateForm = () => {
     setEditingUser(null);
+    setIsViewMode(false);
     setForm({ name: "", email: "", password: "", role: "User", status: "Active" });
     setShowForm(true);
   };
 
   const openEditForm = (user) => {
     setEditingUser(user);
+    setIsViewMode(false);
+    setForm({
+      name: user.name || "",
+      email: user.email || "",
+      password: "",
+      role: user.is_admin ? "Admin" : "User",
+      status: user.status || "Active",
+    });
+    setShowForm(true);
+  };
+
+  const openViewForm = (user) => {
+    setEditingUser(user);
+    setIsViewMode(true);
     setForm({
       name: user.name || "",
       email: user.email || "",
@@ -159,6 +166,22 @@ export default function UsersPage() {
       router.refresh();
     } catch (e) {
       setError(e?.message || "Failed to login as user.");
+    }
+  };
+
+  const toggleStatus = async (u) => {
+    const newStatus = u.status === "Active" ? "Inactive" : "Active";
+    setUsers((prev) => prev.map((user) => (user.id === u.id ? { ...user, status: newStatus } : user)));
+    try {
+      const res = await fetch(`/api/users/${u.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!res.ok) throw new Error();
+    } catch (e) {
+      setUsers((prev) => prev.map((user) => (user.id === u.id ? { ...user, status: u.status } : user)));
+      setError("Failed to update status.");
     }
   };
 
@@ -226,7 +249,7 @@ export default function UsersPage() {
 
   const onDelete = async (u) => {
     if (!u?.id) return;
-    const ok = window.confirm(`Delete user "${u.name}"?`);
+    const ok = window.confirm(`Are you sure you want to delete user "${u.name}"?`);
     if (!ok) return;
     setError("");
     setSuccess("");
@@ -245,15 +268,16 @@ export default function UsersPage() {
 
   return (
     <main className="space-y-6 p-6">
-      <section className="rounded-3xl border border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 px-6 py-6 text-white shadow-sm">
+      {/* HEADER */}
+      <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold">User Management</h1>
-            <p className="mt-1 text-sm text-slate-200">Manage users, permissions, and impersonation from one place.</p>
+            <h1 className="text-xl font-bold text-slate-900">User Management</h1>
+            <p className="mt-1 text-xs font-medium text-slate-500">Manage users, permissions, and impersonation efficiently.</p>
           </div>
           <button
             onClick={openCreateForm}
-            className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-slate-100"
+            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[0.98] hover:bg-indigo-700"
           >
             <UserPlus size={16} />
             Add User
@@ -262,27 +286,30 @@ export default function UsersPage() {
       </section>
 
       {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-sm">{error}</div>
       ) : null}
       {success ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700 shadow-sm">{success}</div>
       ) : null}
 
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-900">All Users</h2>
-            <div className="flex flex-wrap items-center gap-2">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        
+        {/* FILTER BAR */}
+        <div className="flex flex-wrap items-center gap-4 border-b border-slate-200 bg-slate-50/50 px-5 py-4">
+          <div className="relative min-w-[280px] flex-1">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name/email"
-              className="min-w-[220px] rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Search by name or email..."
+              className="w-full rounded-lg border border-slate-300 pl-10 pr-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
             />
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-3">
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500"
             >
               <option value="all">All Roles</option>
               <option value="Admin">Admin</option>
@@ -291,7 +318,7 @@ export default function UsersPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-500"
             >
               <option value="all">All Status</option>
               <option value="Active">Active</option>
@@ -302,180 +329,245 @@ export default function UsersPage() {
                 setPage(1);
                 load({ page: 1, search, role: roleFilter, status: statusFilter });
               }}
-              className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              className="rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800"
             >
               Apply
             </button>
-            </div>
           </div>
         </div>
 
+        {/* TABLE */}
         {loading ? (
-          <div className="px-5 py-10 text-sm text-slate-500">Loading...</div>
+          <div className="flex h-40 items-center justify-center text-sm font-medium text-slate-500">Loading users...</div>
+        ) : users.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+              <Users size={32} />
+            </div>
+            <h3 className="text-lg font-semibold text-slate-900">No users found</h3>
+            <p className="mt-1 text-sm text-slate-500">We couldn't find any users matching your criteria.</p>
+            <button
+              onClick={openCreateForm}
+              className="mt-6 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700"
+            >
+              <UserPlus size={16} /> Add User
+            </button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-white border-b border-slate-200">
                 <tr>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Name</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Email</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Role</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Status</th>
-                  <th className="px-5 py-3 text-left font-semibold text-slate-700">Created</th>
-                  <th className="px-5 py-3 text-right font-semibold text-slate-700">Actions</th>
+                  <th className="px-6 py-4 font-semibold text-slate-500">Name</th>
+                  <th className="px-6 py-4 font-semibold text-slate-500">Email</th>
+                  <th className="px-6 py-4 font-semibold text-slate-500">Role</th>
+                  <th className="px-6 py-4 font-semibold text-slate-500">Status</th>
+                  <th className="px-6 py-4 font-semibold text-slate-500">Created</th>
+                  <th className="px-6 py-4 text-right font-semibold text-slate-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {users.map((u) => (
-                <tr key={u.id}>
-                  <td className="px-5 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar name={u.name} imageUrl={u.avatar} size="md" />
-                      <button onClick={() => onOpenUser(u)} className="font-semibold text-blue-700 hover:underline">
-                        {u.name}
-                      </button>
-                    </div>
-                  </td>
-                  <td className="px-5 py-3 text-slate-700">{u.email}</td>
-                  <td className="px-5 py-3 text-slate-700">{u.is_admin ? "Admin" : "User"}</td>
-                  <td className="px-5 py-3 text-slate-700">{u.status || "Active"}</td>
-                  <td className="px-5 py-3 text-slate-700">{new Date(u.created_at).toLocaleDateString()}</td>
-                  <td className="px-5 py-3">
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openEditForm(u)}
-                        className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                        title="Edit user"
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        onClick={() => switchAsUser(u)}
-                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                        title="Login as user"
-                        disabled={u.is_admin}
-                      >
-                        Login as
-                      </button>
-                      <button
-                        onClick={() => onDelete(u)}
-                        className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                        title="Remove user"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-                ))}
-                {users.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
-                    No users yet. Add your first user above.
-                  </td>
-                </tr>
-                ) : null}
+                {users.map((u) => {
+                  const isActive = u.status !== "Inactive";
+                  return (
+                    <tr key={u.id} className="group transition-colors hover:bg-slate-50">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 font-bold text-slate-600 ring-1 ring-slate-200">
+                            {(u.name || "U").charAt(0).toUpperCase()}
+                          </div>
+                          <button onClick={() => onOpenUser(u)} className="font-semibold text-slate-900 transition-colors hover:text-indigo-600">
+                            {u.name}
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 font-medium text-slate-600">{u.email}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-bold ${u.is_admin ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200" : "bg-slate-100 text-slate-700 ring-1 ring-slate-200"}`}>
+                          {u.is_admin ? "Admin" : "User"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleStatus(u); }}
+                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                            role="switch"
+                            aria-checked={isActive}
+                          >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isActive ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                          </button>
+                          <span className={`text-xs font-bold ${isActive ? "text-emerald-700" : "text-slate-500"}`}>
+                            {isActive ? "Active" : "Inactive"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                        {new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="relative inline-block">
+                          <button
+                            onClick={(e) => toggleDropdown(e, u.id)}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${openDropdownId === u.id ? "bg-slate-200 text-slate-800" : "text-slate-400 hover:bg-slate-100 hover:text-slate-600"}`}
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+                          {openDropdownId === u.id && (
+                            <div className="absolute right-0 top-10 z-[60] w-44 origin-top-right overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg animate-in fade-in slide-in-from-top-2">
+                              <div className="flex flex-col py-1 text-left">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); openViewForm(u); }}
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
+                                >
+                                  <Users size={14} className="text-slate-400" /> View User
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); openEditForm(u); }}
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
+                                >
+                                  <Pencil size={14} className="text-slate-400" /> Edit User
+                                </button>
+                                <div className="my-1 border-t border-slate-100"></div>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setOpenDropdownId(null); onDelete(u); }}
+                                  className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50"
+                                >
+                                  <Trash2 size={14} className="text-red-500" /> Delete User
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
-        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
-          <p className="text-sm text-slate-600">
-            Showing page {pagination.page} of {totalPages} ({pagination.total} users)
-          </p>
-          <div className="flex gap-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <button
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Next
-            </button>
+
+        {/* PAGINATION */}
+        {users.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between border-t border-slate-200 px-6 py-4">
+            <p className="text-sm text-slate-600">
+              Showing <span className="font-bold text-slate-900">page {pagination.page} of {totalPages}</span> ({pagination.total} users)
+            </p>
+            <div className="flex gap-2">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:shadow-none"
+              >
+                Previous
+              </button>
+              <button
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50 disabled:shadow-none"
+              >
+                Next
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </section>
 
+      {/* CREATE / EDIT MODAL */}
       {showForm ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/30 p-4">
-          <form onSubmit={onSave} className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-5 shadow-xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">{editingUser ? "Edit User" : "Create User"}</h3>
-              <button type="button" onClick={() => setShowForm(false)} className="text-sm text-slate-500">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <form onSubmit={onSave} className="w-full max-w-lg space-y-5 rounded-2xl bg-white p-6 shadow-xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <h3 className="text-lg font-bold text-slate-900">{isViewMode ? "View User" : editingUser ? "Edit User" : "Create User"}</h3>
+              <button type="button" onClick={() => setShowForm(false)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600">
                 Close
               </button>
             </div>
-            <label className="block text-sm font-medium text-slate-700">
-              Full Name
-              <input
-                value={form.name}
-                onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                required
-                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Email
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                required
-                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700">
-              Password {editingUser ? "(optional for update)" : ""}
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
-                required={!editingUser}
-                minLength={8}
-                className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-3">
+            
+            <div className="space-y-4">
               <label className="block text-sm font-medium text-slate-700">
-                Role
-                <select
-                  value={form.role}
-                  onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
-                >
-                  <option value="User">User</option>
-                  <option value="Admin">Admin</option>
-                </select>
+                Full Name
+                <input
+                  value={form.name}
+                  onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                  required
+                  disabled={isViewMode}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
+                />
               </label>
               <label className="block text-sm font-medium text-slate-700">
-                Status
-                <select
-                  value={form.status}
-                  onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
+                Email
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                  required
+                  disabled={isViewMode}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
+                />
               </label>
+              <label className="block text-sm font-medium text-slate-700">
+                Password {editingUser && <span className="text-xs text-slate-400 font-normal">(Leave blank to keep current)</span>}
+                <input
+                  type="password"
+                  value={isViewMode ? "********" : form.password}
+                  onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                  required={!editingUser && !isViewMode}
+                  minLength={8}
+                  disabled={isViewMode}
+                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <label className="block text-sm font-medium text-slate-700">
+                  Role
+                  <select
+                    value={form.role}
+                    onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
+                    disabled={isViewMode}
+                    className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
+                  >
+                    <option value="User">User</option>
+                    <option value="Admin">Admin</option>
+                  </select>
+                </label>
+                <label className="block text-sm font-medium text-slate-700">
+                  Status
+                  <select
+                    value={form.status}
+                    onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
+                    disabled={isViewMode}
+                    className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
+                  >
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                  </select>
+                </label>
+              </div>
             </div>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {submitting ? "Saving..." : editingUser ? "Update User" : "Create User"}
-            </button>
+
+            <div className="flex gap-3 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className={`rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 ${isViewMode ? "w-full" : "w-1/2"}`}
+              >
+                {isViewMode ? "Close" : "Cancel"}
+              </button>
+              {!isViewMode && (
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-1/2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {submitting ? "Saving..." : editingUser ? "Update User" : "Create User"}
+                </button>
+              )}
+            </div>
           </form>
         </div>
       ) : null}
     </main>
   );
 }
-

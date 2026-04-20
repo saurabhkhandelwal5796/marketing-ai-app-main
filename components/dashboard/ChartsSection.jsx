@@ -1,13 +1,11 @@
 "use client";
 
 import {
-  Bar,
-  BarChart,
+  Area,
+  AreaChart,
   CartesianGrid,
   Cell,
   Legend,
-  Line,
-  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -16,47 +14,58 @@ import {
   YAxis,
 } from "recharts";
 
-const COLORS = ["#2563eb", "#16a34a", "#f59e0b", "#7c3aed", "#db2777", "#0891b2"];
+const COLORS = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#db2777"];
 
-export default function ChartsSection({ lineData, barData, pieData, loading }) {
+export default function ChartsSection({ lineData, pieData, loading }) {
   return (
-    <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
-      <Card className="xl:col-span-7" title="Open/Click Trend" loading={loading}>
-        <ResponsiveContainer width="100%" height={280}>
-          <LineChart data={lineData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line type="monotone" dataKey="opens" stroke="#2563eb" strokeWidth={2} />
-            <Line type="monotone" dataKey="clicks" stroke="#16a34a" strokeWidth={2} />
-          </LineChart>
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+      <Card className="lg:col-span-7" title="Open vs Click Trend" loading={loading}>
+        <ResponsiveContainer width="100%" height={320}>
+          <AreaChart data={lineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorOpens" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#4f46e5" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="colorClicks" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+            <XAxis dataKey="date" tick={{ fill: "#64748b", fontSize: 12 }} tickLine={false} axisLine={false} dy={10} />
+            <YAxis tick={{ fill: "#64748b", fontSize: 12 }} tickLine={false} axisLine={false} />
+            <Tooltip
+              contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)" }}
+            />
+            <Legend verticalAlign="top" height={36} iconType="circle" />
+            <Area type="monotone" dataKey="opens" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorOpens)" />
+            <Area type="monotone" dataKey="clicks" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorClicks)" />
+          </AreaChart>
         </ResponsiveContainer>
       </Card>
 
-      <Card className="xl:col-span-5" title="Channel Distribution" loading={loading}>
-        <ResponsiveContainer width="100%" height={280}>
+      <Card className="lg:col-span-3" title="Channel Distribution" loading={loading}>
+        <ResponsiveContainer width="100%" height={320}>
           <PieChart>
-            <Pie data={pieData} dataKey="value" nameKey="name" outerRadius={95} label>
+            <Pie
+              data={pieData}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="45%"
+              innerRadius={70}
+              outerRadius={100}
+              stroke="none"
+              paddingAngle={2}
+            >
               {pieData.map((entry, idx) => (
-                <Cell key={`${entry.name}-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip />
+            <Tooltip contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)" }} />
+            <Legend verticalAlign="bottom" height={36} iconType="circle" />
           </PieChart>
-        </ResponsiveContainer>
-      </Card>
-
-      <Card className="xl:col-span-12" title="Campaigns Sent by Channel" loading={loading}>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={barData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="channel" />
-            <YAxis />
-            <Tooltip />
-            <Bar dataKey="sent" fill="#2563eb" radius={[6, 6, 0, 0]} />
-          </BarChart>
         </ResponsiveContainer>
       </Card>
     </div>
@@ -65,9 +74,9 @@ export default function ChartsSection({ lineData, barData, pieData, loading }) {
 
 function Card({ title, children, loading, className = "" }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${className}`}>
-      <h3 className="mb-3 text-sm font-semibold text-slate-900">{title}</h3>
-      {loading ? <div className="h-[280px] animate-pulse rounded-xl bg-slate-100" /> : children}
+    <div className={`rounded-[16px] border border-slate-200 bg-white p-6 shadow-[0_2px_12px_rgba(0,0,0,0.04)] transition-shadow hover:shadow-[0_8px_24px_rgba(0,0,0,0.08)] ${className}`}>
+      <h3 className="mb-6 text-[15px] font-bold text-slate-800">{title}</h3>
+      {loading ? <div className="h-[320px] animate-pulse rounded-xl bg-slate-100" /> : children}
     </div>
   );
 }
