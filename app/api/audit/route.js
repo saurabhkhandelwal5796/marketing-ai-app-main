@@ -32,12 +32,12 @@ export async function POST(req) {
     if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
     const body = await req.json();
+    console.log("AUDIT API HIT", body);
     console.log("[api/audit] received", body);
     const sessionUserId = String(session.id);
     const bodyUserId = String(body?.user_id || "");
     if (bodyUserId && bodyUserId !== sessionUserId) {
-      console.warn("[api/audit] user mismatch", { bodyUserId, sessionUserId });
-      return NextResponse.json({ error: "User mismatch." }, { status: 403 });
+      console.warn("[api/audit] user mismatch (using session user)", { bodyUserId, sessionUserId });
     }
 
     const event_type = String(body?.event_type || "").trim();
@@ -61,6 +61,59 @@ export async function POST(req) {
     }
 
     const supabase = getSupabaseServerClient();
+    const cutoffIso = new Date(Date.now() - 60_000).toISOString();
+
+    let dedupeQuery = supabase
+      .from("audit_logs")
+      .select("id,time_spent_ms,session_id")
+      .eq("user_id", row.user_id)
+      .eq("page_name", row.page_name)
+      .gte("created_at", cutoffIso)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (row.event_type === "page_visit") {
+      if (row.session_id) dedupeQuery = dedupeQuery.eq("session_id", row.session_id);
+      dedupeQuery = dedupeQuery.eq("event_type", "page_visit");
+      dedupeQuery = dedupeQuery.is("action_name", null);
+    } else {
+      dedupeQuery = dedupeQuery.eq("event_type", row.event_type);
+      if (row.action_name) dedupeQuery = dedupeQuery.eq("action_name", row.action_name);
+      else dedupeQuery = dedupeQuery.is("action_name", null);
+    }
+
+    const { data: existingRow, error: dedupeErr } = await dedupeQuery.maybeSingle();
+    if (dedupeErr) {
+      console.error("[api/audit] dedupe check failed", dedupeErr);
+      return NextResponse.json({ error: dedupeErr.message || "Audit dedupe failed." }, { status: 500 });
+    }
+
+    if (existingRow?.id) {
+      const updatePatch = {
+        details: row.details,
+        session_id: row.session_id,
+      };
+      if (row.event_type === "page_visit") {
+        const prevMs = Number(existingRow.time_spent_ms || 0);
+        const nextMs = Number(row.time_spent_ms || 0);
+        updatePatch.time_spent_ms = Math.max(prevMs, nextMs);
+      } else if (row.time_spent_ms != null) {
+        updatePatch.time_spent_ms = row.time_spent_ms;
+      }
+      const { data: updated, error: updateErr } = await supabase
+        .from("audit_logs")
+        .update(updatePatch)
+        .eq("id", existingRow.id)
+        .select("id")
+        .maybeSingle();
+      if (updateErr) {
+        console.error("[api/audit] supabase update failed", updateErr);
+        return NextResponse.json({ error: updateErr.message || "Supabase update failed." }, { status: 500 });
+      }
+      console.log("[api/audit] deduped and updated", { id: updated?.id || existingRow.id, event_type: row.event_type, page_name: row.page_name });
+      return NextResponse.json({ ok: true, id: updated?.id || existingRow.id, deduped: true });
+    }
+
     const { data, error } = await supabase.from("audit_logs").insert(row).select("id").maybeSingle();
     if (error) {
       console.error("[api/audit] supabase insert failed", error);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../lib/supabaseServer";
 import { getSessionFromCookies } from "../../../lib/authSession";
+import { getAuditSessionId } from "../../../lib/auditTracker";
 
 function normalizeMilestoneStatus(value) {
   const status = String(value || "").trim();
@@ -157,6 +158,22 @@ export async function POST(req) {
       .single();
 
     if (error) throw new Error(error.message);
+
+    // Track milestone creation in audit log
+    try {
+      const sessionId = getAuditSessionId();
+      await supabase.from("audit_logs").insert({
+        user_id: session.id,
+        event_type: "action",
+        page_name: "Milestones",
+        action_name: "Created Milestone",
+        details: JSON.stringify({ milestoneId: data.id, title: data.title, campaign_id: data.campaign_id }),
+        session_id: sessionId,
+      });
+    } catch (auditErr) {
+      // eslint-disable-next-line no-console
+      console.error("[audit] milestone creation log failed", auditErr);
+    }
 
     const [milestone] = await enrichMilestones(supabase, [data]);
     return NextResponse.json({ milestone });

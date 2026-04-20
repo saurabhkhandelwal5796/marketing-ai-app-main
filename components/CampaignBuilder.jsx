@@ -7,6 +7,7 @@ import OutputCard from "./OutputCard";
 import SendModal from "./SendModal";
 import MarketingAnalysisOutput from "./MarketingAnalysisOutput";
 import { useAuditSessionUserId } from "../lib/useAuditPageVisit";
+import { getCurrentSessionId, getCurrentUserId } from "../lib/getCurrentUserId";
 
 const DEFAULT_ACTIONS = ["LinkedIn", "Email", "WhatsApp", "Instagram", "Blog", "SMS"];
 
@@ -97,10 +98,35 @@ export default function CampaignBuilder({ campaignId }) {
   const lastSavedPayloadRef = useRef("");
   const hydratedRef = useRef(false);
   const leftPanelRef = useRef(null);
+  const campaignCreatedAuditLoggedRef = useRef(false);
 
   const [historyMarketingDetails, setHistoryMarketingDetails] = useState(null);
   const [historyTargetAudience, setHistoryTargetAudience] = useState(null);
   const [historyAiMessage, setHistoryAiMessage] = useState("");
+
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Campaign",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Campaign page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
 
   const latestUserMessage = useMemo(() => {
     const msg = [...chatMessages].reverse().find((item) => item.role === "user");
@@ -316,6 +342,25 @@ export default function CampaignBuilder({ campaignId }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: nextTitle }),
       });
+      const previousName = String(campaignRecord?.name || "").trim();
+      const wasPlaceholder = !previousName || /^generating title/i.test(previousName);
+      const hasRealTitle = !!String(nextTitle || "").trim() && !/^generating title/i.test(String(nextTitle || ""));
+      if (!campaignCreatedAuditLoggedRef.current && wasPlaceholder && hasRealTitle) {
+        campaignCreatedAuditLoggedRef.current = true;
+        const currentUserId = auditUserId || (await getCurrentUserId());
+        fetch("/api/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: currentUserId || "anonymous",
+            event_type: "action",
+            page_name: "Campaigns",
+            action_name: "Created Campaign",
+            details: `Created new campaign: ${nextTitle}`,
+            session_id: getCurrentSessionId(),
+          }),
+        }).catch(() => {});
+      }
 
       setChatMessages((prev) => [
         ...prev,

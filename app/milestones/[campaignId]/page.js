@@ -4,16 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuditUserAndPage } from "../../../lib/useAuditPageVisit";
 import { ArrowLeft, Check, ChevronDown, ChevronRight } from "lucide-react";
-
-function initials(name) {
-  return String(name || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0] || "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
+import Avatar from "../../../components/Avatar";
 
 function formatDateLabel(value) {
   if (!value) return "-";
@@ -333,9 +324,7 @@ export default function CampaignMilestonesPage() {
                             <span>{formatDateLabel(milestone.start_date)} - {formatDateLabel(milestone.end_date)}</span>
                             <span>•</span>
                             <span className="flex items-center gap-1.5">
-                              <div className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-200 text-[8px] font-bold text-slate-700">
-                                {milestone.assignee_avatar || initials(milestone.assignee_name)}
-                              </div>
+                              <Avatar name={milestone.assignee_name || "Unassigned"} imageUrl={milestone.assignee_avatar} size="sm" />
                               {milestone.assignee_name || "Unassigned"}
                             </span>
                           </div>

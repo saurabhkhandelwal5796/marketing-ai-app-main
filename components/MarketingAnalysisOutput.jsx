@@ -27,8 +27,8 @@ import {
   Wand2,
 } from "lucide-react";
 import CreatePostPage from "./CreatePostPage";
-import { trackAction } from "../lib/auditTracker";
-import { useAuditPageVisit } from "../lib/useAuditPageVisit";
+import { getCurrentSessionId, getCurrentUserId } from "../lib/getCurrentUserId";
+import Avatar from "./Avatar";
 
 const TABS = [
   { id: "plan", label: "Marketing Plan", icon: ClipboardCopy },
@@ -342,12 +342,54 @@ export default function MarketingAnalysisOutput({
     const tab = TABS.find((t) => t.id === activeTab);
     return tab ? `Campaign — ${tab.label}` : "Campaign";
   }, [activeTab]);
-  useAuditPageVisit(auditUserId, campaignAuditPageName);
+  const postAuditAction = async (actionName, pageName, details = null) => {
+    const uid = auditUserId || (await getCurrentUserId());
+    fetch("/api/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: uid || "anonymous",
+        event_type: "action",
+        page_name: pageName,
+        action_name: actionName,
+        details: details == null ? null : typeof details === "string" ? details : JSON.stringify(details),
+        session_id: getCurrentSessionId(),
+      }),
+    }).catch(() => {});
+  };
 
   useEffect(() => {
-    if (!auditUserId || activeTab !== "audience") return;
-    trackAction(auditUserId, "Viewed Target Audience", "Campaign — Target Audience", null);
-  }, [activeTab, auditUserId]);
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const uid = auditUserId || (await getCurrentUserId());
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: uid || "anonymous",
+              event_type: "page_visit",
+              page_name: campaignAuditPageName,
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on ${campaignAuditPageName} page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, [auditUserId, campaignAuditPageName]);
+
+  useEffect(() => {
+    if (activeTab !== "audience") return;
+    postAuditAction(
+      "Viewed Target Audience",
+      "Campaign — Target Audience",
+      `Viewed target audience suggestions for ${company || "company"} - ${campaign || "campaign"}`
+    );
+  }, [activeTab, campaign, company]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -802,10 +844,11 @@ export default function MarketingAnalysisOutput({
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to assign milestone task.");
 
       if (auditUserId && assignee_id) {
-        trackAction(auditUserId, "Assigned Task", "Campaign — Marketing Plan", {
-          milestoneId: milestone.id,
-          taskId: task.id,
-        });
+        postAuditAction(
+          `Assigned Task to ${selectedUser?.name || "User"}`,
+          "Campaign — Marketing Plan",
+          `Assigned task "${task?.title || "Untitled task"}" to ${selectedUser?.name || "User"} in milestone "${milestone?.title || "Milestone"}"`
+        );
       }
 
       setCampaignMilestones((prev) =>
@@ -1204,9 +1247,12 @@ export default function MarketingAnalysisOutput({
       setMilestoneModalOpen(false);
       showToast("success", "Milestones created successfully.");
       if (auditUserId) {
-        trackAction(auditUserId, "Created Milestone", "Campaign — Marketing Plan", {
-          count: createdIds.length,
-        });
+        const count = createdIds.length;
+        postAuditAction(
+          "Created Milestone",
+          "Campaign — Marketing Plan",
+          `Created ${count} milestone${count === 1 ? "" : "s"} for campaign ${campaign || "Marketing Campaign"}`
+        );
       }
     } catch (e) {
       setMilestoneModalError(e?.message || "Failed to save milestones.");
@@ -1328,8 +1374,13 @@ export default function MarketingAnalysisOutput({
         if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
         setTaskModalOpen(false);
         showToast("success", "Task created successfully.");
-        if (auditUserId && formAssigneeId) {
-          trackAction(auditUserId, "Assigned Task", "Campaign — Task Assignment", { taskId: data?.task?.id });
+        if (auditUserId) {
+          const assigned = users.find((u) => u.id === formAssigneeId)?.name || "Unassigned";
+          postAuditAction(
+            "Created Task",
+            "Campaign — Task Assignment",
+            `Created task "${title || "Untitled task"}" and assigned to ${assigned}`
+          );
         }
         await loadTasks();
       } else {
@@ -1343,7 +1394,12 @@ export default function MarketingAnalysisOutput({
         setTaskModalOpen(false);
         showToast("success", "Task updated successfully");
         if (auditUserId && formAssigneeId) {
-          trackAction(auditUserId, "Assigned Task", "Campaign — Task Assignment", { taskId: formId });
+          const selected = users.find((u) => u.id === formAssigneeId);
+          postAuditAction(
+            `Assigned Task to ${selected?.name || "User"}`,
+            "Campaign — Task Assignment",
+            `Assigned task "${formTitle || "Untitled task"}" to ${selected?.name || "User"}`
+          );
         }
         await loadTasks();
       }
@@ -1576,7 +1632,11 @@ export default function MarketingAnalysisOutput({
         (Array.isArray(data?.marketingDetails) && data.marketingDetails.length) ||
         (Array.isArray(data?.targetAudience) && data.targetAudience.length);
       if (auditUserId && meaningful) {
-        trackAction(auditUserId, "Generated Marketing Plan", "Campaign — Selected Marketing Plans", { campaignId });
+        postAuditAction(
+          "Generated Marketing Plan",
+          "Campaign — Selected Marketing Plans",
+          `Generated marketing plan for ${company || "Company"} - ${campaign || "Campaign"}`
+        );
       }
     } catch (err) {
       setError(err?.message || "Failed to generate analysis.");
@@ -3551,11 +3611,11 @@ export default function MarketingAnalysisOutput({
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Owner</p>
                     <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
-                      <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700">
-                        {String(trackerDrawerMilestone.assignee_avatar || trackerDrawerMilestone.assignee_name || "?")
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </span>
+                      <Avatar
+                        name={trackerDrawerMilestone.assignee_name || "Unassigned"}
+                        imageUrl={trackerDrawerMilestone.assignee_avatar}
+                        size="sm"
+                      />
                       {trackerDrawerMilestone.assignee_name || "Unassigned"}
                     </p>
                   </div>

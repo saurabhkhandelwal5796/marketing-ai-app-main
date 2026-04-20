@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
 function previewBody(text) {
   const value = String(text || "").replace(/\s+/g, " ").trim();
@@ -36,6 +37,31 @@ export default function EmailTemplatesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [form, setForm] = useState({ name: "", subject: "", body: "", case_studies: [] });
+
+  // Audit tracking - page visit
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Email Templates",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Email Templates page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
 
   const load = async (overrides = {}) => {
     setLoading(true);
@@ -74,6 +100,26 @@ export default function EmailTemplatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, debouncedSearch]);
 
+  const trackAction = async (actionName, details) => {
+    try {
+      const currentUserId = await getCurrentUserId();
+      await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "Email Templates",
+          action_name: actionName,
+          details: details,
+          session_id: getCurrentSessionId(),
+        }),
+      });
+    } catch {
+      // Ignore tracking errors
+    }
+  };
+
   const saveTemplate = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -93,6 +139,14 @@ export default function EmailTemplatesPage() {
           });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save template.");
+      
+      // Track action
+      if (editingTemplate) {
+        await trackAction("Edited Email Template", `Edited template: ${form.name}`);
+      } else {
+        await trackAction("Created Email Template", `Created template: ${form.name}`);
+      }
+      
       setShowForm(false);
       setEditingTemplate(null);
       setForm({ name: "", subject: "", body: "", case_studies: [] });
@@ -145,123 +199,104 @@ export default function EmailTemplatesPage() {
         }))
       );
       setForm((prev) => ({ ...prev, case_studies: [...(prev.case_studies || []), ...uploads] }));
-    } catch (e) {
-      setError(e?.message || "Failed to attach files.");
-    } finally {
-      event.target.value = "";
+    } catch (err) {
+      setError(err?.message || "Failed to upload attachments.");
     }
   };
 
   const removeAttachment = (index) => {
     setForm((prev) => ({
       ...prev,
-      case_studies: (prev.case_studies || []).filter((_, idx) => idx !== index),
+      case_studies: (prev.case_studies || []).filter((_, i) => i !== index),
     }));
   };
 
   const onDelete = async (item) => {
-    const ok = window.confirm(`Delete template "${item?.name}"?`);
+    const ok = window.confirm(`Delete "${item.name}"?`);
     if (!ok) return;
     setError("");
-    setSuccess("");
     try {
       const res = await fetch(`/api/email-templates/${item.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete template.");
+      
+      // Track action
+      await trackAction("Deleted Email Template", `Deleted template: ${item.name}`);
+      
       setSuccess("Template deleted.");
-      load({ page });
+      load({ page, search: debouncedSearch });
     } catch (e) {
       setError(e?.message || "Failed to delete template.");
     }
   };
 
-  const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / pageSize));
+  const totalPages = Math.max(1, Math.ceil((pagination?.total || 0) / pageSize));
 
   return (
-    <main className="space-y-6 p-6">
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
+    <main className="mx-auto max-w-6xl space-y-6 p-6">
+      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h1 className="text-lg font-semibold text-slate-900">Email Templates</h1>
-            <p className="mt-1 text-sm text-slate-500">Manage reusable email drafts for campaigns.</p>
+            <p className="text-sm text-slate-500">Manage reusable templates for campaign emails.</p>
           </div>
-          <button
-            onClick={openCreateForm}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            New Template
-          </button>
-        </div>
-
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-        ) : null}
-        {success ? (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            {success}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold text-slate-900">All Templates</h2>
           <div className="flex items-center gap-2">
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search by name, subject, or body"
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Search templates..."
+              className="w-48 rounded-xl border border-slate-300 px-3 py-2 text-sm"
             />
+            <button
+              onClick={openCreateForm}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+            >
+              + New Template
+            </button>
           </div>
         </div>
 
-        {loading ? <div className="mt-4 text-sm text-slate-500">Loading...</div> : null}
+        {error ? (
+          <div className="mx-5 mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        ) : null}
+        {success ? (
+          <div className="mx-5 mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>
+        ) : null}
 
-        {!loading ? (
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
+        {loading ? (
+          <div className="px-5 py-10 text-center text-sm text-slate-500">Loading templates...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
                 <tr>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Template Name</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Subject</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Email Body</th>
-                  <th className="px-3 py-2 text-left font-semibold text-slate-700">Created At</th>
-                  <th className="px-3 py-2 text-right font-semibold text-slate-700">Actions</th>
+                  <th className="px-5 py-3">Name</th>
+                  <th className="px-5 py-3">Subject</th>
+                  <th className="px-5 py-3">Preview</th>
+                  <th className="px-5 py-3">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {templates.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="px-3 py-2 font-semibold text-blue-700">
-                      <button onClick={() => router.push(`/email-templates/${item.id}`)} className="hover:underline">
-                        {item.name}
-                      </button>
-                    </td>
-                    <td className="px-3 py-2 text-slate-700">{item.subject || "-"}</td>
-                    <td className="px-3 py-2 text-slate-700">{previewBody(item.body)}</td>
-                    <td className="px-3 py-2 text-slate-700">{new Date(item.created_at).toLocaleString()}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex justify-end gap-2">
+              <tbody>
+                {templates.map((t) => (
+                  <tr key={t.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="px-5 py-3 font-medium text-slate-900">{t.name}</td>
+                    <td className="px-5 py-3 text-slate-700">{t.subject}</td>
+                    <td className="px-5 py-3 text-slate-600">{previewBody(t.body)}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => router.push(`/email-templates/${item.id}`)}
-                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          onClick={() => openEditForm(t)}
+                          className="rounded-lg border border-slate-300 bg-white p-2 hover:bg-slate-50"
+                          title="Edit"
                         >
-                          View
+                          <Pencil size={16} />
                         </button>
                         <button
-                          onClick={() => openEditForm(item)}
-                          className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                          title="Edit template"
+                          onClick={() => onDelete(t)}
+                          className="rounded-lg border border-red-300 bg-white p-2 text-red-700 hover:bg-red-50"
+                          title="Delete"
                         >
-                          <Pencil size={15} />
-                        </button>
-                        <button
-                          onClick={() => onDelete(item)}
-                          className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
-                          title="Delete template"
-                        >
-                          <Trash2 size={15} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -269,17 +304,16 @@ export default function EmailTemplatesPage() {
                 ))}
                 {templates.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
-                      No templates found.
+                    <td colSpan={4} className="px-5 py-10 text-center text-slate-500">
+                      No templates yet. Create your first template.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
-        ) : null}
-
-        <div className="mt-4 flex items-center justify-between">
+        )}
+        <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
           <p className="text-sm text-slate-600">
             Showing page {pagination.page} of {totalPages} ({pagination.total} templates)
           </p>

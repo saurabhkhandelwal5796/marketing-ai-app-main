@@ -3,11 +3,31 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, UserPlus } from "lucide-react";
-import { trackAction } from "../../lib/auditTracker";
-import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
+import Avatar from "../../components/Avatar";
+
+function buildUserEditDetails(beforeUser, payload) {
+  const changes = [];
+  const beforeName = String(beforeUser?.name || "");
+  const beforeEmail = String(beforeUser?.email || "");
+  const beforeRole = beforeUser?.is_admin ? "Admin" : "User";
+  const beforeStatus = String(beforeUser?.status || "Active");
+
+  const nextName = String(payload?.name || "");
+  const nextEmail = String(payload?.email || "");
+  const nextRole = String(payload?.role || beforeRole);
+  const nextStatus = String(payload?.status || beforeStatus);
+
+  if (beforeName !== nextName) changes.push(`Changed name from ${beforeName} to ${nextName}`);
+  if (beforeEmail !== nextEmail) changes.push(`Changed email from ${beforeEmail} to ${nextEmail}`);
+  if (beforeRole !== nextRole) changes.push(`Changed role from ${beforeRole} to ${nextRole}`);
+  if (beforeStatus !== nextStatus) changes.push(`Changed status from ${beforeStatus} to ${nextStatus}`);
+
+  if (!changes.length) return `Updated user ${nextName || beforeName}`;
+  return `${changes.join(". ")} for ${nextName || beforeName}.`;
+}
 
 export default function UsersPage() {
-  useAuditUserAndPage("Users");
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -76,6 +96,30 @@ export default function UsersPage() {
   }, []);
 
   useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Users",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Users page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!sessionUser?.is_admin) return;
     load({ page });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -130,6 +174,14 @@ export default function UsersPage() {
     setSuccess("");
     try {
       const payload = { ...form };
+      const originalUser = editingUser
+        ? {
+            name: editingUser.name || "",
+            email: editingUser.email || "",
+            is_admin: !!editingUser.is_admin,
+            status: editingUser.status || "Active",
+          }
+        : null;
       const res = editingUser
         ? await fetch(`/api/users/${editingUser.id}`, {
             method: "PATCH",
@@ -144,9 +196,23 @@ export default function UsersPage() {
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save user.");
       setSuccess(editingUser ? "User updated." : "User created.");
-      if (!editingUser && sessionUser?.id) {
-        trackAction(String(sessionUser.id), "Created User", "Users", { email: form.email });
-      }
+      const currentUserId = await getCurrentUserId();
+      const actionName = editingUser ? "Edited User" : "Created New User";
+      const details = editingUser
+        ? buildUserEditDetails(originalUser, payload)
+        : `Created user ${String(form.name || "").trim()} (${String(form.email || "").trim()}) with role ${String(form.role || "User")} and status ${String(form.status || "Active")}`;
+      fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "Users",
+          action_name: actionName,
+          details,
+          session_id: getCurrentSessionId(),
+        }),
+      }).catch(() => {});
       setShowForm(false);
       setEditingUser(null);
       load({ page: 1 });
@@ -263,9 +329,12 @@ export default function UsersPage() {
                 {users.map((u) => (
                 <tr key={u.id}>
                   <td className="px-5 py-3">
-                    <button onClick={() => onOpenUser(u)} className="font-semibold text-blue-700 hover:underline">
-                      {u.name}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <Avatar name={u.name} imageUrl={u.avatar} size="md" />
+                      <button onClick={() => onOpenUser(u)} className="font-semibold text-blue-700 hover:underline">
+                        {u.name}
+                      </button>
+                    </div>
                   </td>
                   <td className="px-5 py-3 text-slate-700">{u.email}</td>
                   <td className="px-5 py-3 text-slate-700">{u.is_admin ? "Admin" : "User"}</td>

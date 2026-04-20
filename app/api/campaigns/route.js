@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../lib/supabaseServer";
 import { getSessionFromCookies } from "../../../lib/authSession";
+import { getAuditSessionId } from "../../../lib/auditTracker";
 
 const getDefaultChatMessage = () => [
   {
@@ -113,6 +114,7 @@ export async function POST(req) {
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
     return NextResponse.json({ ok: true, campaign: data });
   } catch (error) {
     return NextResponse.json({ error: error?.message || "Failed to create campaign." }, { status: 500 });
@@ -126,9 +128,27 @@ export async function DELETE(req) {
     if (!ids.length) {
       return NextResponse.json({ error: "No campaign IDs provided." }, { status: 400 });
     }
+    const session = await getSessionFromCookies();
     const supabase = getSupabaseServerClient();
     const { error } = await supabase.from("campaigns").delete().in("id", ids);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    // Track campaign deletion in audit log
+    try {
+      const sessionId = getAuditSessionId();
+      await supabase.from("audit_logs").insert({
+        user_id: session.id,
+        event_type: "action",
+        page_name: "Campaigns",
+        action_name: "Deleted Campaign",
+        details: JSON.stringify({ campaignIds: ids, count: ids.length }),
+        session_id: sessionId,
+      });
+    } catch (auditErr) {
+      // eslint-disable-next-line no-console
+      console.error("[audit] campaign deletion log failed", auditErr);
+    }
+
     return NextResponse.json({ ok: true, deleted: ids.length });
   } catch (error) {
     return NextResponse.json({ error: error?.message || "Failed to delete campaigns." }, { status: 500 });
