@@ -89,8 +89,8 @@ export default function AppShell({ children }) {
 
   useEffect(() => {
     if (loadingSession) return;
-    if (!sessionUser && !isAuthRoute) {
-    if (!sessionUser && !isPublicRoute) {
+    const shouldRedirectToAuth = !sessionUser && !isAuthRoute;
+    if (shouldRedirectToAuth) {
       router.replace("/auth");
       return;
     }
