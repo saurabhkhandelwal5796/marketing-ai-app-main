@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../lib/supabaseServer";
 import { getSessionFromCookies } from "../../../lib/authSession";
+import { getAuditSessionId } from "../../../lib/auditTracker";
 
 export async function GET(req) {
   try {
@@ -111,6 +112,23 @@ export async function POST(req) {
       error = res.error;
     }
     if (error) throw new Error(error.message);
+
+    // Track task creation in audit log
+    try {
+      const sessionId = getAuditSessionId();
+      await supabase.from("audit_logs").insert({
+        user_id: session.id,
+        event_type: "action",
+        page_name: "My Tasks",
+        action_name: "Created Task",
+        details: JSON.stringify({ taskId: data.id, title: data.title, campaign_id }),
+        session_id: sessionId,
+      });
+    } catch (auditErr) {
+      // eslint-disable-next-line no-console
+      console.error("[audit] task creation log failed", auditErr);
+    }
+
     return NextResponse.json({ task: data });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to create task." }, { status: 500 });

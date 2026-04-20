@@ -3,8 +3,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ThinkingDisplay from "../../../components/ThinkingDisplay";
-import { useAuditSessionUserId, useAuditUserAndPage } from "../../../lib/useAuditPageVisit";
-import { trackAction } from "../../../lib/auditTracker";
+import { getCurrentSessionId, getCurrentUserId } from "../../../lib/getCurrentUserId";
 
 const PENDING_VIEW_TASK_KEY = "audit.pendingViewedTask";
 
@@ -64,9 +63,7 @@ function todayYmd() {
 }
 
 export default function TaskDetailPage({ params }) {
-  useAuditUserAndPage("My Tasks");
   const router = useRouter();
-  const auditUserId = useAuditSessionUserId();
   const [task, setTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -106,15 +103,22 @@ export default function TaskDetailPage({ params }) {
       setTask(data.task);
       showSaved();
 
-      if (auditUserId && patchBody && Object.prototype.hasOwnProperty.call(patchBody, "status")) {
+      if (patchBody && Object.prototype.hasOwnProperty.call(patchBody, "status")) {
         const nextStatus = String(patchBody.status || "");
         if (nextStatus && nextStatus !== prevStatus) {
-          trackAction(
-            auditUserId,
-            "Changed Task Status",
-            "My Tasks",
-            `Task: ${String(data?.task?.title || task?.title || "")} | From: ${prevStatus} | To: ${nextStatus}`
-          );
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "action",
+              page_name: "My Tasks",
+              action_name: "Changed Task Status",
+              details: `Task "${String(data?.task?.title || task?.title || "Untitled task")}" moved from ${prevStatus || "Unknown"} to ${nextStatus}`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
         }
       }
     } catch (e) {
@@ -150,7 +154,7 @@ export default function TaskDetailPage({ params }) {
   }, [taskId]);
 
   useEffect(() => {
-    if (!auditUserId || !taskId) return undefined;
+    if (!taskId) return undefined;
     let timer = null;
     try {
       const raw = window.localStorage.getItem(PENDING_VIEW_TASK_KEY);
@@ -163,7 +167,20 @@ export default function TaskDetailPage({ params }) {
 
       const remaining = Math.max(0, 10_000 - (Date.now() - startedAt));
       timer = window.setTimeout(() => {
-        trackAction(auditUserId, "Viewed Task", "My Tasks", `Task: ${title}`);
+        getCurrentUserId().then((currentUserId) => {
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "action",
+              page_name: "My Tasks",
+              action_name: "Viewed Task",
+              details: `Viewed task "${title || "Untitled task"}" for at least 10 seconds`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        });
         try {
           window.localStorage.removeItem(PENDING_VIEW_TASK_KEY);
         } catch {
@@ -176,7 +193,7 @@ export default function TaskDetailPage({ params }) {
     return () => {
       if (timer) window.clearTimeout(timer);
     };
-  }, [auditUserId, taskId, task?.title]);
+  }, [taskId, task?.title]);
 
   const suggestDueDate = async () => {
     if (!task) return;
@@ -256,9 +273,19 @@ export default function TaskDetailPage({ params }) {
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate guide.");
       setGuideText(data.guide || "");
 
-      if (auditUserId) {
-        trackAction(auditUserId, "Asked AI Suggestion", "My Tasks", `Task: ${String(task.title || "")}`);
-      }
+      const currentUserId = await getCurrentUserId();
+      fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "My Tasks",
+          action_name: "Asked AI Suggestion",
+          details: `Requested AI suggestion for task "${String(task.title || "Untitled task")}"`,
+          session_id: getCurrentSessionId(),
+        }),
+      }).catch(() => {});
     } catch (e) {
       setError(e?.message || "Failed to generate guide.");
     } finally {

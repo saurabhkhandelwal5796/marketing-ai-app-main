@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuditSessionUserId, useAuditUserAndPage } from "../../lib/useAuditPageVisit";
-import { trackAction } from "../../lib/auditTracker";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 import { Pencil, Trash2 } from "lucide-react";
+import Avatar from "../../components/Avatar";
 
 const PENDING_VIEW_TASK_KEY = "audit.pendingViewedTask";
 
@@ -122,9 +122,7 @@ function StatusPipeline({ value, onChange, disabled = false, compact = false, on
 }
 
 export default function MyTasksPage() {
-  useAuditUserAndPage("My Tasks");
   const router = useRouter();
-  const auditUserId = useAuditSessionUserId();
   const [users, setUsers] = useState([]);
   const [userId, setUserId] = useState("");
   const [tasks, setTasks] = useState([]);
@@ -138,6 +136,30 @@ export default function MyTasksPage() {
   const [activeFilter, setActiveFilter] = useState("All Tasks");
   const [search, setSearch] = useState("");
   const selectAllRef = useRef(null);
+
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "My Tasks",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on My Tasks page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -298,14 +320,19 @@ export default function MyTasksPage() {
       setTasks((prev) => prev.map((t) => (t.id === taskId ? data.task : t)));
       setSuccess("Task updated.");
 
-      if (auditUserId) {
-        trackAction(
-          auditUserId,
-          "Changed Task Status",
-          "My Tasks",
-          `Task: ${taskTitle} | From: ${oldStatus} | To: ${status}`
-        );
-      }
+      const currentUserId = await getCurrentUserId();
+      fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "My Tasks",
+          action_name: "Changed Task Status",
+          details: `Task "${taskTitle || "Untitled task"}" moved from ${oldStatus || "Unknown"} to ${status}`,
+          session_id: getCurrentSessionId(),
+        }),
+      }).catch(() => {});
     } catch (e) {
       setError(e?.message || "Failed to update task.");
     }
@@ -339,11 +366,26 @@ export default function MyTasksPage() {
     setError("");
     setSuccess("");
     try {
+      const taskToDelete = tasks.find((t) => t.id === taskId);
       const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete task.");
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
       setSuccess("Task deleted.");
+
+      const currentUserId = await getCurrentUserId();
+      fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "My Tasks",
+          action_name: "Deleted Task",
+          details: `Deleted task "${taskToDelete?.title || taskId}"`,
+          session_id: getCurrentSessionId(),
+        }),
+      }).catch(() => {});
     } catch (e) {
       setError(e?.message || "Failed to delete task.");
     }
@@ -574,7 +616,10 @@ export default function MyTasksPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-slate-700">
-                            {assignee?.name || "Unassigned"}
+                            <div className="flex items-center gap-2">
+                              <Avatar name={assignee?.name || "Unassigned"} imageUrl={assignee?.avatar} size="sm" />
+                              <span>{assignee?.name || "Unassigned"}</span>
+                            </div>
                           </td>
                           <td className="px-4 py-3">
                             <span
@@ -692,7 +737,8 @@ export default function MyTasksPage() {
                           <span className="inline-flex rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
                             {t.task_type || "-"}
                           </span>
-                          <span className="inline-flex rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
+                          <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700">
+                            <Avatar name={assignee?.name || "Unassigned"} imageUrl={assignee?.avatar} size="sm" />
                             {assignee?.name || "Unassigned"}
                           </span>
                           {t.milestone_name ? (

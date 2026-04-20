@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import Avatar from "./Avatar";
 import {
   BarChart3,
   BookOpen,
@@ -31,7 +32,7 @@ const navItems = [
   { href: "/audit-trail", label: "Audit Trail", icon: ScrollText },
 ];
 
-export default function Sidebar({ mode = "expanded", onToggleCollapsed, onHoverExpand, onToggleHidden, isAdmin = false }) {
+export default function Sidebar({ mode = "expanded", onToggleCollapsed, onHoverExpand, onToggleHidden, isAdmin = false, sessionUser = null }) {
   const pathname = usePathname();
   const collapsed = mode === "collapsed";
 
@@ -88,6 +89,16 @@ export default function Sidebar({ mode = "expanded", onToggleCollapsed, onHoverE
           );
         })}
       </nav>
+
+      <div className="absolute inset-x-0 bottom-0 border-t border-slate-200 bg-white/95 p-3">
+        <div className="flex items-center gap-2">
+          <Avatar name={sessionUser?.name || "User"} imageUrl={sessionUser?.avatar} size="md" />
+          <div className={collapsed ? "hidden" : "min-w-0"}>
+            <p className="truncate text-sm font-semibold text-slate-900">{sessionUser?.name || "User"}</p>
+            <p className="truncate text-xs text-slate-500">{sessionUser?.is_admin ? "Admin" : "User"}</p>
+          </div>
+        </div>
+      </div>
     </aside>
   );
 }

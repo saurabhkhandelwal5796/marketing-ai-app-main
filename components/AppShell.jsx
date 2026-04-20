@@ -1,10 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { CircleUserRound } from "lucide-react";
 import Sidebar from "./Sidebar";
 import { getAuditSessionDurationMs, trackLogout } from "../lib/auditTracker";
+import Avatar from "./Avatar";
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
@@ -218,6 +218,7 @@ export default function AppShell({ children }) {
         onToggleCollapsed={cycleCollapsed}
         onHoverExpand={expandSidebarOnHover}
         isAdmin={!!sessionUser?.is_admin}
+        sessionUser={sessionUser}
       />
       <div className={`max-w-full min-w-0 overflow-x-hidden transition-all ${sidebarWidthClass}`}>
         {showTopHeader ? (
@@ -244,7 +245,12 @@ export default function AppShell({ children }) {
                     className="rounded-full border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
                     aria-label="Open profile menu"
                   >
-                    <CircleUserRound className="h-5 w-5" />
+                    <Avatar
+                      name={sessionUser?.name || "User"}
+                      imageUrl={sessionUser?.avatar}
+                      size="sm"
+                      className="border border-slate-200"
+                    />
                   </button>
                   {isUserMenuOpen ? (
                     <div className="absolute right-0 top-11 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">

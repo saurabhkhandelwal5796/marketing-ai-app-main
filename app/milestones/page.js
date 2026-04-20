@@ -3,17 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Download, Plus, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
-
-function initials(name) {
-  return String(name || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0] || "")
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
+import Avatar from "../../components/Avatar";
 
 function formatDateLabel(value) {
   if (!value) return "-";
@@ -23,7 +14,29 @@ function formatDateLabel(value) {
 }
 
 export default function MilestonesPage() {
-  useAuditUserAndPage("Milestones");
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Milestones",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Milestones page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
   const router = useRouter();
   const [milestones, setMilestones] = useState([]);
   const [loadingMilestones, setLoadingMilestones] = useState(false);
@@ -380,9 +393,7 @@ export default function MilestonesPage() {
                       <div className="flex -space-x-2">
                         {group.uniqueAssignees.map((user, i) => (
                           <div key={i} className="group/avatar relative">
-                            <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-[10px] font-semibold text-white shadow-sm">
-                              {user.avatar || initials(user.name)}
-                            </div>
+                            <Avatar name={user.name} imageUrl={user.avatar} size="sm" className="border-2 border-white shadow-sm" />
                             <div className="pointer-events-none absolute -top-8 left-1/2 hidden -translate-x-1/2 rounded bg-slate-900 px-2 py-1 text-[10px] text-white group-hover/avatar:block">
                               {user.name}
                             </div>
@@ -443,9 +454,7 @@ export default function MilestonesPage() {
                       <div className="flex -space-x-2">
                         {group.uniqueAssignees.map((user, i) => (
                           <div key={i} className="group/avatar relative">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-900 text-[9px] font-semibold text-white">
-                              {user.avatar || initials(user.name)}
-                            </div>
+                            <Avatar name={user.name} imageUrl={user.avatar} size="sm" className="border-2 border-white" />
                             <div className="pointer-events-none absolute -top-8 left-1/2 hidden -translate-x-1/2 rounded bg-slate-900 px-2 py-1 text-[10px] text-white group-hover/avatar:block">
                               {user.name}
                             </div>

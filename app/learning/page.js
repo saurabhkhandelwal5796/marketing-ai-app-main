@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GraduationCap, RefreshCw, Sparkles, Video, X } from "lucide-react";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
 function getYouTubeId(url) {
   try {
@@ -127,6 +128,31 @@ export default function LearningPage() {
   const [activeVideo, setActiveVideo] = useState(null);
   const [showMiniPlayer, setShowMiniPlayer] = useState(false);
   const [miniPlayerVideo, setMiniPlayerVideo] = useState(null);
+  const [completedModules, setCompletedModules] = useState(() => new Set());
+
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Learning",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Learning page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
 
   const loadContent = useCallback(async () => {
     setLoading(true);
@@ -204,6 +230,21 @@ export default function LearningPage() {
             icon={Video}
             variant="video"
             onPlayVideo={(video) => {
+              (async () => {
+                const currentUserId = await getCurrentUserId();
+                fetch("/api/audit", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    user_id: currentUserId || "anonymous",
+                    event_type: "action",
+                    page_name: "Learning",
+                    action_name: "Started Learning Video",
+                    details: `Watched: ${String(video?.title || "Untitled lesson")}`,
+                    session_id: getCurrentSessionId(),
+                  }),
+                }).catch(() => {});
+              })();
               setActiveVideo(video);
               setShowMiniPlayer(false);
             }}
@@ -222,7 +263,35 @@ export default function LearningPage() {
                   <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
                     {index + 1}
                   </span>
-                  <span>{step}</span>
+                  <span className="flex-1">{step}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const moduleName = String(step || `Module ${index + 1}`);
+                      const key = `${index}-${moduleName}`;
+                      if (completedModules.has(key)) return;
+                      setCompletedModules((prev) => new Set([...prev, key]));
+                      (async () => {
+                        const currentUserId = await getCurrentUserId();
+                        fetch("/api/audit", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            user_id: currentUserId || "anonymous",
+                            event_type: "action",
+                            page_name: "Learning",
+                            action_name: "Completed Learning Module",
+                            details: `Completed: ${moduleName}`,
+                            session_id: getCurrentSessionId(),
+                          }),
+                        }).catch(() => {});
+                      })();
+                    }}
+                    className="rounded-md border border-slate-500 bg-slate-900 px-2 py-1 text-[11px] font-semibold text-slate-100 hover:bg-slate-800 disabled:opacity-60"
+                    disabled={completedModules.has(`${index}-${String(step || `Module ${index + 1}`)}`)}
+                  >
+                    {completedModules.has(`${index}-${String(step || `Module ${index + 1}`)}`) ? "Completed" : "Mark Complete"}
+                  </button>
                 </div>
               ))}
             </div>

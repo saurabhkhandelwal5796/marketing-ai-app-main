@@ -5,7 +5,7 @@ import KPISection from "../../components/dashboard/KPISection";
 import ChartsSection from "../../components/dashboard/ChartsSection";
 import CampaignTable from "../../components/dashboard/CampaignTable";
 import ActivityPanel from "../../components/dashboard/ActivityPanel";
-import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
 const toPct = (num, den) => {
   if (!den) return 0;
@@ -20,7 +20,29 @@ const withinDays = (dateStr, days) => {
 };
 
 export default function DashboardPage() {
-  useAuditUserAndPage("Dashboard");
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Dashboard",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Dashboard page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState("30");

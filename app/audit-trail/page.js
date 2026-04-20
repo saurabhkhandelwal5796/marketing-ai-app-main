@@ -2,24 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Download } from "lucide-react";
-import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
+import { Download, X } from "lucide-react";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
+import Avatar from "../../components/Avatar";
 
 function ymdLocal(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-function initials(name) {
-  return String(name || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase() || "?";
 }
 
 function formatMs(ms) {
@@ -56,18 +47,53 @@ function formatTimelineWhen(iso) {
   });
 }
 
+function formatExactWhen(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function describeLog(row) {
   const page = row.page_name || "—";
-  if (row.event_type === "login") return "Logged in";
-  if (row.event_type === "logout") return "Logged out";
-  if (row.event_type === "action" && row.action_name) return `${row.action_name} on ${page}`;
+  if (row.event_type === "login") return "Logged In";
+  if (row.event_type === "logout") return "Logged Out";
+  if (row.event_type === "action" && row.action_name) return row.action_name;
   if (row.event_type === "page_visit") {
-    if (row.time_spent_ms != null && row.time_spent_ms > 0) {
-      return `Time on ${page} (${formatMs(row.time_spent_ms)})`;
-    }
-    return `Visited ${page}`;
+    return `Time on ${page}`;
   }
-  return `${row.event_type || "Event"} — ${page}`;
+  return row.event_type || "Event";
+}
+
+function toReadableLabel(key) {
+  const normalized = String(key || "")
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim();
+  return normalized
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function parseDetails(details) {
+  const raw = String(details || "").trim();
+  if (!raw) return [];
+  if (!raw.startsWith("{")) return [raw];
+  try {
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return [raw];
+    return Object.entries(obj).map(([k, v]) => `${toReadableLabel(k)}: ${String(v ?? "—")}`);
+  } catch {
+    return [raw];
+  }
 }
 
 const EVENT_TYPES = [
@@ -95,7 +121,29 @@ const PAGE_PRESETS = [
 ];
 
 export default function AuditTrailPage() {
-  useAuditUserAndPage("Audit Trail");
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Audit Trail",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Audit Trail page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
 
   const [sessionUser, setSessionUser] = useState(null);
   const [summaryDate, setSummaryDate] = useState(() => ymdLocal());
@@ -119,6 +167,9 @@ export default function AuditTrailPage() {
   const timelineRef = useRef(null);
 
   const [allUsers, setAllUsers] = useState([]);
+  const [selectedLog, setSelectedLog] = useState(null);
+  const [popupPos, setPopupPos] = useState({ top: 0, left: 0 });
+  const popupRef = useRef(null);
 
   const limit = 20;
 
@@ -236,6 +287,16 @@ export default function AuditTrailPage() {
     el.addEventListener("scroll", onScroll);
     return () => el.removeEventListener("scroll", onScroll);
   }, [fetchTimeline, hasMore, loadingMore, offset, timelineLoading]);
+
+  useEffect(() => {
+    const onDown = (event) => {
+      if (!selectedLog) return;
+      if (popupRef.current && popupRef.current.contains(event.target)) return;
+      setSelectedLog(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [selectedLog]);
 
   const exportCsv = useCallback(async () => {
     const buildParams = (lim, off) => {
@@ -404,13 +465,7 @@ export default function AuditTrailPage() {
             {(statsPayload.userSummaries || []).map((row) => (
               <div key={row.user.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                 <div className="flex items-start gap-3">
-                  {row.user.avatar ? (
-                    <img src={row.user.avatar} alt="" className="h-11 w-11 rounded-full object-cover" />
-                  ) : (
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-700">
-                      {initials(row.user.name)}
-                    </div>
-                  )}
+                  <Avatar name={row.user.name} imageUrl={row.user.avatar} size="lg" />
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold text-slate-900">{row.user.name}</p>
                     <p className="text-xs text-slate-500">{row.user.role || "User"}</p>
@@ -578,26 +633,30 @@ export default function AuditTrailPage() {
         ) : (
           <div
             ref={timelineRef}
-            className="audit-scroll h-[500px] overflow-y-auto rounded-xl border border-slate-200"
+            className="audit-scroll relative h-[500px] overflow-y-auto rounded-xl border border-slate-200"
           >
             <ul className="divide-y divide-slate-100">
-              {timeline.map((row) => {
+              {timeline.map((row, idx) => {
                 const u = row.user;
                 return (
-                  <li key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-4">
-                    {u?.avatar ? (
-                      <img src={u.avatar} alt="" className="h-9 w-9 rounded-full object-cover" />
-                    ) : (
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-700">
-                        {initials(u?.name)}
-                      </div>
-                    )}
+                  <li
+                    key={`${row.id}-${row.created_at}-${idx}`}
+                    className="flex cursor-pointer flex-wrap items-start gap-3 px-4 py-4 hover:bg-slate-50"
+                    onClick={(e) => {
+                      const nextTop = e.currentTarget.offsetTop + 8;
+                      const nextLeft = 12;
+                      setPopupPos({ top: nextTop, left: nextLeft });
+                      setSelectedLog(row);
+                    }}
+                  >
+                    <Avatar name={u?.name || "User"} imageUrl={u?.avatar} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-medium text-slate-900">{u?.name || "User"}</p>
                         <span className="text-xs text-slate-500">{formatTimelineWhen(row.created_at)}</span>
                       </div>
                       <p className="mt-1 text-sm text-slate-800">{describeLog(row)}</p>
+                      {row.details ? <p className="mt-1 text-xs text-slate-500">{row.details}</p> : null}
                       <div className="mt-1 flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
                           {row.page_name || "—"}
@@ -623,6 +682,63 @@ export default function AuditTrailPage() {
                 "No more records"
               )}
             </div>
+            {selectedLog ? (
+              <div
+                ref={popupRef}
+                className="absolute z-30 w-[320px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl"
+                style={{ top: popupPos.top, left: popupPos.left }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-slate-900">{describeLog(selectedLog)}</h4>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLog(null)}
+                    className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2">
+                  <Avatar name={selectedLog.user?.name || "User"} imageUrl={selectedLog.user?.avatar} size="sm" />
+                  <p className="text-sm text-slate-700">
+                    <span className="font-medium text-slate-900">Who:</span> {selectedLog.user?.name || "User"}
+                  </p>
+                </div>
+
+                <p className="mt-2 text-xs text-slate-500">
+                  <span className="font-medium text-slate-700">When:</span> {formatExactWhen(selectedLog.created_at)}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-slate-700">Page:</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                    {selectedLog.page_name || "—"}
+                  </span>
+                  {selectedLog.event_type === "page_visit" && selectedLog.time_spent_ms > 0 ? (
+                    <span className="text-xs text-slate-500">
+                      <span className="font-medium text-slate-700">Duration:</span> {formatMs(selectedLog.time_spent_ms)}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">What changed</p>
+                  {parseDetails(selectedLog.details).length ? (
+                    <div className="mt-1 space-y-1">
+                      {parseDetails(selectedLog.details).map((line, idx) => (
+                        <p key={`${line}-${idx}`} className="text-sm text-slate-800">
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-800">No additional details provided.</p>
+                  )}
+                </div>
+
+                <p className="mt-3 text-[11px] text-slate-400">Session ID: {selectedLog.session_id || "—"}</p>
+              </div>
+            ) : null}
           </div>
         )}
       </section>
