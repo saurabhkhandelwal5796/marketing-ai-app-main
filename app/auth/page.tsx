@@ -404,19 +404,6 @@ export default function AuthPage() {
           </div>
         </section> */}
         {/* Right Hero Illustration */}
-      <section className="relative hidden overflow-hidden border-l border-slate-200 bg-slate-100 lg:block lg:w-1/2 lg:h-full">
-        <Image
-          // src="/latest-auth-image.png"
-          src="/Sign Up page image.png"
-          alt="Signup illustration"
-          fill
-          priority
-          sizes="50vw"
-          className="object-contain object-center p-4"
-        />
-      </section> */}
-              {/* Right Hero Illustration */}
-        {/* <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:sticky lg:top-0 lg:min-h-screen overflow-hidden"> */}
         <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:self-stretch overflow-hidden">
 
           <Image
