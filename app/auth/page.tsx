@@ -373,7 +373,7 @@ export default function AuthPage() {
                   disabled={submitting}
                   className="mt-1 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                 >
-                  {submitting ? "Signing in..." : "Sign In"}
+                  {submitting ? "Signing in...." : "Sign In"}
                 </button>
               </form>
             )}
@@ -391,12 +391,12 @@ export default function AuthPage() {
         </section>
 
        
-        {/* Right Hero Illustration */}
+        {/* Right Hero Illustration section*/}
         <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:self-stretch overflow-hidden">
 
           <Image
             src="/auth-side-image.svg"
-            alt="Signup illustration"
+            alt="Signup illustrations"
             fill
             priority
             sizes="(min-width: 1024px) 50vw, 100vw"
