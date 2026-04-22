@@ -390,19 +390,7 @@ export default function AuthPage() {
           </div>
         </section>
 
-        {/* Right Hero Illustration (single image, responsive) */}
-        {/* <section className="w-full min-w-0 flex-1 lg:h-full">
-          <div className="relative h-[280px] w-full bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50 lg:h-full">
-            <Image
-              src="/signup-hero-hd.png"
-              alt="Signup illustration"
-              fill
-              priority
-              sizes="(min-width: 1024px) 50vw, 100vw"
-              className="object-cover"
-            />
-          </div>
-        </section> */}
+       
         {/* Right Hero Illustration */}
         <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:self-stretch overflow-hidden">
 
