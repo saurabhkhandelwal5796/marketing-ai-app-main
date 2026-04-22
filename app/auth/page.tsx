@@ -395,7 +395,7 @@ export default function AuthPage() {
         <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:self-stretch overflow-hidden">
 
           <Image
-            src="/Sign Up page image.png"
+            src="/auth-side-image.svg"
             alt="Signup illustration"
             fill
             priority
