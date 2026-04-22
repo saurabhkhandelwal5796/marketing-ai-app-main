@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
 
@@ -27,7 +27,7 @@ export default function CampaignListPage() {
   const [isFetching, setIsFetching] = useState(false);
   const createInFlightRef = useRef(false);
 
-  const loadCampaigns = async ({ nextOffset = 0, append = false } = {}) => {
+  const loadCampaigns = useCallback(async ({ nextOffset = 0, append = false } = {}) => {
     if (isFetching) return;
     setIsFetching(true);
     if (append) setLoadingMore(true);
@@ -48,12 +48,11 @@ export default function CampaignListPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  };
+  }, [PAGE_SIZE, isFetching]);
 
   useEffect(() => {
     loadCampaigns({ nextOffset: 0, append: false });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadCampaigns]);
 
   useEffect(() => {
     const onScroll = () => {
@@ -66,7 +65,7 @@ export default function CampaignListPage() {
     };
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
-  }, [hasMore, isFetching, loading, offset]);
+  }, [hasMore, isFetching, loading, loadCampaigns, offset]);
 
   const handleCreateNew = async () => {
     if (creating || createInFlightRef.current) return;

@@ -493,6 +493,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-2">
                       {contentByType[activeType].imageUrl ? (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={contentByType[activeType].imageUrl}
                             alt={`${contentByType[activeType].typeLabel} generated visual`}
@@ -527,6 +528,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-2">
                       {contentByType[activeType].imageUrl ? (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={contentByType[activeType].imageUrl}
                             alt={`${contentByType[activeType].typeLabel} generated visual`}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import SuggestionsPanel from "./SuggestionsPanel";
@@ -406,7 +406,7 @@ export default function MarketingAnalysisOutput({
     const tab = TABS.find((t) => t.id === activeTab);
     return tab ? `Campaign — ${tab.label}` : "Campaign";
   }, [activeTab]);
-  const postAuditAction = async (actionName, pageName, details = null) => {
+  const postAuditAction = useCallback(async (actionName, pageName, details = null) => {
     const uid = auditUserId || (await getCurrentUserId());
     fetch("/api/audit", {
       method: "POST",
@@ -420,7 +420,7 @@ export default function MarketingAnalysisOutput({
         session_id: getCurrentSessionId(),
       }),
     }).catch(() => {});
-  };
+  }, [auditUserId]);
 
   useEffect(() => {
     const startTime = Date.now();
@@ -453,7 +453,7 @@ export default function MarketingAnalysisOutput({
       "Campaign — Target Audience",
       `Viewed target audience suggestions for ${company || "company"} - ${campaign || "campaign"}`
     );
-  }, [activeTab, campaign, company]);
+  }, [activeTab, campaign, company, postAuditAction]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -701,12 +701,10 @@ export default function MarketingAnalysisOutput({
 
   useEffect(() => {
     if (Array.isArray(initialMarketingDetails)) setMarketingDetails(initialMarketingDetails);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialMarketingDetails]);
 
   useEffect(() => {
     if (Array.isArray(initialTargetAudience)) setTargetAudience(initialTargetAudience);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTargetAudience]);
 
   useEffect(() => {
@@ -815,7 +813,6 @@ export default function MarketingAnalysisOutput({
         }
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -3094,7 +3091,7 @@ export default function MarketingAnalysisOutput({
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
                   <p>
                     Select points from Marketing Plan or Selected Marketing Plans to generate tasks and click on the
-                    button "Generate Tasks" below to create tasks based on your selected marketing plan points.
+                    button &quot;Generate Tasks&quot; below to create tasks based on your selected marketing plan points.
                   </p>
                   <button
                     type="button"

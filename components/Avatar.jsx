@@ -48,6 +48,7 @@ export default function Avatar({ name, size = "md", imageUrl, className = "" }) 
   
   if (showImage) {
     return (
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={imageUrl}
         alt={name || "Avatar"}

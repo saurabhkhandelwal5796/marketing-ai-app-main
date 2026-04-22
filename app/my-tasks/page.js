@@ -206,7 +206,6 @@ export default function MyTasksPage() {
 
   useEffect(() => {
     loadTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

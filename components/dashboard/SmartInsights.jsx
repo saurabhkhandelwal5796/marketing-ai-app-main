@@ -25,7 +25,7 @@ export default function SmartInsights({ loading }) {
               </span>
             </div>
             <p className="mt-2 text-sm font-medium text-slate-700 max-w-2xl leading-relaxed">
-              Campaign <strong className="text-indigo-600 font-semibold">"Q4 Launch"</strong> is performing 12% below your historical benchmark. Based on audience data, adjusting your cold email sequence subject lines to be more personalized could improve open rates by an estimated 15%.
+              Campaign <strong className="text-indigo-600 font-semibold">&quot;Q4 Launch&quot;</strong> is performing 12% below your historical benchmark. Based on audience data, adjusting your cold email sequence subject lines to be more personalized could improve open rates by an estimated 15%.
             </p>
           </div>
         </div>
