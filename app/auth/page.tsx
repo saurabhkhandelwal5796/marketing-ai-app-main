@@ -165,7 +165,6 @@ export default function AuthPage() {
         trackEvent(String(data.user.id), "login", { page_name: "Auth" });
       }
       router.replace("/dashboard");
-      router.refresh();
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign in failed.";
       setError(message);

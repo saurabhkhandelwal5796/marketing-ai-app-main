@@ -25,6 +25,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
   { href: "/campaigns", label: "Campaign", icon: Megaphone },
   { href: "/milestones", label: "Milestones", icon: Flag },
+  { href: "/audit-trail", label: "Audit Trail", icon: ScrollText },
   { href: "/email-templates", label: "Email Templates", icon: Mail },
   { href: "/create-post", label: "Create & Post", icon: Sparkles },
   { href: "/learning", label: "Learning", icon: BookOpen },
@@ -64,8 +65,8 @@ export default function Sidebar({
         collapsed ? "w-[78px]" : "w-64"
       }`}
     >
-      <div className="flex h-full flex-col">
-        <div className="flex h-[72px] shrink-0 items-center justify-between border-b border-white/[0.05] bg-white/[0.02] px-5 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.5)] backdrop-blur-xl">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.05] bg-white/[0.02] px-4 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.5)] backdrop-blur-xl">
           <div className={`transition ${collapsed ? "hidden" : "block"}`}>
             {/* Replaced PNG with a code-based logo for precise control over size, font weight, and spacing */}
             <div className="flex items-center gap-3.5">
@@ -89,7 +90,7 @@ export default function Sidebar({
           </button>
         </div>
 
-        <nav className="mt-5 space-y-1.5 px-3 pb-3">
+        <nav className="mt-2 flex-1 space-y-1 overflow-hidden px-2 pb-2">
           {navItems
             .filter((item) => !item.adminOnly || isAdmin)
             .map((item) => {
@@ -100,7 +101,7 @@ export default function Sidebar({
                   key={item.href}
                   href={item.href}
                   title={collapsed ? item.label : undefined}
-                  className={`group relative flex items-center gap-3 rounded-[10px] px-3 py-2.5 transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1]/50 ${
+                  className={`group relative flex items-center gap-3 rounded-[10px] px-3 py-2 transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1]/50 ${
                     active
                       ? "bg-[#6366f1]/15 font-bold text-white"
                       : "text-[#A9A9BA] hover:translate-x-1 hover:bg-white/5 hover:text-white"
@@ -126,7 +127,7 @@ export default function Sidebar({
             })}
         </nav>
 
-        <div className="mt-auto p-3">
+        <div className="mt-auto p-2">
           <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => setIsUserMenuOpen((p) => !p)}
