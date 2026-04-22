@@ -3,13 +3,14 @@ import { NextResponse } from "next/server";
 const AUTH_COOKIE = "marketing_auth";
 const PUBLIC_PATHS = ["/auth"];
 const STATIC_PREFIXES = ["/_next", "/favicon.ico", "/api", "/images"];
+const STATIC_FILE_REGEX = /\.[a-zA-Z0-9]+$/;
 
 function isPublicPath(pathname) {
   return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
 function isStaticPath(pathname) {
-  return STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return STATIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) || STATIC_FILE_REGEX.test(pathname);
 }
 
 export function proxy(request) {
