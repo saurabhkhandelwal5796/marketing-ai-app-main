@@ -69,7 +69,7 @@ export default function AppShell({ children }) {
     return () => {
       mounted = false;
     };
-  }, [pathname]);
+  }, []);
 
   useEffect(() => {
     if (loadingSession) return;
@@ -237,9 +237,9 @@ export default function AppShell({ children }) {
         onEditProfileNavigate={navigateToUserProfileEditor}
         onLogout={logout}
       />
-      <div className={`max-w-full min-w-0 overflow-x-hidden transition-all print:pl-0 ${sidebarWidthClass}`}>
+      <div className={`relative max-w-full min-w-0 overflow-x-hidden transition-all print:pl-0 ${sidebarWidthClass}`}>
         {routeLoading ? (
-          <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-50/45 backdrop-blur-[1px]">
+          <div className="absolute inset-0 z-[55] flex items-center justify-center bg-slate-50/45 backdrop-blur-[1px]">
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
               <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
               <p className="text-sm font-medium text-slate-700">Loading...</p>
