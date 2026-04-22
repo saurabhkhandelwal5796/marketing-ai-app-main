@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { getAuditSessionDurationMs, trackLogout } from "../lib/auditTracker";
 import Avatar from "./Avatar";
+import NavigationWrapper from "./NavigationWrapper";
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
@@ -15,7 +16,7 @@ export default function AppShell({ children }) {
   const [sidebarMode, setSidebarMode] = useState("expanded"); // expanded | collapsed
   const [sessionUser, setSessionUser] = useState(null);
   const [loadingSession, setLoadingSession] = useState(true);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileModalOpen, setIsProfileModalOpen] = useState(false);
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
@@ -28,6 +29,8 @@ export default function AppShell({ children }) {
     confirmPassword: "",
   });
   const showTopHeader = pathname === "/dashboard";
+
+  const sidebarWidthClass = sidebarMode === "collapsed" ? "pl-[78px]" : "pl-64";
 
   useEffect(() => {
     try {
@@ -68,7 +71,7 @@ export default function AppShell({ children }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     if (loadingSession) return;
@@ -103,8 +106,6 @@ export default function AppShell({ children }) {
   const expandSidebarOnHover = () => {
     setSidebarMode((prev) => (prev === "collapsed" ? "expanded" : prev));
   };
-
-  const sidebarWidthClass = sidebarMode === "collapsed" ? "pl-[78px]" : "pl-64";
 
   const restoreAdmin = async () => {
     const res = await fetch("/api/auth/restore", { method: "POST" });
@@ -205,7 +206,8 @@ export default function AppShell({ children }) {
   if (isPublicRoute) return <>{children}</>;
 
   return (
-    <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-50">
+    <div className="min-h-screen max-w-full overflow-x-hidden bg-slate-50 flex">
+      {/* Static Sidebar - never re-renders */}
       <Sidebar
         mode={sidebarMode}
         onToggleCollapsed={cycleCollapsed}
@@ -214,7 +216,11 @@ export default function AppShell({ children }) {
         currentUser={sessionUser}
         onOpenProfileModal={openProfileModal}
         onLogout={logout}
+        onNavigationStart={() => setIsNavigating(true)}
+        onNavigationEnd={() => setIsNavigating(false)}
       />
+      
+      {/* Dynamic Content Area with loading state */}
       <div className={`max-w-full min-w-0 overflow-x-hidden transition-all print:pl-0 ${sidebarWidthClass}`}>
         {(() => {
           if (!sessionUser) return null;
@@ -268,17 +274,21 @@ export default function AppShell({ children }) {
 
         {(() => {
           const isImpersonating = !!sessionUser?.admin_id;
-          const isNormalAdmin = !isImpersonating && !!sessionUser?.is_admin;
+          const isNormalAdmin = !isImpersonating && !!sessionUser.is_admin;
           const headerIsRendered = isImpersonating || (isNormalAdmin && showTopHeader);
           
           return (
             <div className={`${headerIsRendered ? "min-h-[calc(100vh-57px)]" : "min-h-screen"} max-w-full min-w-0 overflow-x-hidden`}>
-              {children}
+              <NavigationWrapper>
+                {children}
+              </NavigationWrapper>
             </div>
           );
         })()}
       </div>
-      {isProfileModalOpen ? (
+        
+      {/* Profile Modal - outside content area to prevent re-renders */}
+      {profileModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4">
           <div className="w-full max-w-xl rounded-2xl bg-white p-5 shadow-2xl">
             <div className="mb-4 flex items-start justify-between gap-3">
@@ -341,8 +351,8 @@ export default function AppShell({ children }) {
                   value={profileForm.company}
                   onChange={(e) => setProfileForm((prev) => ({ ...prev, company: e.target.value }))}
                   className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
+                  />
+                </label>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Optional password reset</p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -391,5 +401,3 @@ export default function AppShell({ children }) {
     </div>
   );
 }
-
-

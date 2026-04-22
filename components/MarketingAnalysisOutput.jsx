@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Globe,
+  Info,
   Mail,
   Link,
   MessageSquarePlus,
@@ -33,6 +34,7 @@ import Avatar from "./Avatar";
 const TABS = [
   { id: "plan", label: "Marketing Plan", icon: ClipboardCopy },
   { id: "details", label: "Selected Marketing Plans", icon: Sparkles },
+  { id: "milestones", label: "Create Milestones", icon: Wand2 },
   { id: "tasks", label: "Task Assignment", icon: ClipboardCopy },
   { id: "audience", label: "Target Audience", icon: Users },
 ];
@@ -272,6 +274,40 @@ function parseEmailFromAssistantResponse(answer, fallbackSubject) {
   return { subject, body };
 }
 
+function toCsvCell(value) {
+  if (value == null) return "";
+  const asString =
+    typeof value === "object"
+      ? JSON.stringify(value)
+      : String(value);
+  return `"${asString.replace(/"/g, '""')}"`;
+}
+
+function toCsvString(rows) {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  if (!safeRows.length) return "";
+  const columns = [];
+  safeRows.forEach((row) => {
+    if (!row || typeof row !== "object") return;
+    Object.keys(row).forEach((key) => {
+      if (!columns.includes(key)) columns.push(key);
+    });
+  });
+  const header = columns.map((col) => toCsvCell(col)).join(",");
+  const lines = safeRows.map((row) =>
+    columns.map((col) => toCsvCell(row?.[col])).join(",")
+  );
+  return [header, ...lines].join("\n");
+}
+
+function limitWords(text, maxWords) {
+  const value = String(text || "").trim();
+  if (!value || !Number.isFinite(maxWords) || maxWords <= 0) return value;
+  const parts = value.split(/\s+/).filter(Boolean);
+  if (parts.length <= maxWords) return value;
+  return parts.slice(0, maxWords).join(" ").trim();
+}
+
 function initials(name) {
   const parts = String(name || "")
     .trim()
@@ -405,6 +441,8 @@ export default function MarketingAnalysisOutput({
   const didMountRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const [tabOverflowOpen, setTabOverflowOpen] = useState(false);
+  const tabOverflowRef = useRef(null);
 
   const [selectedDetailIds, setSelectedDetailIds] = useState(() => new Set());
   const [persistedSelectedContentByPointId, setPersistedSelectedContentByPointId] = useState({});
@@ -416,6 +454,7 @@ export default function MarketingAnalysisOutput({
 
   const [tasks, setTasks] = useState([]);
   const [taskAssignTab, setTaskAssignTab] = useState("template"); // template | task
+  const [taskGenerationReady, setTaskGenerationReady] = useState(false);
 
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [taskModalMode, setTaskModalMode] = useState("create"); // create | edit
@@ -454,6 +493,8 @@ export default function MarketingAnalysisOutput({
 
   const selectedCount = selectedDetailIds.size;
   const anySelected = selectedCount > 0;
+  const anyTaskSourceSelected =
+    anySelected || (Array.isArray(selectedStepIds) && selectedStepIds.length > 0);
 
   const selectedItems = useMemo(() => {
     const idSet = selectedDetailIds;
@@ -527,7 +568,7 @@ export default function MarketingAnalysisOutput({
   const [employeeAssistantData, setEmployeeAssistantData] = useState({
     answer: "",
     suggestedChannels: [],
-    channelMessages: { email: null, linkedin: null },
+    channelMessages: { email: null, linkedin: null, call: null },
   });
   const [outreachComposerOpen, setOutreachComposerOpen] = useState(false);
   const [outreachChannel, setOutreachChannel] = useState("Email");
@@ -582,6 +623,21 @@ export default function MarketingAnalysisOutput({
       null
     );
   }, [campaignMilestones, selectedCampaignMilestoneId, sortedCampaignMilestones]);
+  const visibleTabs = useMemo(() => {
+    const base = TABS.slice(0, 3);
+    if (base.some((tab) => tab.id === activeTab)) return base;
+    const active = TABS.find((tab) => tab.id === activeTab);
+    if (!active) return base;
+    return [...base.slice(0, 2), active];
+  }, [activeTab]);
+  const overflowTabs = useMemo(() => {
+    const visibleIds = new Set(visibleTabs.map((tab) => tab.id));
+    return TABS.filter((tab) => !visibleIds.has(tab.id));
+  }, [visibleTabs]);
+
+  useEffect(() => {
+    if (!anySelected) setTaskGenerationReady(false);
+  }, [anySelected]);
 
   const trackerDrawerMilestone = useMemo(() => {
     if (!trackerDrawerMilestoneId) return null;
@@ -732,6 +788,17 @@ export default function MarketingAnalysisOutput({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!tabOverflowOpen) return;
+    const onDoc = (e) => {
+      if (!tabOverflowRef.current) return;
+      if (tabOverflowRef.current.contains(e.target)) return;
+      setTabOverflowOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [tabOverflowOpen]);
 
   useEffect(() => {
     if (!contactPopup.open) return;
@@ -942,8 +1009,8 @@ export default function MarketingAnalysisOutput({
     }
   };
 
-  const showToast = (type, message) => {
-    setToast({ type, message });
+  const showToast = (type, message, position = "bottom", tone = "default") => {
+    setToast({ type, message, position, tone });
     setTimeout(() => setToast(null), 1800);
   };
 
@@ -1373,7 +1440,7 @@ export default function MarketingAnalysisOutput({
         const data = await res.json();
         if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create task.");
         setTaskModalOpen(false);
-        showToast("success", "Task created successfully.");
+        showToast("success", "Task created successfully.", "top-center", "salesforce");
         if (auditUserId) {
           const assigned = users.find((u) => u.id === formAssigneeId)?.name || "Unassigned";
           postAuditAction(
@@ -1600,6 +1667,7 @@ export default function MarketingAnalysisOutput({
         channelMessages: { email: null, linkedin: null },
       });
       setSelectedDetailIds(new Set());
+      setTaskGenerationReady(false);
       setTagFilter("");
       setThreadsByPointId({});
       setThreadDraftsByPointId({});
@@ -1813,11 +1881,14 @@ export default function MarketingAnalysisOutput({
 
   const assignSelectedAsTasks = async () => {
     if (!selectedItems.length) return;
-    // Do not auto-create tasks from selected suggestions.
-    // Only user-explicit template/manual creation should create tasks.
     setActiveTab("tasks");
+    setTaskGenerationReady(false);
+  };
+
+  const handleGenerateTasksInTaskTab = () => {
+    if (!anyTaskSourceSelected) return;
+    setTaskGenerationReady(true);
     setTaskAssignTab("template");
-    showToast("success", "Select a template or create a task from scratch.");
   };
 
   const updateTaskLocal = (taskId, patch) => {
@@ -1830,6 +1901,33 @@ export default function MarketingAnalysisOutput({
     setSelectedEmployee(employee);
     setAssistantChannelContext(channel);
     setEmployeePrompt(buildEmployeeChannelPrompt(channel, employee));
+  };
+
+  const downloadAudienceCsv = () => {
+    const rows = audienceView === "companies" ? targetAudience : employees;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      showToast("error", "No data available to download.");
+      return;
+    }
+    const csv = toCsvString(rows);
+    if (!csv) {
+      showToast("error", "No data available to download.");
+      return;
+    }
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const safeCampaign = String(campaign || "campaign")
+      .trim()
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_-]/g, "");
+    const filePrefix = audienceView === "companies" ? "companies" : "employees";
+    link.href = url;
+    link.download = `${safeCampaign || "campaign"}_${filePrefix}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const openContactPopup = (e, type, employeeName, value) => {
@@ -1879,9 +1977,16 @@ export default function MarketingAnalysisOutput({
       {toast ? (
         <div
           className={cx(
-            "fixed bottom-4 right-4 z-[70] rounded-xl border px-4 py-3 text-sm font-semibold shadow-lg",
+            "fixed z-[70] rounded-xl border px-4 py-3 text-sm font-semibold shadow-lg",
+            toast.position === "top-center"
+              ? "left-1/2 top-4 -translate-x-1/2"
+              : toast.position === "top"
+              ? "right-4 top-4"
+              : "right-4 bottom-4",
             toast.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              ? toast.tone === "salesforce"
+                ? "border-emerald-800 bg-emerald-700 text-white"
+                : "border-emerald-200 bg-emerald-50 text-emerald-800"
               : toast.type === "error"
               ? "border-red-200 bg-red-50 text-red-800"
               : "border-slate-200 bg-white text-slate-800"
@@ -1946,279 +2051,309 @@ export default function MarketingAnalysisOutput({
         </div>
       </div>
 
-      {loading ? (
+      {loading && activeTab !== "details" ? (
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-3">
           <ThinkingDisplay preset="marketing_analysis" />
         </div>
       ) : null}
 
-      {aiMessage ? (
-        <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 text-sm text-slate-700">
-          {aiMessage}
-        </div>
-      ) : null}
-
       <div className="max-h-[720px] overflow-y-auto">
         <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
-          <div className="mx-auto inline-flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
-            {TABS.map((tab) => {
-              const Icon = tab.icon;
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cx(
-                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition",
-                    active
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-white text-slate-700 hover:bg-slate-50"
-                  )}
-                >
-                  <Icon size={16} />
-                  {tab.label}
-                </button>
-              );
-            })}
+          <div className="flex items-center justify-between gap-3">
+            <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
+              {visibleTabs.map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cx(
+                      "inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-semibold transition",
+                      active
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "bg-white text-slate-700 hover:bg-slate-50"
+                    )}
+                  >
+                    <Icon size={16} />
+                    {tab.label}
+                  </button>
+                );
+              })}
+              {overflowTabs.length ? (
+                <div className="relative" ref={tabOverflowRef}>
+                  <button
+                    type="button"
+                    onClick={() => setTabOverflowOpen((prev) => !prev)}
+                    className={cx(
+                      "no-hover-lift inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold",
+                      overflowTabs.some((tab) => tab.id === activeTab)
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "bg-white text-slate-700"
+                    )}
+                    aria-label="More tabs"
+                    title="More tabs"
+                  >
+                    <MoreVertical size={16} />
+                  </button>
+                  {tabOverflowOpen ? (
+                    <div className="absolute right-0 top-full z-20 mt-2 min-w-[200px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                      {overflowTabs.map((tab) => {
+                        const Icon = tab.icon;
+                        const active = activeTab === tab.id;
+                        return (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => {
+                              setActiveTab(tab.id);
+                              setTabOverflowOpen(false);
+                            }}
+                            className={cx(
+                              "flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold transition",
+                              active ? "bg-blue-50 text-blue-700" : "text-slate-700 hover:bg-slate-50"
+                            )}
+                          >
+                            <Icon size={14} />
+                            {tab.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               onClick={openGeneratePostModal}
-              className="ml-1 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-violet-600 via-purple-600 to-fuchsia-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:from-violet-500 hover:via-purple-500 hover:to-fuchsia-500"
+              className="ml-1 inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
             >
               <Sparkles size={16} className="shrink-0 opacity-95" aria-hidden />
-              Generate Post
+              Create Post
             </button>
           </div>
         </div>
 
         <div className="px-5 py-4">
+          {aiMessage ? (
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+              {aiMessage}
+            </div>
+          ) : null}
           {error ? (
             <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
           ) : null}
 
-          {activeTab === "plan" ? (
+          {activeTab === "plan" || activeTab === "milestones" ? (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Campaign Milestones</p>
-                    <p className="mt-1 text-xs text-slate-500">Track key delivery checkpoints for this campaign.</p>
+              {activeTab === "milestones" ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Campaign Milestones</p>
+                      <p className="mt-1 text-xs text-slate-500">Track key delivery checkpoints for this campaign.</p>
+                    </div>
                   </div>
-                  {/* Hide button when milestones already exist */}
-                  {!milestonesLoading && sortedCampaignMilestones.length === 0 && (
-                    <button
-                      type="button"
-                      onClick={openMilestoneModal}
-                      className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                    >
-                      <Wand2 size={16} />
-                      Create Milestone with AI
-                    </button>
-                  )}
-                </div>
-
-                {milestonesLoading ? (
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading milestones...</div>
-                ) : trackerMilestones.length === 0 ? (
-                  <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
-                    No milestones created for this campaign yet.
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-4">
-                    <div className="flex items-center justify-between gap-3">
+                  {!milestonesLoading && sortedCampaignMilestones.length === 0 ? (
+                    <div className="mt-3 flex justify-center">
                       <button
                         type="button"
-                        onClick={() => setMilestoneTrackerOffset((prev) => Math.max(0, prev - 5))}
-                        disabled={sortedCampaignMilestones.length <= 5 || milestoneTrackerOffset <= 0}
-                        className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Previous milestones"
+                        onClick={openMilestoneModal}
+                        className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
                       >
-                        <ChevronLeft size={16} />
-                      </button>
-
-                      <div className="flex min-w-[420px] flex-1 items-start justify-between gap-0 relative">
-                        {trackerMilestones.map((milestone, idx) => {
-                          const active = selectedCampaignMilestone?.id === milestone.id;
-                          const globalIndex = milestoneTrackerOffset + idx;
-                          const shortTitle = String(milestone.title || "")
-                            .split(/\s+/)
-                            .filter(Boolean)
-                            .slice(0, 2)
-                            .join(" ");
-
-                          const selectedSortedIndex = sortedCampaignMilestones.findIndex((m) => m.id === milestone.id);
-                          return (
-                            <button
-                              key={milestone.id}
-                              type="button"
-                              onClick={() => {
-                                // Toggle popup: click same node = close, click different = open that one
-                                setSelectedCampaignMilestoneId((prev) => prev === milestone.id ? null : milestone.id);
-
-                                // Keep the selected node visible in the 5-node window.
-                                if (selectedSortedIndex === -1) return;
-                                if (selectedSortedIndex < milestoneTrackerOffset) {
-                                  setMilestoneTrackerOffset(selectedSortedIndex);
-                                } else if (selectedSortedIndex > milestoneTrackerOffset + 4) {
-                                  setMilestoneTrackerOffset(selectedSortedIndex - 4);
-                                }
-                              }}
-                              className="flex flex-1 items-center text-left"
-                            >
-                              <div className="flex flex-col items-center">
-                                <div
-                                  className={cx(
-                                    "flex h-11 w-11 items-center justify-center rounded-full border text-sm font-semibold shadow-sm transition cursor-pointer hover:scale-110 hover:shadow-md",
-                                    milestoneNodeStyles(milestone.status),
-                                    active ? "ring-2 ring-blue-400 scale-110" : ""
-                                  )}
-                                >
-                                  {String(globalIndex + 1).padStart(2, "0")}
-                                </div>
-                                <p className="mt-3 max-w-[110px] text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
-                                  {shortTitle || "-"}
-                                </p>
-                              </div>
-                              {idx < trackerMilestones.length - 1 ? (
-                                <div className={cx("mx-3 h-1 flex-1 rounded-full", milestoneLineStyles(milestone.status))} />
-                              ) : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setMilestoneTrackerOffset((prev) => Math.min(sortedCampaignMilestones.length - 5, prev + 5))}
-                        disabled={sortedCampaignMilestones.length <= 5 || milestoneTrackerOffset + 5 >= sortedCampaignMilestones.length}
-                        className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        aria-label="Next milestones"
-                      >
-                        <ChevronRight size={16} />
+                        <Wand2 size={16} />
+                        Create Milestone with AI
                       </button>
                     </div>
+                  ) : null}
 
-                    {/* Milestone detail popup */}
-                    {selectedCampaignMilestone ? (
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg" style={{ animation: "fadeIn 0.25s ease-out" }}>
-                        <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-900">{selectedCampaignMilestone.title}</p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              {formatMilestoneDate(selectedCampaignMilestone.start_date)} to{" "}
-                              {formatMilestoneDate(selectedCampaignMilestone.end_date)}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={cx(
-                                "rounded-full border px-3 py-1 text-xs font-semibold",
-                                selectedCampaignMilestone.status === "Completed"
-                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                  : selectedCampaignMilestone.status === "In Progress"
-                                  ? "border-blue-200 bg-blue-50 text-blue-700"
-                                  : selectedCampaignMilestone.status === "Overdue"
-                                  ? "border-red-200 bg-red-50 text-red-700"
-                                  : "border-slate-300 bg-white text-slate-700"
-                              )}
-                            >
-                              {selectedCampaignMilestone.status}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedCampaignMilestoneId(null)}
-                              className="rounded-lg border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-50"
-                              title="Close"
-                            >
-                              <X size={14} />
-                            </button>
-                          </div>
-                        </div>
+                  {milestonesLoading ? (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">Loading milestones...</div>
+                  ) : trackerMilestones.length === 0 ? (
+                    <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+                      No milestones created for this campaign yet.
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setMilestoneTrackerOffset((prev) => Math.max(0, prev - 5))}
+                          disabled={sortedCampaignMilestones.length <= 5 || milestoneTrackerOffset <= 0}
+                          className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Previous milestones"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
 
-                        {selectedCampaignMilestone.description ? (
-                          <p className="mt-3 text-sm leading-6 text-slate-700">
-                            {selectedCampaignMilestone.description}
-                          </p>
-                        ) : null}
+                        <div className="flex min-w-[420px] flex-1 items-start justify-between gap-0 relative">
+                          {trackerMilestones.map((milestone, idx) => {
+                            const active = selectedCampaignMilestone?.id === milestone.id;
+                            const globalIndex = milestoneTrackerOffset + idx;
+                            const shortTitle = String(milestone.title || "")
+                              .split(/\s+/)
+                              .filter(Boolean)
+                              .slice(0, 2)
+                              .join(" ");
 
-                        {/* Progress bar */}
-                        <div className="mt-3">
-                          <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                            <span>Progress</span>
-                            <span>{selectedCampaignMilestone.progress || 0}%</span>
-                          </div>
-                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className={cx(
-                                "h-full rounded-full transition-all duration-500",
-                                selectedCampaignMilestone.status === "Completed" ? "bg-emerald-500"
-                                  : selectedCampaignMilestone.status === "In Progress" ? "bg-blue-500"
-                                  : selectedCampaignMilestone.status === "Overdue" ? "bg-red-500"
-                                  : "bg-slate-400"
-                              )}
-                              style={{ width: `${selectedCampaignMilestone.progress || 0}%` }}
-                            />
-                          </div>
-                        </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-500">
-                          <span>
-                            Tasks done: {selectedCampaignMilestone.tasks_done || 0}/{selectedCampaignMilestone.task_count || 0}
-                          </span>
-                          <span>Owner: {selectedCampaignMilestone.assignee_name || "-"}</span>
-                        </div>
-
-                        {/* Tasks list */}
-                        {Array.isArray(selectedCampaignMilestone.tasks) && selectedCampaignMilestone.tasks.length > 0 ? (
-                          <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-2">Tasks</p>
-                            <div className="space-y-1.5">
-                              {selectedCampaignMilestone.tasks.map((task) => {
-                                const isDone = task.status === "Completed";
-                                return (
-                                  <div key={task.id} className="flex items-center gap-2.5 rounded-lg bg-white px-3 py-2 border border-slate-100">
-                                    <div className={cx(
-                                      "h-4 w-4 rounded flex items-center justify-center border shrink-0",
-                                      isDone ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300 bg-white"
-                                    )}>
-                                      {isDone ? <Check size={10} strokeWidth={3} /> : null}
-                                    </div>
-                                    <span className={cx(
-                                      "flex-1 text-xs",
-                                      isDone ? "text-slate-400 line-through" : "text-slate-700"
-                                    )}>
-                                      {task.title}
-                                    </span>
-                                    {task.task_type ? (
-                                      <span className="shrink-0 rounded-full bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
-                                        {task.task_type}
-                                      </span>
-                                    ) : null}
+                            const selectedSortedIndex = sortedCampaignMilestones.findIndex((m) => m.id === milestone.id);
+                            return (
+                              <button
+                                key={milestone.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCampaignMilestoneId((prev) => prev === milestone.id ? null : milestone.id);
+                                  if (selectedSortedIndex === -1) return;
+                                  if (selectedSortedIndex < milestoneTrackerOffset) {
+                                    setMilestoneTrackerOffset(selectedSortedIndex);
+                                  } else if (selectedSortedIndex > milestoneTrackerOffset + 4) {
+                                    setMilestoneTrackerOffset(selectedSortedIndex - 4);
+                                  }
+                                }}
+                                className="flex flex-1 items-center text-left"
+                              >
+                                <div className="flex flex-col items-center">
+                                  <div
+                                    className={cx(
+                                      "flex h-11 w-11 items-center justify-center rounded-full border text-sm font-semibold shadow-sm transition cursor-pointer hover:scale-110 hover:shadow-md",
+                                      milestoneNodeStyles(milestone.status),
+                                      active ? "ring-2 ring-blue-400 scale-110" : ""
+                                    )}
+                                  >
+                                    {String(globalIndex + 1).padStart(2, "0")}
                                   </div>
-                                );
-                              })}
+                                  <p className="mt-3 max-w-[110px] text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                                    {shortTitle || "-"}
+                                  </p>
+                                </div>
+                                {idx < trackerMilestones.length - 1 ? (
+                                  <div className={cx("mx-3 h-1 flex-1 rounded-full", milestoneLineStyles(milestone.status))} />
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setMilestoneTrackerOffset((prev) => Math.min(sortedCampaignMilestones.length - 5, prev + 5))}
+                          disabled={sortedCampaignMilestones.length <= 5 || milestoneTrackerOffset + 5 >= sortedCampaignMilestones.length}
+                          className="rounded-xl border border-slate-200 bg-white p-2 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          aria-label="Next milestones"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+
+                      {selectedCampaignMilestone ? (
+                        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-lg" style={{ animation: "fadeIn 0.25s ease-out" }}>
+                          <style>{`@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-slate-900">{selectedCampaignMilestone.title}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatMilestoneDate(selectedCampaignMilestone.start_date)} to{" "}
+                                {formatMilestoneDate(selectedCampaignMilestone.end_date)}
+                              </p>
                             </div>
-                            <div className="mt-3 flex justify-end">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cx(
+                                  "rounded-full border px-3 py-1 text-xs font-semibold",
+                                  selectedCampaignMilestone.status === "Completed"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : selectedCampaignMilestone.status === "In Progress"
+                                    ? "border-blue-200 bg-blue-50 text-blue-700"
+                                    : selectedCampaignMilestone.status === "Overdue"
+                                    ? "border-red-200 bg-red-50 text-red-700"
+                                    : "border-slate-300 bg-white text-slate-700"
+                                )}
+                              >
+                                {selectedCampaignMilestone.status}
+                              </span>
                               <button
                                 type="button"
-                                onClick={() => openTrackerDetailDrawer(selectedCampaignMilestone.id)}
-                                className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+                                onClick={() => setSelectedCampaignMilestoneId(null)}
+                                className="rounded-lg border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-50"
+                                title="Close"
                               >
-                                View in Detail
+                                <X size={14} />
                               </button>
                             </div>
                           </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                )}
-              </div>
 
-              {!hasMarketingPlan ? (
+                          {selectedCampaignMilestone.description ? (
+                            <p className="mt-3 text-sm leading-6 text-slate-700">
+                              {selectedCampaignMilestone.description}
+                            </p>
+                          ) : null}
+
+                          <div className="mt-3">
+                            <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                              <span>Progress</span>
+                              <span>{selectedCampaignMilestone.progress || 0}%</span>
+                            </div>
+                            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className={cx(
+                                  "h-full rounded-full transition-all duration-500",
+                                  selectedCampaignMilestone.status === "Completed" ? "bg-emerald-500"
+                                    : selectedCampaignMilestone.status === "In Progress" ? "bg-blue-500"
+                                    : selectedCampaignMilestone.status === "Overdue" ? "bg-red-500"
+                                    : "bg-slate-400"
+                                )}
+                                style={{ width: `${selectedCampaignMilestone.progress || 0}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                            <span>
+                              Tasks done: {selectedCampaignMilestone.tasks_done || 0}/{selectedCampaignMilestone.task_count || 0}
+                            </span>
+                            <span>Owner: {selectedCampaignMilestone.assignee_name || "-"}</span>
+                          </div>
+
+                          {Array.isArray(selectedCampaignMilestone.tasks) && selectedCampaignMilestone.tasks.length > 0 ? (
+                            <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Tasks</p>
+                              <div className="space-y-1.5">
+                                {selectedCampaignMilestone.tasks.map((task) => {
+                                  const isDone = task.status === "Completed";
+                                  return (
+                                    <div key={task.id} className="flex items-center gap-2.5 rounded-lg border border-slate-100 bg-white px-3 py-2">
+                                      <span className={cx("flex-1 text-xs", isDone ? "text-slate-400 line-through" : "text-slate-700")}>
+                                        {task.title}
+                                      </span>
+                                      {task.task_type ? (
+                                        <span className="shrink-0 rounded-full border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-500">
+                                          {task.task_type}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              <div className="mt-3 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => openTrackerDetailDrawer(selectedCampaignMilestone.id)}
+                                  className="rounded-md border border-blue-300 bg-white px-3 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+                                >
+                                  View in Detail
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              ) : !hasMarketingPlan ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
                   <p className="text-base font-semibold text-slate-900">
                     {planLoading ? "Generating your marketing plan" : "Generate Your Marketing Plan"}
@@ -2243,6 +2378,11 @@ export default function MarketingAnalysisOutput({
 
           {activeTab === "details" ? (
             <div className="space-y-3">
+              {loading ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <ThinkingDisplay preset="marketing_analysis" />
+                </div>
+              ) : null}
               {marketingDetails.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
                   Click Generate to create a detailed marketing analysis (20+ points).
@@ -2459,26 +2599,35 @@ export default function MarketingAnalysisOutput({
 
           {activeTab === "audience" ? (
             <div className="space-y-4">
-              <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setAudienceView("companies")}
+                    className={cx(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                      audienceView === "companies" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                  >
+                    Companies
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAudienceView("employees")}
+                    className={cx(
+                      "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                      audienceView === "employees" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
+                    )}
+                  >
+                    Employees
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setAudienceView("companies")}
-                  className={cx(
-                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                    audienceView === "companies" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
-                  )}
+                  onClick={downloadAudienceCsv}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
-                  Companies
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAudienceView("employees")}
-                  className={cx(
-                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                    audienceView === "employees" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
-                  )}
-                >
-                  Employees
+                  Download CSV
                 </button>
               </div>
 
@@ -2509,7 +2658,7 @@ export default function MarketingAnalysisOutput({
                             Country: <span className="font-semibold text-slate-700">{c.country || "-"}</span>
                           </p>
                         </div>
-                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                        <span className="rounded-md whitespace-nowrap border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
                           Sector: {c.sector || c.industry || "-"}
                         </span>
                       </div>
@@ -2642,10 +2791,16 @@ export default function MarketingAnalysisOutput({
                                 e.stopPropagation();
                                 applyEmployeeChannelContext(emp, defaultChannel);
                               }}
-                              className="shrink-0 rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                              className="shrink-0 rounded-full border border-blue-200 bg-blue-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-blue-700"
                             >
                               Channels
                             </button>
+                            <span
+                              title="Select channel context so AI Assistant auto-generates outreach in that channel format."
+                              className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-blue-200 bg-blue-50 text-blue-600"
+                            >
+                              <Info size={12} />
+                            </span>
                           </div>
                           {hasAnyOutreach ? (
                             <div className="mt-3 flex flex-wrap gap-2">
@@ -2692,7 +2847,7 @@ export default function MarketingAnalysisOutput({
                                     applyEmployeeChannelContext(emp, "linkedin");
                                     openContactPopup(e, "linkedin", emp.name || "employee", linkedinUrl);
                                   }}
-                                  className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                                  className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-600 px-2 py-0.5 text-[11px] text-white hover:bg-blue-700"
                                   title="Search on LinkedIn"
                                 >
                                   <Link size={12} />
@@ -2752,13 +2907,23 @@ export default function MarketingAnalysisOutput({
                           });
                           const data = await res.json();
                           if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate outreach message.");
+                          const normalizedChannel = assistantChannelContext === "call" ? "call" : assistantChannelContext;
+                          const channelMessages =
+                            data?.channelMessages && typeof data.channelMessages === "object"
+                              ? data.channelMessages
+                              : { email: null, linkedin: null, call: null };
+                          const preferredMessage =
+                            normalizedChannel === "linkedin"
+                              ? limitWords(String(channelMessages?.linkedin?.message || "").trim(), 60)
+                              : normalizedChannel === "call"
+                              ? String(channelMessages?.call?.script || "").trim()
+                              : normalizedChannel === "email"
+                              ? String(channelMessages?.email?.body || "").trim()
+                              : "";
                           setEmployeeAssistantData({
-                            answer: String(data?.answer || ""),
+                            answer: preferredMessage || String(data?.answer || ""),
                             suggestedChannels: Array.isArray(data?.suggestedChannels) ? data.suggestedChannels : [],
-                            channelMessages:
-                              data?.channelMessages && typeof data.channelMessages === "object"
-                                ? data.channelMessages
-                                : { email: null, linkedin: null },
+                            channelMessages,
                           });
                         } catch (e) {
                           setError(e?.message || "Failed to generate outreach message.");
@@ -2833,9 +2998,20 @@ export default function MarketingAnalysisOutput({
 
           {activeTab === "tasks" ? (
             <div>
-              {!anySelected ? (
+              {!anyTaskSourceSelected || !taskGenerationReady ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                  Select points from Marketing Details to generate tasks
+                  <p>
+                    Select points from Marketing Plan or Selected Marketing Plans to generate tasks and click on the
+                    button "Generate Tasks" below to create tasks based on your selected marketing plan points.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleGenerateTasksInTaskTab}
+                    disabled={!anyTaskSourceSelected}
+                    className="mx-auto mt-3 block rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    Generate Tasks
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -2870,13 +3046,15 @@ export default function MarketingAnalysisOutput({
 
                   {taskAssignTab === "task" ? (
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={addManualTask}
-                        className="rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-                      >
-                        Create Task from Scratch
-                      </button>
+                      <div className="flex justify-center">
+                        <button
+                          type="button"
+                          onClick={addManualTask}
+                          className="rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                        >
+                          Create Task from Scratch
+                        </button>
+                      </div>
                     </div>
                   ) : null}
 
@@ -3637,8 +3815,24 @@ export default function MarketingAnalysisOutput({
                     {(Array.isArray(trackerDrawerMilestone.tasks) ? trackerDrawerMilestone.tasks : []).map((task, idx) => (
                       <div
                         key={`drawer-task-${task.id}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => {
+                          // Open task detail page - navigate to task detail
+                          // router.push(`/tasks/${task.id}`);
+                          router.push(`/tasks/milestone:${task.id}`);
+
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            // router.push(`/tasks/${task.id}`);
+                            router.push(`/tasks/milestone:${task.id}`);
+
+                          }
+                        }}
                         className={cx(
-                          "rounded-lg border border-slate-200 px-3 py-2",
+                          "rounded-lg border border-slate-200 px-3 py-2 cursor-pointer transition hover:shadow-md",
                           idx % 2 === 0 ? "bg-slate-50" : "bg-slate-100/50"
                         )}
                       >
@@ -3879,10 +4073,11 @@ export default function MarketingAnalysisOutput({
                           type="button"
                           onClick={submitMilestoneChatRefine}
                           disabled={milestoneChatLoading || !String(milestoneChatInput || "").trim()}
-                          className="rounded-xl bg-slate-900 p-2.5 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Send"
+                          className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 py-2.5 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Regenerate Milestone"
                         >
                           <Wand2 size={16} />
+                          <span className="text-xs font-semibold">Regenerate Milestone</span>
                         </button>
                       </div>
 
@@ -3990,7 +4185,7 @@ export default function MarketingAnalysisOutput({
           >
             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
               <h2 id="generate-post-modal-title" className="text-base font-semibold text-slate-900">
-                Generate Post
+                Create Post
               </h2>
               <button
                 type="button"

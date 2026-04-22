@@ -33,6 +33,7 @@ export async function POST(req) {
     const name = `${firstName} ${lastName}`.trim();
     const isAdmin = false;
     const role = "User";
+    const status = "Pending";
 
     const { data, error } = await supabase
       .from("users")
@@ -46,11 +47,11 @@ export async function POST(req) {
           password: passwordHash,
           role,
           is_admin: isAdmin,
-          status: "Active",
+          status,
           avatar: initials(firstName, lastName),
         },
       ])
-      .select("id,name,email,role,is_admin")
+      .select("id,name,email,role,is_admin,status")
       .single();
 
     if (error) {
@@ -73,10 +74,10 @@ export async function POST(req) {
               avatar: initials(firstName, lastName),
             },
           ])
-          .select("id,name,email,role,is_admin")
+          .select("id,name,email,role,is_admin,status")
           .single();
         if (fallback.error) throw new Error(fallback.error.message);
-        return NextResponse.json({ user: fallback.data, requiresSignin: true });
+        return NextResponse.json({ user: { ...fallback.data, status }, requiresSignin: true });
       }
       throw new Error(error.message);
     }

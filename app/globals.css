@@ -59,3 +59,92 @@ pre {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Premium hover system: reusable + global interactive targets */
+.hover-lift,
+:is(
+    button,
+    a[href],
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    .cursor-pointer
+  ):not(.no-hover-lift) {
+  transition:
+    transform 250ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 250ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  transform: translateY(0) scale(1);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.hover-lift:hover,
+.hover-lift:focus-visible,
+:is(
+    button,
+    a[href],
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    .cursor-pointer
+  ):not(.no-hover-lift):hover,
+:is(
+    button,
+    a[href],
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    .cursor-pointer
+  ):not(.no-hover-lift):focus-visible {
+  transform: translateY(-2px) scale(1.03);
+  background-color: rgba(105, 115, 130, 0.08);
+  border-color: rgba(105, 115, 130, 0.18);
+  box-shadow: 0 10px 25px rgba(105, 115, 130, 0.18);
+  filter: brightness(1.01);
+  text-shadow: 0 0.35px 0 rgba(15, 23, 42, 0.3);
+}
+
+.hover-lift:focus-visible,
+:is(
+    button,
+    a[href],
+    [role="button"],
+    [role="tab"],
+    [role="menuitem"],
+    .cursor-pointer
+  ):not(.no-hover-lift):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Keep black action buttons neutral on hover/focus */
+:is(button, a[href])[class*="bg-slate-900"]:not(.no-hover-lift):is(:hover, :focus-visible) {
+  background-color: #1f2937;
+  border-color: transparent;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  filter: none;
+}
+
+/* Keep blue action buttons with blue glow on hover/focus */
+:is(button, a[href]):is([class*="bg-blue-600"], [class*="bg-blue-500"]):not(.no-hover-lift):is(:hover, :focus-visible) {
+  background-color: #3b82f6;
+  border-color: transparent;
+  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+  filter: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hover-lift,
+  :is(
+      button,
+      a[href],
+      [role="button"],
+      [role="tab"],
+      [role="menuitem"],
+      .cursor-pointer
+    ):not(.no-hover-lift) {
+    transition: none;
+    transform: none;
+  }
+}

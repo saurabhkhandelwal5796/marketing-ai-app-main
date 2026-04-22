@@ -20,8 +20,15 @@ export async function POST(req) {
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
-    if (data.status === "Inactive") {
-      return NextResponse.json({ error: "User is inactive." }, { status: 403 });
+    const status = String(data.status || "Active");
+    if (status === "Pending") {
+      return NextResponse.json(
+        { error: "Your account is not approved yet. Please wait for admin approval." },
+        { status: 403 }
+      );
+    }
+    if (status !== "Active") {
+      return NextResponse.json({ error: "Your account is not active. Please contact an administrator." }, { status: 403 });
     }
 
     const ok = await verifyPassword(password, data.password);
@@ -34,6 +41,7 @@ export async function POST(req) {
       role: data.role,
       is_admin: !!data.is_admin,
       company: data.company,
+      status,
     });
     return NextResponse.json({
       user: {

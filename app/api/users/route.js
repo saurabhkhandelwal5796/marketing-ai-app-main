@@ -30,23 +30,25 @@ export async function GET(req) {
     const supabase = getSupabaseServerClient();
     let query = supabase
       .from("users")
-      .select("id,name,email,role,avatar,is_admin,status,created_at", { count: "exact" })
+      .select("id,name,email,role,avatar,is_admin,status,created_at,first_name,last_name,company", { count: "exact" })
       .order("created_at", { ascending: false })
       .range(from, to);
     if (!session.is_admin) query = query.eq("id", session.id);
     if (role === "Admin") query = query.eq("is_admin", true);
     if (role === "User") query = query.eq("is_admin", false);
     if (search) query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+    if (status === "Pending") {
+      query = query.eq("status", "Pending");
+    } else if (status === "all") {
+      // Pending requests should only appear inside "User Requests" view
+      query = query.not("status", "in", '("Pending","Rejected")');
+    } else {
+      query = query.eq("status", status);
+    }
     const { data, error, count } = await query;
     if (error) throw new Error(error.message);
     const users = (data || []).map((u) => ({ ...u, status: u.status || "Active" }));
-    if (status !== "all") {
-      return NextResponse.json({
-        users: users.filter((u) => u.status === status),
-        pagination: { page, pageSize, total: users.filter((u) => u.status === status).length },
-      });
-    }
-    return NextResponse.json({ users, pagination: { page, pageSize, total: count ?? 0 } });
+    return NextResponse.json({ users, pagination: { page, pageSize, total: count ?? users.length } });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to fetch users." }, { status: 500 });
   }
@@ -65,7 +67,10 @@ export async function POST(req) {
       .trim()
       .toLowerCase();
     const role = body?.role ? String(body.role).trim() : "User";
-    const status = body?.status === "Inactive" ? "Inactive" : "Active";
+    const rawStatus = String(body?.status || "Active").trim();
+    const mappedStatus = rawStatus === "Inactive" ? "Rejected" : rawStatus;
+    const allowed = new Set(["Pending", "Active", "Rejected"]);
+    const status = allowed.has(mappedStatus) ? mappedStatus : "Active";
     const password = String(body?.password || "").trim();
     const isAdmin = role === "Admin";
     if (!name || !email) {

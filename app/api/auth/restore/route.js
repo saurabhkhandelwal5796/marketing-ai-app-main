@@ -24,6 +24,7 @@ export async function POST() {
       email: data.email,
       role: data.role,
       is_admin: !!data.is_admin,
+      status: data.status || "Active",
     });
     return NextResponse.json({ ok: true });
   } catch (e) {

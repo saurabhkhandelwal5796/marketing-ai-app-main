@@ -5,6 +5,7 @@ import DashboardHeader from "../../components/dashboard/DashboardHeader";
 import PrimaryKPIs from "../../components/dashboard/PrimaryKPIs";
 import CampaignTable from "../../components/dashboard/CampaignTable";
 import DashboardCharts from "../../components/dashboard/DashboardCharts";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
 const withinDays = (dateStr, days) => {
   if (days === "all") return true;
@@ -42,6 +43,24 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState("30");
+  const [sessionUser, setSessionUser] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/session");
+        const data = await res.json();
+        if (!mounted) return;
+        setSessionUser(data?.user || null);
+      } catch {
+        if (mounted) setSessionUser(null);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const refresh = async () => {
     setLoading(true);
@@ -117,6 +136,17 @@ export default function DashboardPage() {
   return (
     <main className="space-y-6 px-4 py-8 md:px-8 bg-[#f8fafc] min-h-screen">
       <DashboardHeader days={days} setDays={setDays} refresh={refresh} loading={loading} />
+      {!loading &&
+      sessionUser &&
+      !sessionUser.is_admin &&
+      filteredRows.length === 0 &&
+      filteredCampaigns.length === 0 &&
+      filteredTasks.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+          <p className="text-base font-semibold text-slate-900">No data available for your account</p>
+          <p className="mt-1 text-sm text-slate-500">Once you create campaigns or get tasks assigned, your analytics will appear here.</p>
+        </div>
+      ) : null}
       <PrimaryKPIs metrics={unifiedMetrics} loading={loading} />
       <DashboardCharts rows={filteredRows} campaigns={filteredCampaigns} loading={loading} />
       <div>

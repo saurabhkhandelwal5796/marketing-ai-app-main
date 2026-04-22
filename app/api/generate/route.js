@@ -471,6 +471,9 @@ Rules:
   [sender name]
 - If LinkedIn is suggested, provide linkedin.message.
 - If Call is suggested, provide call.script.
+- The answer field must contain the final outreach copy itself (not guidance, analysis, or explanation of what to write).
+- For LinkedIn requests, answer must be exactly the LinkedIn message text ready to send.
+- For LinkedIn requests, keep the message concise and within 60 words.
 - Do not include channels that are not relevant.`;
 
       const raw = await callOpenAI({

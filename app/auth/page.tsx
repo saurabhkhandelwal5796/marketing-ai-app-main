@@ -58,7 +58,7 @@ export default function AuthPage() {
   const [mode, setMode] = useState<AuthMode>("signup");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
 
   const [signup, setSignup] = useState({
     firstName: "",
@@ -102,7 +102,7 @@ export default function AuthPage() {
     }
     setSubmitting(true);
     setError("");
-    setSuccessMessage("");
+    setToastMessage("");
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -111,7 +111,9 @@ export default function AuthPage() {
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Sign up failed.");
-      setSuccessMessage("Account created successfully. Please sign in to continue.");
+      setToastMessage(
+        "Thank you for signing up! Your account request has been submitted and is under review. You will be able to access the platform once approved by an administrator."
+      );
       setMode("signin");
       setSignup({
         firstName: "",
@@ -142,7 +144,7 @@ export default function AuthPage() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
-    setSuccessMessage("");
+    setToastMessage("");
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -166,28 +168,37 @@ export default function AuthPage() {
   };
 
   return (
-    <main className="flex h-dvh overflow-hidden bg-slate-50 text-slate-900">
-      <div className="flex h-full w-full flex-col overflow-hidden lg:flex-row">
+    <main className="flex min-h-dvh w-full overflow-x-hidden bg-slate-50 text-slate-900">
+      {toastMessage ? (
+        <div className="fixed left-1/2 top-4 z-[200] w-[min(720px,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-white/10 bg-slate-900 px-5 py-3 text-sm text-white shadow-xl">
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-medium leading-snug">{toastMessage}</p>
+            <button
+              type="button"
+              onClick={() => setToastMessage("")}
+              className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-white/90 hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <div className="flex min-h-dvh w-full min-w-0 flex-1 flex-col items-stretch lg:flex-row">
         {/* Left Form Section */}
-        <section className="flex flex-1 flex-col items-center justify-center overflow-hidden px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
-          <div className="w-full max-w-md overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 shadow-xl sm:p-7">
+        <section className="flex w-full min-w-0 flex-1 items-center justify-center p-6 sm:p-10 lg:h-full">
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 shadow-xl sm:p-7">
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{mode === "signup" ? "Create an account" : "Welcome back"}</h1>
             <p className="mt-1 text-sm text-slate-500">
               {mode === "signup" ? "Start managing your marketing workflows today." : "Sign in to continue to your dashboard."}
             </p>
 
-            {successMessage ? (
-              <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {successMessage}
-              </div>
-            ) : null}
             {error ? (
               <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
             ) : null}
 
             {mode === "signup" ? (
-              <form onSubmit={onSignup} autoComplete="off" className="mt-5 space-y-3">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <form onSubmit={onSignup} autoComplete="off" className="mt-6 space-y-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <label className="block text-sm font-medium text-slate-700">
                     First Name
                     <input
@@ -303,13 +314,13 @@ export default function AuthPage() {
                 <button
                   type="submit"
                   disabled={submitting || !isSignupValid}
-                  className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-1 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {submitting ? "Creating account..." : "Sign Up"}
                 </button>
               </form>
             ) : (
-              <form onSubmit={onSignin} autoComplete="off" className="mt-5 space-y-3">
+              <form onSubmit={onSignin} autoComplete="off" className="mt-6 space-y-4">
                 <label className="block text-sm font-medium text-slate-700">
                   Email
                   <input
@@ -335,7 +346,7 @@ export default function AuthPage() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="mt-2 w-full rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                  className="mt-1 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                 >
                   {submitting ? "Signing in..." : "Sign In"}
                 </button>
@@ -354,17 +365,32 @@ export default function AuthPage() {
           </div>
         </section>
 
-        {/* Right Image Section */}
-        <section className="relative hidden flex-1 overflow-hidden bg-slate-100 lg:flex">
-          <Image
-            src="/signup-right-panel-v2.png"
-            alt="Authentication side illustration"
-            fill
-            priority
-            sizes="(min-width: 1536px) 50vw, (min-width: 1024px) 50vw, 100vw"
-            className="object-cover object-center"
-          />
-        </section>
+        {/* Right Hero Illustration (single image, responsive) */}
+        {/* <section className="w-full min-w-0 flex-1 lg:h-full">
+          <div className="relative h-[280px] w-full bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50 lg:h-full">
+            <Image
+              src="/signup-hero-hd.png"
+              alt="Signup illustration"
+              fill
+              priority
+              sizes="(min-width: 1024px) 50vw, 100vw"
+              className="object-cover"
+            />
+          </div>
+        </section> */}
+        {/* Right Hero Illustration */}
+      <section className="hidden lg:block lg:w-1/2 lg:min-h-dvh overflow-hidden relative">
+        <Image
+          // src="/latest-auth-image.png"
+          src="/Sign Up page image.png"
+          alt="Signup illustration"
+          fill
+          priority
+          sizes="50vw"
+          className="object-cover object-center"
+        />
+      </section>
+
       </div>
     </main>
   );
