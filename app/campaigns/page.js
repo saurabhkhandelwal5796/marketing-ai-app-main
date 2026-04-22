@@ -26,9 +26,11 @@ export default function CampaignListPage() {
   const PAGE_SIZE = 15;
   const [isFetching, setIsFetching] = useState(false);
   const createInFlightRef = useRef(false);
+  const fetchInFlightRef = useRef(false);
 
   const loadCampaigns = useCallback(async ({ nextOffset = 0, append = false } = {}) => {
-    if (isFetching) return;
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
     setIsFetching(true);
     if (append) setLoadingMore(true);
     else setLoading(true);
@@ -44,11 +46,12 @@ export default function CampaignListPage() {
     } catch (err) {
       setError(err.message || "Failed to fetch campaigns.");
     } finally {
+      fetchInFlightRef.current = false;
       setIsFetching(false);
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [PAGE_SIZE, isFetching]);
+  }, [PAGE_SIZE]);
 
   useEffect(() => {
     loadCampaigns({ nextOffset: 0, append: false });
