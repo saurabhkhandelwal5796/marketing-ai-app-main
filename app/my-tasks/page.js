@@ -239,6 +239,11 @@ export default function MyTasksPage() {
 
     let list = tasks.filter((t) => t && typeof t.id === "string" && t.id.length > 0);
 
+    // Always respect the selected assignee filter when one is chosen.
+    if (userId) {
+      list = list.filter((t) => t.assignee_id === userId);
+    }
+
     if (activeFilter === "My Tasks") {
       list = list.filter((t) => (userId ? t.assignee_id === userId : false));
     } else if (activeFilter === "Today's Tasks") {
@@ -353,7 +358,8 @@ export default function MyTasksPage() {
     } catch {
       // ignore
     }
-    router.push(`/tasks/${encodeURIComponent(t.id)}`);
+    const returnTo = `/my-tasks${typeof window !== "undefined" ? window.location.search : ""}`;
+    router.push(`/tasks/${encodeURIComponent(t.id)}?returnTo=${encodeURIComponent(returnTo)}`);
   };
 
   const deleteTask = async (taskId) => {

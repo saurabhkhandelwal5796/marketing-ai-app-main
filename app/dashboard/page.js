@@ -1,11 +1,13 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import DashboardHeader from "../../components/dashboard/DashboardHeader";
-import PrimaryKPIs from "../../components/dashboard/PrimaryKPIs";
-import CampaignTable from "../../components/dashboard/CampaignTable";
-import DashboardCharts from "../../components/dashboard/DashboardCharts";
+import dynamic from "next/dynamic";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
+
+const DashboardHeader = dynamic(() => import("../../components/dashboard/DashboardHeader"));
+const PrimaryKPIs = dynamic(() => import("../../components/dashboard/PrimaryKPIs"));
+const CampaignTable = dynamic(() => import("../../components/dashboard/CampaignTable"));
+const DashboardCharts = dynamic(() => import("../../components/dashboard/DashboardCharts"));
 
 const withinDays = (dateStr, days) => {
   if (days === "all") return true;
@@ -44,6 +46,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState("30");
   const [sessionUser, setSessionUser] = useState(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -55,6 +58,8 @@ export default function DashboardPage() {
         setSessionUser(data?.user || null);
       } catch {
         if (mounted) setSessionUser(null);
+      } finally {
+        if (mounted) setSessionReady(true);
       }
     })();
     return () => {
@@ -83,12 +88,35 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    if (!sessionReady) return;
     refresh();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionReady, sessionUser?.id, sessionUser?.is_admin]);
 
   const filteredRows = useMemo(() => rows.filter((row) => withinDays(row.sent_at, days)), [rows, days]);
-  const filteredCampaigns = useMemo(() => campaigns.filter((c) => withinDays(c.created_at, days)), [campaigns, days]);
-  const filteredTasks = useMemo(() => tasks.filter((t) => withinDays(t.created_at, days)), [tasks, days]);
+  const filteredCampaigns = useMemo(() => {
+    const dateFiltered = campaigns.filter((c) => withinDays(c.created_at, days));
+    if (!sessionUser || sessionUser.is_admin) return dateFiltered;
+    const allowed = new Set(
+      [sessionUser.id, sessionUser.email, sessionUser.name]
+        .map((v) => String(v || "").trim())
+        .filter(Boolean)
+    );
+    return dateFiltered.filter((c) => allowed.has(String(c.created_by || "").trim()));
+  }, [campaigns, days, sessionUser]);
+  const filteredTasks = useMemo(() => {
+    const dateFiltered = tasks.filter((t) => withinDays(t.created_at, days));
+    if (!sessionUser || sessionUser.is_admin) return dateFiltered;
+    return dateFiltered.filter((t) => String(t.assignee_id || "") === String(sessionUser.id || ""));
+  }, [tasks, days, sessionUser]);
+  const campaignIdSet = useMemo(
+    () => new Set(filteredCampaigns.map((c) => c.id).filter(Boolean)),
+    [filteredCampaigns]
+  );
+  const scopedRows = useMemo(() => {
+    if (!sessionUser || sessionUser.is_admin) return filteredRows;
+    return filteredRows.filter((r) => campaignIdSet.has(r.campaign_id));
+  }, [filteredRows, campaignIdSet, sessionUser]);
 
   const unifiedMetrics = useMemo(() => {
     const totalCampaigns = filteredCampaigns.length;
@@ -106,7 +134,7 @@ export default function DashboardPage() {
     let totalEmails = 0, totalLinkedIn = 0, totalWhatsApp = 0;
     let emailOpens = 0, emailClicks = 0;
 
-    filteredRows.forEach((r) => {
+    scopedRows.forEach((r) => {
       const ch = (r.channel || "").toLowerCase();
       if (ch === "email") {
         totalEmails++;
@@ -131,7 +159,7 @@ export default function DashboardPage() {
       whatsappReadRate: "92.5",
       whatsappReplyRate: "14.2",
     };
-  }, [filteredRows, filteredCampaigns, filteredTasks]);
+  }, [scopedRows, filteredCampaigns, filteredTasks]);
 
   return (
     <main className="space-y-6 px-4 py-8 md:px-8 bg-[#f8fafc] min-h-screen">
@@ -139,7 +167,7 @@ export default function DashboardPage() {
       {!loading &&
       sessionUser &&
       !sessionUser.is_admin &&
-      filteredRows.length === 0 &&
+      scopedRows.length === 0 &&
       filteredCampaigns.length === 0 &&
       filteredTasks.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
@@ -148,9 +176,9 @@ export default function DashboardPage() {
         </div>
       ) : null}
       <PrimaryKPIs metrics={unifiedMetrics} loading={loading} />
-      <DashboardCharts rows={filteredRows} campaigns={filteredCampaigns} loading={loading} />
+      <DashboardCharts rows={scopedRows} campaigns={filteredCampaigns} loading={loading} />
       <div>
-        <CampaignTable rows={filteredRows} campaigns={filteredCampaigns} loading={loading} />
+        <CampaignTable rows={scopedRows} campaigns={filteredCampaigns} loading={loading} />
       </div>
     </main>
   );

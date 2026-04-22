@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 export default function UserDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const userId = String(params?.id || "");
+  const editRequested = searchParams.get("edit") === "1";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -14,6 +16,9 @@ export default function UserDetailPage() {
   const [sessionUser, setSessionUser] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "User", status: "Active", password: "" });
+  const canSelfEdit = !!sessionUser?.id && String(sessionUser.id) === String(userId);
+  const canManageUser = !!sessionUser?.is_admin;
+  const canEditProfile = canManageUser || canSelfEdit;
 
   useEffect(() => {
     const load = async () => {
@@ -45,14 +50,27 @@ export default function UserDetailPage() {
     if (userId) load();
   }, [router, userId]);
 
+  useEffect(() => {
+    if (!loading && user && editRequested && canEditProfile) {
+      setEditing(true);
+    }
+  }, [loading, user, editRequested, canEditProfile]);
+
   const onSave = async () => {
     setError("");
     setSuccess("");
     try {
+      const payload = canManageUser
+        ? form
+        : {
+            name: form.name,
+            email: form.email,
+            password: form.password,
+          };
       const res = await fetch(`/api/users/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update user.");
@@ -152,7 +170,7 @@ export default function UserDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Role</p>
-                  {editing ? (
+                  {editing && canManageUser ? (
                     <select
                       value={form.role}
                       onChange={(e) => setForm((p) => ({ ...p, role: e.target.value }))}
@@ -167,7 +185,7 @@ export default function UserDetailPage() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</p>
-                  {editing ? (
+                  {editing && canManageUser ? (
                     <select
                       value={form.status}
                       onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
@@ -198,7 +216,7 @@ export default function UserDetailPage() {
                   </div>
                 ) : null}
               </div>
-              {sessionUser?.is_admin ? (
+              {canEditProfile ? (
                 <div className="flex flex-wrap gap-2">
                   {editing ? (
                     <>
@@ -223,19 +241,23 @@ export default function UserDetailPage() {
                       >
                         Edit
                       </button>
-                      <button
-                        onClick={onDelete}
-                        className="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        onClick={switchAsUser}
-                        disabled={user.is_admin}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 disabled:opacity-50"
-                      >
-                        Login As User
-                      </button>
+                      {canManageUser ? (
+                        <>
+                          <button
+                            onClick={onDelete}
+                            className="rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={switchAsUser}
+                            disabled={user.is_admin}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 disabled:opacity-50"
+                          >
+                            Login As User
+                          </button>
+                        </>
+                      ) : null}
                     </>
                   )}
                 </div>

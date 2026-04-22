@@ -42,6 +42,7 @@ export default function Sidebar({
   isAdmin = false,
   currentUser,
   onOpenProfileModal,
+  onEditProfileNavigate,
   onLogout,
 }) {
   const pathname = usePathname();
@@ -147,7 +148,8 @@ export default function Sidebar({
                 <button
                   onClick={() => {
                     setIsUserMenuOpen(false);
-                    onOpenProfileModal?.();
+                    if (onEditProfileNavigate) onEditProfileNavigate();
+                    else onOpenProfileModal?.();
                   }}
                   className="block w-full rounded-md px-3 py-2 text-left text-[12px] font-medium text-[#EDEBFF] transition-all duration-200 hover:bg-white/5 focus:outline-none"
                 >

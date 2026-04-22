@@ -58,6 +58,7 @@ const TASK_TYPES = [
   "Campaign Analysis",
   "Sales Coordination",
 ];
+const TRACKER_RETURN_CONTEXT_KEY = "campaign.trackerDrawerReturnContext";
 
 // Teams intentionally removed from assignee dropdown (People only).
 
@@ -124,6 +125,25 @@ function uid() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+async function parseJsonResponse(res, fallbackMessage) {
+  const raw = await res.text();
+  let data = null;
+
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch (_) {
+      throw new Error(`${fallbackMessage} Server returned an invalid response format.`);
+    }
+  }
+
+  if (!res.ok || data?.error) {
+    throw new Error(data?.error || `${fallbackMessage} (HTTP ${res.status})`);
+  }
+
+  return data || {};
+}
+
 function normalizeTags(tags) {
   return Array.isArray(tags) ? tags.filter((t) => typeof t === "string") : [];
 }
@@ -133,6 +153,14 @@ function hasFilterTag(detailTags, filter) {
   const f = (filter || "").toLowerCase();
   if (!f) return true;
   return tags.some((t) => t.includes(f));
+}
+
+function hasAnyFilterTag(detailTags, filters = []) {
+  if (!Array.isArray(filters) || filters.length === 0) return true;
+  const tags = normalizeTags(detailTags).map((t) => t.toLowerCase());
+  const wanted = filters.map((f) => String(f || "").toLowerCase()).filter(Boolean);
+  if (!wanted.length) return true;
+  return wanted.some((f) => tags.some((t) => t.includes(f)));
 }
 
 function buildGeneratePostRichContext({
@@ -446,7 +474,7 @@ export default function MarketingAnalysisOutput({
 
   const [selectedDetailIds, setSelectedDetailIds] = useState(() => new Set());
   const [persistedSelectedContentByPointId, setPersistedSelectedContentByPointId] = useState({});
-  const [tagFilter, setTagFilter] = useState("");
+  const [activeTagFilters, setActiveTagFilters] = useState([]);
 
   const [threadsByPointId, setThreadsByPointId] = useState({});
   const [threadDraftsByPointId, setThreadDraftsByPointId] = useState({});
@@ -502,9 +530,22 @@ export default function MarketingAnalysisOutput({
   }, [marketingDetails, selectedDetailIds]);
 
   const filteredDetails = useMemo(() => {
-    if (!tagFilter) return marketingDetails;
-    return marketingDetails.filter((d) => hasFilterTag(d.tags, tagFilter));
-  }, [marketingDetails, tagFilter]);
+    return marketingDetails.filter((d) => hasAnyFilterTag(d.tags, activeTagFilters));
+  }, [marketingDetails, activeTagFilters]);
+  const filterCounts = useMemo(() => {
+    const counts = {};
+    FILTER_TAGS.forEach((tag) => {
+      counts[tag] = marketingDetails.filter((d) => hasFilterTag(d.tags, tag)).length;
+    });
+    return counts;
+  }, [marketingDetails]);
+  const activeFilterSet = useMemo(() => new Set(activeTagFilters), [activeTagFilters]);
+  const toggleActiveFilter = (tag) => {
+    setActiveTagFilters((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    );
+  };
+  const clearAllFilters = () => setActiveTagFilters([]);
 
   const campaignContext = useMemo(() => {
     const parts = [company, campaign].filter(Boolean);
@@ -718,8 +759,7 @@ export default function MarketingAnalysisOutput({
           responseContext: reason,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate target audience.");
+      const data = await parseJsonResponse(res, "Failed to generate target audience.");
       setTargetAudience(Array.isArray(data?.targetAudience) ? data.targetAudience : []);
       setEmployees(Array.isArray(data?.employees) ? data.employees : []);
       setAudienceView("companies");
@@ -972,6 +1012,22 @@ export default function MarketingAnalysisOutput({
     loadMilestones();
     loadPersistedSelectedPoints();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#tracker-detail") return;
+    try {
+      const raw = window.sessionStorage.getItem(TRACKER_RETURN_CONTEXT_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || String(parsed.campaignId || "") !== String(campaignId || "")) return;
+      const milestoneId = String(parsed.milestoneId || "").trim();
+      if (milestoneId) setTrackerDrawerMilestoneId(milestoneId);
+      window.sessionStorage.removeItem(TRACKER_RETURN_CONTEXT_KEY);
+    } catch {
+      // ignore bad storage payloads
+    }
   }, [campaignId]);
 
   const openCompanyModal = async (companyObj) => {
@@ -1651,8 +1707,7 @@ export default function MarketingAnalysisOutput({
           step: "analysis",
         }),
       });
-      const data = await res.json();
-      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate analysis.");
+      const data = await parseJsonResponse(res, "Failed to generate analysis.");
 
       setAiMessage(typeof data?.aiMessage === "string" ? data.aiMessage : "");
       setMarketingDetails(Array.isArray(data?.marketingDetails) ? data.marketingDetails : []);
@@ -2390,23 +2445,23 @@ export default function MarketingAnalysisOutput({
               ) : null}
 
               {marketingDetails.length ? (
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="sticky top-20 z-10 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex flex-wrap gap-2">
                       {FILTER_TAGS.map((t) => {
-                        const active = tagFilter === t;
+                        const active = activeFilterSet.has(t);
                         return (
                           <button
                             key={t}
-                            onClick={() => setTagFilter((prev) => (prev === t ? "" : t))}
+                            onClick={() => toggleActiveFilter(t)}
                             className={cx(
-                              "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                              "rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-200",
                               active
-                                ? "border-blue-500 bg-blue-500 text-white"
-                                : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"
+                                ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                                : "border-slate-300 bg-slate-50 text-slate-700 hover:border-slate-400 hover:bg-white"
                             )}
                           >
-                            {t}
+                            {t} ({filterCounts[t] || 0})
                           </button>
                         );
                       })}
@@ -2414,24 +2469,51 @@ export default function MarketingAnalysisOutput({
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={selectAllVisible}
-                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        className="rounded-lg border border-slate-300 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
                       >
                         Select All
                       </button>
                       <button
                         onClick={deselectAll}
-                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        className="rounded-lg border border-slate-300 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
                       >
                         Deselect All
                       </button>
                       <button
                         onClick={selectTop10Visible}
-                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        className="rounded-lg border border-slate-300 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
                       >
                         Select Top 10
                       </button>
                     </div>
                   </div>
+                  {activeTagFilters.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                      <p className="text-xs font-semibold text-slate-700">
+                        Showing {filteredDetails.length} results for: {activeTagFilters.join(", ")}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={clearAllFilters}
+                        className="rounded-md border border-slate-300 bg-slate-900 px-2.5 py-1 text-xs font-semibold text-white hover:bg-slate-800"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {marketingDetails.length > 0 && filteredDetails.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                  <p className="text-sm font-semibold text-slate-700">No results found. Try adjusting filters.</p>
+                  <button
+                    type="button"
+                    onClick={clearAllFilters}
+                    className="mt-3 rounded-lg border border-slate-300 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+                  >
+                    Clear Filters
+                  </button>
                 </div>
               ) : null}
 
@@ -2446,8 +2528,10 @@ export default function MarketingAnalysisOutput({
                 return (
                   <motion.article
                     key={detail.id || idx}
+                    layout
                     initial={{ opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.18 }}
                     className={cx(
                       "rounded-2xl border bg-white p-4 shadow-sm transition",
                       checked ? "border-blue-500 bg-blue-50/50" : "border-slate-200"
@@ -2487,7 +2571,15 @@ export default function MarketingAnalysisOutput({
                                 .map((tag) => (
                                   <span
                                     key={`${detail.id}-${tag}`}
-                                    className="rounded-full border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-600"
+                                    className={cx(
+                                      "rounded-full border px-2.5 py-1 text-xs",
+                                      activeTagFilters.length > 0 &&
+                                        activeTagFilters.some((f) =>
+                                          String(tag || "").toLowerCase().includes(String(f || "").toLowerCase())
+                                        )
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : "border-slate-300 bg-white text-slate-600"
+                                    )}
                                   >
                                     {tag}
                                   </span>
@@ -2500,12 +2592,12 @@ export default function MarketingAnalysisOutput({
                           <button
                             type="button"
                             onClick={() => toggleThread(detail.id)}
-                            className="flex w-full items-center justify-between gap-3 text-left"
+                            className="no-hover-lift flex w-full items-center justify-between gap-3 text-left"
                           >
                             <span className="text-xs font-semibold text-slate-700">
                               Ask more about this...
                             </span>
-                            <span className="text-xs font-semibold text-slate-500">
+                            <span className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white">
                               {open ? "Hide" : "Show"}
                             </span>
                           </button>
@@ -2647,7 +2739,7 @@ export default function MarketingAnalysisOutput({
                       key={`${c.name}-${idx}`}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:shadow-md"
+                      className="hover-lift cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:scale-[1.01] hover:border-blue-300 hover:bg-blue-50/30 hover:shadow-md"
                       onClick={() => openCompanyModal(c)}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -3788,14 +3880,14 @@ export default function MarketingAnalysisOutput({
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Owner</p>
-                    <p className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
+                    <div className="mt-1 inline-flex items-center gap-2 text-sm text-slate-700">
                       <Avatar
                         name={trackerDrawerMilestone.assignee_name || "Unassigned"}
                         imageUrl={trackerDrawerMilestone.assignee_avatar}
                         size="sm"
                       />
                       {trackerDrawerMilestone.assignee_name || "Unassigned"}
-                    </p>
+                    </div>
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Description</p>
@@ -3818,16 +3910,35 @@ export default function MarketingAnalysisOutput({
                         role="button"
                         tabIndex={0}
                         onClick={() => {
-                          // Open task detail page - navigate to task detail
-                          // router.push(`/tasks/${task.id}`);
-                          router.push(`/tasks/milestone:${task.id}`);
+                          const returnTo = `${
+                            typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
+                          }#tracker-detail`;
+                          if (typeof window !== "undefined") {
+                            window.sessionStorage.setItem(
+                              TRACKER_RETURN_CONTEXT_KEY,
+                              JSON.stringify({ campaignId, milestoneId: trackerDrawerMilestone.id })
+                            );
+                          }
+                          router.push(
+                            `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
+                          );
 
                         }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            // router.push(`/tasks/${task.id}`);
-                            router.push(`/tasks/milestone:${task.id}`);
+                            const returnTo = `${
+                              typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
+                            }#tracker-detail`;
+                            if (typeof window !== "undefined") {
+                              window.sessionStorage.setItem(
+                                TRACKER_RETURN_CONTEXT_KEY,
+                                JSON.stringify({ campaignId, milestoneId: trackerDrawerMilestone.id })
+                              );
+                            }
+                            router.push(
+                              `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
+                            );
 
                           }
                         }}

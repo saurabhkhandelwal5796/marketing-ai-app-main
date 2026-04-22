@@ -185,7 +185,9 @@ export default function AuthPage() {
       ) : null}
       <div className="flex min-h-dvh w-full min-w-0 flex-1 flex-col items-stretch lg:flex-row">
         {/* Left Form Section */}
-        <section className="flex w-full min-w-0 flex-1 items-center justify-center p-6 sm:p-10 lg:h-full">
+        {/* <section className="flex w-full min-w-0 flex-1 items-center justify-center p-6 sm:p-10 lg:h-full"> */}
+           <section className="flex w-full min-w-0 items-center justify-center p-6 sm:p-10 lg:w-1/2">
+
           <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-100 bg-white p-5 shadow-xl sm:p-7">
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">{mode === "signup" ? "Create an account" : "Welcome back"}</h1>
             <p className="mt-1 text-sm text-slate-500">
@@ -379,7 +381,7 @@ export default function AuthPage() {
           </div>
         </section> */}
         {/* Right Hero Illustration */}
-      <section className="hidden lg:block lg:w-1/2 lg:min-h-dvh overflow-hidden relative">
+      {/* <section className="hidden lg:block lg:w-1/2 lg:min-h-dvh overflow-hidden relative">
         <Image
           // src="/latest-auth-image.png"
           src="/Sign Up page image.png"
@@ -389,7 +391,22 @@ export default function AuthPage() {
           sizes="50vw"
           className="object-cover object-center"
         />
-      </section>
+      </section> */}
+              {/* Right Hero Illustration */}
+        {/* <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:sticky lg:top-0 lg:min-h-screen overflow-hidden"> */}
+        <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:self-stretch overflow-hidden">
+
+          <Image
+            src="/Sign Up page image.png"
+            alt="Signup illustration"
+            fill
+            priority
+            sizes="(min-width: 1024px) 50vw, 100vw"
+            
+            className="object-cover object-center"
+          />
+        </section>
+
 
       </div>
     </main>
