@@ -1,3 +1,4 @@
+/* eslint-disable react/jsx-no-undef */
 "use client";
 
 import { useEffect, useState } from "react";

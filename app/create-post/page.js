@@ -595,6 +595,7 @@ export default function CreatePostPage() {
              <h2 className="text-base font-semibold text-slate-900">Visual Assets</h2>
              <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                 {activeType && contentByType[activeType]?.imageUrl ? (
+                   // eslint-disable-next-line @next/next/no-img-element
                    <img src={contentByType[activeType].imageUrl} alt="Generated asset" className="h-[240px] w-full object-cover" />
                 ) : (
                    <div className="flex h-[240px] flex-col items-center justify-center gap-2 text-slate-400">

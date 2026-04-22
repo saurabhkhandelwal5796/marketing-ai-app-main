@@ -35,6 +35,24 @@ export async function POST(req) {
     const role = "User";
     const status = "Pending";
 
+    // Enforce uniqueness at the application layer too (in case DB constraint is missing/misconfigured)
+    const existing = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", email)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.data?.id) {
+      return NextResponse.json(
+        {
+          error:
+            "This email is already registered. Please sign in. If you don’t remember your password, contact your administrator.",
+          code: "EMAIL_EXISTS",
+        },
+        { status: 409 }
+      );
+    }
+
     const { data, error } = await supabase
       .from("users")
       .insert([
@@ -56,7 +74,14 @@ export async function POST(req) {
 
     if (error) {
       if (error.code === "23505") {
-        return NextResponse.json({ error: "Email already exists." }, { status: 409 });
+        return NextResponse.json(
+          {
+            error:
+              "This email is already registered. Please sign in. If you don’t remember your password, contact your administrator.",
+            code: "EMAIL_EXISTS",
+          },
+          { status: 409 }
+        );
       }
       if (String(error.message || "").includes("status")) {
         const fallback = await supabase
