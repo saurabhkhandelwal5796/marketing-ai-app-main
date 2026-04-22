@@ -414,7 +414,22 @@ export default function AuthPage() {
           sizes="50vw"
           className="object-contain object-center p-4"
         />
-      </section>
+      </section> */}
+              {/* Right Hero Illustration */}
+        {/* <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:sticky lg:top-0 lg:min-h-screen overflow-hidden"> */}
+        <section className="relative w-full h-[350px] lg:w-1/2 lg:h-auto lg:self-stretch overflow-hidden">
+
+          <Image
+            src="/Sign Up page image.png"
+            alt="Signup illustration"
+            fill
+            priority
+            sizes="(min-width: 1024px) 50vw, 100vw"
+            
+            className="object-cover object-center"
+          />
+        </section>
+
 
       </div>
     </main>
