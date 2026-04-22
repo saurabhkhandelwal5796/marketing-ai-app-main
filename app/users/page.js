@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2, UserPlus, Search, MoreHorizontal, LogIn, Users } from "lucide-react";
+import { Pencil, Trash2, UserPlus, Search, MoreHorizontal, Users } from "lucide-react";
 
 export default function UsersPage() {
   const router = useRouter();
@@ -12,10 +12,15 @@ export default function UsersPage() {
   const [success, setSuccess] = useState("");
   const [users, setUsers] = useState([]);
   const [sessionUser, setSessionUser] = useState(null);
+  const [toast, setToast] = useState("");
 
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
   const [isViewMode, setIsViewMode] = useState(false);
+  const [showRequests, setShowRequests] = useState(false);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [requestsError, setRequestsError] = useState("");
+  const [pendingUsers, setPendingUsers] = useState([]);
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -31,6 +36,12 @@ export default function UsersPage() {
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
 
   const [openDropdownId, setOpenDropdownId] = useState(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(""), 3500);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     const handleClickOutside = () => setOpenDropdownId(null);
@@ -64,6 +75,23 @@ export default function UsersPage() {
       setError(e?.message || "Failed to load users.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPendingRequests = async () => {
+    setRequestsLoading(true);
+    setRequestsError("");
+    try {
+      const params = new URLSearchParams({ status: "Pending", page: "1", pageSize: "100" });
+      const res = await fetch(`/api/users?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load pending requests.");
+      setPendingUsers(Array.isArray(data.users) ? data.users : []);
+    } catch (e) {
+      setRequestsError(e?.message || "Failed to load pending requests.");
+      setPendingUsers([]);
+    } finally {
+      setRequestsLoading(false);
     }
   };
 
@@ -169,8 +197,7 @@ export default function UsersPage() {
     }
   };
 
-  const toggleStatus = async (u) => {
-    const newStatus = u.status === "Active" ? "Inactive" : "Active";
+  const updateUserStatus = async (u, newStatus) => {
     setUsers((prev) => prev.map((user) => (user.id === u.id ? { ...user, status: newStatus } : user)));
     try {
       const res = await fetch(`/api/users/${u.id}`, {
@@ -178,10 +205,33 @@ export default function UsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update status.");
     } catch (e) {
       setUsers((prev) => prev.map((user) => (user.id === u.id ? { ...user, status: u.status } : user)));
-      setError("Failed to update status.");
+      setError(e?.message || "Failed to update status.");
+    }
+  };
+
+  const approvePending = async (u) => {
+    const ok = window.confirm(`Approve "${u.name}"?`);
+    if (!ok) return;
+    await updateUserStatus(u, "Active");
+    setPendingUsers((prev) => prev.filter((x) => x.id !== u.id));
+    setToast("User approved successfully");
+  };
+
+  const rejectPending = async (u) => {
+    const ok = window.confirm(`Reject "${u.name}"?`);
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/users/${u.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to reject user.");
+      setPendingUsers((prev) => prev.filter((x) => x.id !== u.id));
+      setToast("User rejected successfully");
+    } catch (e) {
+      setError(e?.message || "Failed to reject user.");
     }
   };
 
@@ -268,6 +318,20 @@ export default function UsersPage() {
 
   return (
     <main className="space-y-6 p-6">
+      {toast ? (
+        <div className="fixed right-4 top-4 z-[200] w-[min(420px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-lg">
+          <div className="flex items-start justify-between gap-3">
+            <p className="font-medium leading-snug">{toast}</p>
+            <button
+              type="button"
+              onClick={() => setToast("")}
+              className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
       {/* HEADER */}
       <section className="rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -275,13 +339,25 @@ export default function UsersPage() {
             <h1 className="text-xl font-bold text-slate-900">User Management</h1>
             <p className="mt-1 text-xs font-medium text-slate-500">Manage users, permissions, and impersonation efficiently.</p>
           </div>
-          <button
-            onClick={openCreateForm}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[0.98] hover:bg-indigo-700"
-          >
-            <UserPlus size={16} />
-            Add User
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                setShowRequests(true);
+                await loadPendingRequests();
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50"
+            >
+              <Users size={16} />
+              User Requests
+            </button>
+            <button
+              onClick={openCreateForm}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[0.98] hover:bg-indigo-700"
+            >
+              <UserPlus size={16} />
+              Add User
+            </button>
+          </div>
         </div>
       </section>
 
@@ -322,7 +398,6 @@ export default function UsersPage() {
             >
               <option value="all">All Status</option>
               <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
             </select>
             <button
               onClick={() => {
@@ -345,7 +420,7 @@ export default function UsersPage() {
               <Users size={32} />
             </div>
             <h3 className="text-lg font-semibold text-slate-900">No users found</h3>
-            <p className="mt-1 text-sm text-slate-500">We couldn't find any users matching your criteria.</p>
+            <p className="mt-1 text-sm text-slate-500">We couldn&apos;t find any users matching your criteria.</p>
             <button
               onClick={openCreateForm}
               className="mt-6 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700"
@@ -368,7 +443,13 @@ export default function UsersPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
                 {users.map((u) => {
-                  const isActive = u.status !== "Inactive";
+                  const status = u.status || "Active";
+                  const statusStyles =
+                    status === "Active"
+                      ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200"
+                      : status === "Pending"
+                        ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
+                        : "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
                   return (
                     <tr key={u.id} className="group transition-colors hover:bg-slate-50">
                       <td className="px-6 py-4">
@@ -388,19 +469,9 @@ export default function UsersPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleStatus(u); }}
-                            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                            role="switch"
-                            aria-checked={isActive}
-                          >
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isActive ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                          </button>
-                          <span className={`text-xs font-bold ${isActive ? "text-emerald-700" : "text-slate-500"}`}>
-                            {isActive ? "Active" : "Inactive"}
-                          </span>
-                        </div>
+                        <span className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-bold ${statusStyles}`}>
+                          {status}
+                        </span>
                       </td>
                       <td className="px-6 py-4 text-xs font-medium text-slate-500">
                         {new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
@@ -541,7 +612,8 @@ export default function UsersPage() {
                     className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-slate-50 disabled:text-slate-500"
                   >
                     <option value="Active">Active</option>
-                    <option value="Inactive">Inactive</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Rejected">Rejected</option>
                   </select>
                 </label>
               </div>
@@ -566,6 +638,116 @@ export default function UsersPage() {
               )}
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {/* USER REQUESTS MODAL */}
+      {showRequests ? (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">User Requests</h3>
+                <p className="text-sm text-slate-500">Review pending signup requests.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={loadPendingRequests}
+                  disabled={requestsLoading}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Refresh
+                </button>
+                <button
+                  onClick={() => setShowRequests(false)}
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {requestsError ? (
+              <div className="px-6 pt-4">
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+                  {requestsError}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="max-h-[70vh] overflow-auto px-6 py-5">
+              {requestsLoading ? (
+                <div className="flex h-40 items-center justify-center text-sm font-medium text-slate-500">Loading requests...</div>
+              ) : pendingUsers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                    <Users size={32} />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900">No pending user requests</h3>
+                  <p className="mt-1 text-sm text-slate-500">No new signups are waiting for approval.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {pendingUsers.map((u) => (
+                    <div
+                      key={u.id}
+                      className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-base font-bold text-slate-900">{u.name}</p>
+                          <p className="mt-0.5 text-sm font-medium text-slate-600">{u.email}</p>
+                        </div>
+                        <span className="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700 ring-1 ring-amber-200">
+                          Pending
+                        </span>
+                      </div>
+
+                      <div className="mt-4 space-y-2 text-sm">
+                        <div className="flex items-center justify-between text-slate-600">
+                          <span className="font-semibold">First Name</span>
+                          <span className="font-medium">{u.first_name || "-"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-slate-600">
+                          <span className="font-semibold">Last Name</span>
+                          <span className="font-medium">{u.last_name || "-"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-slate-600">
+                          <span className="font-semibold">Company</span>
+                          <span className="font-medium">{u.company || "-"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-slate-600">
+                          <span className="font-semibold">Role</span>
+                          <span className="font-medium">{u.role || "User"}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-slate-600">
+                          <span className="font-semibold">Signup Date</span>
+                          <span className="font-medium">
+                            {u.created_at ? new Date(u.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "-"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex gap-3">
+                        <button
+                          onClick={() => approvePending(u)}
+                          className="flex-1 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => rejectPending(u)}
+                          className="flex-1 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       ) : null}
     </main>

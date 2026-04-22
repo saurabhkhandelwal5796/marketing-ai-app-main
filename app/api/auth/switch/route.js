@@ -15,7 +15,7 @@ export async function POST(req) {
     const supabase = getSupabaseServerClient();
     const { data, error } = await supabase
       .from("users")
-      .select("id,name,email,role,is_admin")
+      .select("id,name,email,role,is_admin,status,company")
       .eq("id", userId)
       .maybeSingle();
     if (error) throw new Error(error.message);
@@ -28,6 +28,8 @@ export async function POST(req) {
       email: data.email,
       role: data.role,
       is_admin: !!data.is_admin,
+      status: data.status || "Active",
+      company: data.company,
       admin_id: session.id,
       admin_name: session.name,
     });

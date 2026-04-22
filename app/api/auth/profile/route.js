@@ -99,7 +99,7 @@ export async function PATCH(req) {
       .from("users")
       .update(patch)
       .eq("id", session.id)
-      .select("id,name,email,role,is_admin,first_name,last_name,company,avatar")
+      .select("id,name,email,role,is_admin,first_name,last_name,company,avatar,status")
       .single();
 
     if (error) {
@@ -118,6 +118,7 @@ export async function PATCH(req) {
       admin_id: session.admin_id || null,
       admin_name: session.admin_name || null,
       company: data.company,
+      status: data.status || "Active",
     });
 
     return NextResponse.json({

@@ -54,7 +54,12 @@ export async function PATCH(req, { params }) {
       patch.role = body.role;
       patch.is_admin = body.role === "Admin";
     }
-    if (typeof body?.status === "string") patch.status = body.status === "Inactive" ? "Inactive" : "Active";
+    if (typeof body?.status === "string") {
+      const rawStatus = String(body.status || "").trim();
+      const mappedStatus = rawStatus === "Inactive" ? "Rejected" : rawStatus;
+      const allowed = new Set(["Pending", "Active", "Rejected"]);
+      if (allowed.has(mappedStatus)) patch.status = mappedStatus;
+    }
     if (typeof body?.password === "string" && body.password.trim()) {
       if (body.password.trim().length < 8) {
         return NextResponse.json({ error: "Password must be at least 8 characters." }, { status: 400 });

@@ -8,7 +8,7 @@ create table if not exists public.users (
   name text not null,
   email text not null unique,
   role text not null default 'User',
-  status text not null default 'Active' check (status in ('Active', 'Inactive')),
+  status text not null default 'Pending' check (status in ('Pending', 'Active', 'Rejected')),
   avatar text,
   password text not null,
   is_admin boolean not null default false,
@@ -21,7 +21,7 @@ alter table public.users add column if not exists first_name text;
 alter table public.users add column if not exists last_name text;
 alter table public.users add column if not exists company text;
 alter table public.users add column if not exists role text not null default 'User';
-alter table public.users add column if not exists status text not null default 'Active';
+alter table public.users add column if not exists status text not null default 'Pending';
 alter table public.users add column if not exists linkedin_access_token text;
 alter table public.users add column if not exists linkedin_refresh_token text;
 alter table public.users add column if not exists linkedin_token_expires_at timestamptz;

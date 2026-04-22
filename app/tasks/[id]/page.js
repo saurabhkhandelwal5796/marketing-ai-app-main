@@ -93,7 +93,14 @@ export default function TaskDetailPage({ params }) {
     setError("");
     try {
       const prevStatus = task?.status || "";
-      const res = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      
+      // Check if this is a milestone task
+      const isMilestoneTask = taskId.startsWith('milestone:');
+      const apiEndpoint = isMilestoneTask 
+        ? `/api/milestones/${encodeURIComponent(taskId.replace('milestone:', '').split('/')[0])}/tasks/${encodeURIComponent(taskId.replace('milestone:', '').split('/')[1])}`
+        : `/api/tasks/${encodeURIComponent(taskId)}`;
+      
+      const res = await fetch(apiEndpoint, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patchBody),
@@ -137,12 +144,34 @@ export default function TaskDetailPage({ params }) {
         return;
       }
       try {
-        const [taskRes, userRes] = await Promise.all([fetch(`/api/tasks/${encodeURIComponent(taskId)}`), fetch("/api/users")]);
-        const taskData = await taskRes.json();
+        // Check if this is a milestone task
+        const isMilestoneTask = taskId.startsWith('milestone:');
+        let taskRes;
+        
+        // if (isMilestoneTask) {
+        //   // For milestone tasks, we need to parse the milestone ID and task ID
+        //   const [milestoneId, actualTaskId] = taskId.replace('milestone:', '').split('/');
+        //   taskRes = await fetch(`/api/milestones/${encodeURIComponent(milestoneId)}/tasks/${encodeURIComponent(actualTaskId)}`);
+        // } else {
+        //   // Regular task
+        //   taskRes = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+        // }
+        // AFTER
+        taskRes = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+
+        
+        // const [taskData, userRes] = await Promise.all([taskRes, fetch("/api/users")]);
+        // const taskResult = await taskRes.json();
+        // const userData = await userRes.json();
+        const userRes = await fetch("/api/users");
+        const taskResult = await taskRes.json();
         const userData = await userRes.json();
-        if (!taskRes.ok || taskData?.error) throw new Error(taskData?.error || "Failed to load task.");
+        const taskData = taskRes;
+
+        
+        if (!taskData.ok || taskResult?.error) throw new Error(taskResult?.error || "Failed to load task.");
         if (!userRes.ok || userData?.error) throw new Error(userData?.error || "Failed to load users.");
-        setTask(taskData.task);
+        setTask(taskResult.task);
         setUsers(Array.isArray(userData.users) ? userData.users : []);
       } catch (e) {
         setError(e?.message || "Failed to load.");

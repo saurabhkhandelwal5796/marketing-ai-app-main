@@ -22,23 +22,46 @@ const UUID_RE = /^[0-9a-f-]{36}$/i;
 
 export async function GET(req) {
   try {
+    const session = await getSessionFromCookies();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 20, 1), 50);
     const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
     const supabase = getSupabaseServerClient();
     let campaigns = null;
     let error = null;
-    ({ data: campaigns, error } = await supabase
+    let query = supabase
       .from("campaigns")
       .select("id,name,company,goal,created_at,updated_at,last_activity_at,created_by,updated_by")
       .order("last_activity_at", { ascending: false })
-      .range(offset, offset + limit - 1));
+      .range(offset, offset + limit - 1);
+
+    if (!session.is_admin) {
+      const allowedActors = [session.id, session.email, session.name].filter(Boolean);
+      if (allowedActors.length) query = query.in("created_by", allowedActors);
+      else query = query.eq("id", "__none__");
+    }
+
+    ({ data: campaigns, error } = await query);
     if (error && isMissingColumnError(error.message || "")) {
-      ({ data: campaigns, error } = await supabase
+      let fallback = supabase
         .from("campaigns")
         .select("id,name,company,goal,created_at,updated_at,last_activity_at")
         .order("last_activity_at", { ascending: false })
-        .range(offset, offset + limit - 1));
+        .range(offset, offset + limit - 1);
+
+      if (!session.is_admin) {
+        // Without audit columns, we cannot securely filter — fail closed.
+        return NextResponse.json(
+          { campaigns: [], hasMore: false },
+          { status: 200 }
+        );
+      }
+
+      ({ data: campaigns, error } = await fallback);
     }
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

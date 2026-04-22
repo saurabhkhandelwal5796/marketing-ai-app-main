@@ -498,25 +498,6 @@ export default function MilestoneDetailPage() {
                       : "border-slate-200 bg-white hover:border-slate-300"
                   }`}
                 >
-                  {/* Checkbox */}
-                  <label className="relative flex items-center justify-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="peer sr-only"
-                      checked={isCompleted}
-                      onChange={() => handleTaskToggle(task.id, task.status)}
-                    />
-                    <div
-                      className={`h-5 w-5 rounded border flex items-center justify-center transition-colors ${
-                        isCompleted
-                          ? "bg-emerald-500 border-emerald-500 text-white"
-                          : "border-slate-300 bg-white text-transparent peer-focus:ring-2 peer-focus:ring-blue-500/30"
-                      }`}
-                    >
-                      <Check size={14} strokeWidth={3} />
-                    </div>
-                  </label>
-
                   {/* Task content */}
                   <div className="flex-1 min-w-0">
                     <p

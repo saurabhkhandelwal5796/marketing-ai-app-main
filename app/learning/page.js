@@ -82,32 +82,35 @@ function HorizontalRail({ title, items, icon: Icon, variant = "web", onPlayVideo
           return (
             <div
               key={`${item.url}-${index}`}
-              className="min-w-[340px] max-w-[340px] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-900/50 transition duration-200 hover:-translate-y-1 hover:border-blue-500/60 hover:shadow-[0_18px_40px_rgba(15,23,42,0.45)]"
+              className="min-w-[340px] max-w-[340px] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-900/50 transition duration-200 hover:-translate-y-1 hover:border-blue-500/60 hover:shadow-[0_18px_40px_rgba(15,23,42,0.45)] cursor-pointer"
+              onClick={() => {
+                if (variant === "video") {
+                  onPlayVideo(item);
+                } else {
+                  window.open(item.url, "_blank");
+                }
+              }}
             >
-              <button
-                onClick={() => (variant === "video" ? onPlayVideo(item) : null)}
-                className="block w-full overflow-hidden bg-slate-800"
-                disabled={variant !== "video"}
-              >
+              <div className="block w-full overflow-hidden bg-slate-800">
                 {cardImage ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={cardImage} alt={item.title} className="h-44 w-full object-cover" />
                 ) : (
                   <div className="flex h-44 items-center justify-center text-sm text-slate-300">No image</div>
                 )}
-              </button>
+              </div>
               <div className="p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-300">{getDomain(item.url) || "resource"}</p>
                 <p className="mt-1 text-sm font-semibold text-white line-clamp-2">{item.title}</p>
                 <p className="mt-1 text-xs text-slate-300 line-clamp-3">{item.takeaway}</p>
               </div>
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-3 flex items-center gap-2 p-3 pt-0">
                 {variant === "video" ? (
-                  <button onClick={() => onPlayVideo(item)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
+                  <button onClick={(e) => { e.stopPropagation(); onPlayVideo(item); }} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-500">
                     Play
                   </button>
                 ) : null}
-                <a href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-700">
+                <a onClick={(e) => e.stopPropagation()} href={item.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 hover:bg-slate-700">
                   <ExternalLink size={12} />
                   {variant === "video" ? "Open in YouTube" : "Open"}
                 </a>

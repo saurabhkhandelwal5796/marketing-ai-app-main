@@ -174,7 +174,8 @@ export default function UserDetailPage() {
                       className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                     >
                       <option value="Active">Active</option>
-                      <option value="Inactive">Inactive</option>
+                      <option value="Pending">Pending</option>
+                      <option value="Rejected">Rejected</option>
                     </select>
                   ) : (
                     <p className="mt-1 text-sm text-slate-900">{user.status || "Active"}</p>
