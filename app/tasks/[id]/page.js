@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import ThinkingDisplay from "../../../components/ThinkingDisplay";
 import { getCurrentSessionId, getCurrentUserId } from "../../../lib/getCurrentUserId";
 
@@ -64,6 +64,7 @@ function todayYmd() {
 
 export default function TaskDetailPage({ params }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [task, setTask] = useState(null);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,6 +78,7 @@ export default function TaskDetailPage({ params }) {
   // Next.js passes params as a Promise in this version.
   const resolvedParams = use(params);
   const taskId = decodeURIComponent(resolvedParams?.id || "");
+  const returnTo = String(searchParams.get("returnTo") || "").trim();
 
   const assignee = useMemo(() => {
     if (!task?.assignee_id) return null;
@@ -94,11 +96,7 @@ export default function TaskDetailPage({ params }) {
     try {
       const prevStatus = task?.status || "";
       
-      // Check if this is a milestone task
-      const isMilestoneTask = taskId.startsWith('milestone:');
-      const apiEndpoint = isMilestoneTask 
-        ? `/api/milestones/${encodeURIComponent(taskId.replace('milestone:', '').split('/')[0])}/tasks/${encodeURIComponent(taskId.replace('milestone:', '').split('/')[1])}`
-        : `/api/tasks/${encodeURIComponent(taskId)}`;
+      const apiEndpoint = `/api/tasks/${encodeURIComponent(taskId)}`;
       
       const res = await fetch(apiEndpoint, {
         method: "PATCH",
@@ -346,7 +344,10 @@ export default function TaskDetailPage({ params }) {
     <main className="space-y-4 p-6">
       <div className="flex items-center justify-between gap-3">
         <button
-          onClick={() => router.back()}
+          onClick={() => {
+            if (returnTo) router.push(returnTo);
+            else router.back();
+          }}
           className="rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
         >
           ← Back to Tasks

@@ -168,7 +168,6 @@ export async function DELETE(req) {
         session_id: sessionId,
       });
     } catch (auditErr) {
-      // eslint-disable-next-line no-console
       console.error("[audit] campaign deletion log failed", auditErr);
     }
 

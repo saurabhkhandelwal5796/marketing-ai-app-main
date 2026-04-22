@@ -126,12 +126,28 @@ pre {
   filter: none;
 }
 
+/* Standardize colored buttons to black theme */
+:is(button, a[href]):is([class*="bg-blue-600"], [class*="bg-blue-500"], [class*="bg-indigo-600"], [class*="bg-indigo-500"]) {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+}
+
 /* Keep blue action buttons with blue glow on hover/focus */
-:is(button, a[href]):is([class*="bg-blue-600"], [class*="bg-blue-500"]):not(.no-hover-lift):is(:hover, :focus-visible) {
-  background-color: #3b82f6;
+:is(button, a[href]):is([class*="bg-blue-600"], [class*="bg-blue-500"], [class*="bg-indigo-600"], [class*="bg-indigo-500"]):not(.no-hover-lift):is(:hover, :focus-visible) {
+  background-color: #1f2937;
   border-color: transparent;
-  box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
   filter: none;
+}
+
+/* Keep list/table rows stable while preserving hover color */
+table tr.cursor-pointer,
+table tr.cursor-pointer:hover,
+table tr.cursor-pointer:focus-visible {
+  transform: none !important;
+  filter: none !important;
+  text-shadow: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

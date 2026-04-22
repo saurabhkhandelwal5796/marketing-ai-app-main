@@ -60,8 +60,11 @@ export default function ThinkingDisplay({
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    setIndex(0);
-    setVisible(true);
+    const resetTimer = setTimeout(() => {
+      setIndex(0);
+      setVisible(true);
+    }, 0);
+    return () => clearTimeout(resetTimer);
   }, [preset]);
 
   useEffect(() => {

@@ -3,6 +3,33 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, UserPlus, Search, MoreHorizontal, Users } from "lucide-react";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
+
+function buildUserEditDetails(originalUser, nextForm) {
+  if (!originalUser) return "User details updated.";
+  const updates = [];
+  const nextName = String(nextForm?.name || "").trim();
+  const nextEmail = String(nextForm?.email || "").trim();
+  const nextIsAdmin = String(nextForm?.role || "User") === "Admin";
+  const nextStatus = String(nextForm?.status || "Active");
+  const passwordChanged = String(nextForm?.password || "").trim().length > 0;
+
+  if (nextName && nextName !== String(originalUser?.name || "").trim()) {
+    updates.push(`name "${originalUser?.name || "-"}" -> "${nextName}"`);
+  }
+  if (nextEmail && nextEmail !== String(originalUser?.email || "").trim()) {
+    updates.push(`email "${originalUser?.email || "-"}" -> "${nextEmail}"`);
+  }
+  if (nextIsAdmin !== !!originalUser?.is_admin) {
+    updates.push(`role ${originalUser?.is_admin ? "Admin" : "User"} -> ${nextIsAdmin ? "Admin" : "User"}`);
+  }
+  if (nextStatus !== String(originalUser?.status || "Active")) {
+    updates.push(`status ${String(originalUser?.status || "Active")} -> ${nextStatus}`);
+  }
+  if (passwordChanged) updates.push("password updated");
+
+  return updates.length ? `Updated user fields: ${updates.join(", ")}` : "Opened user edit and saved without field changes.";
+}
 
 export default function UsersPage() {
   const router = useRouter();

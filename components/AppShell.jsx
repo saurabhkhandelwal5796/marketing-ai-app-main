@@ -19,6 +19,7 @@ export default function AppShell({ children }) {
   const [profileSubmitting, setProfileSubmitting] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
+  const [routeLoading, setRouteLoading] = useState(false);
   const [profileForm, setProfileForm] = useState({
     firstName: "",
     lastName: "",
@@ -53,7 +54,7 @@ export default function AppShell({ children }) {
     const loadSession = async () => {
       setLoadingSession(true);
       try {
-        const res = await fetch("/api/auth/session");
+        const res = await fetch("/api/auth/session", { cache: "no-store" });
         const data = await res.json();
         if (!mounted) return;
         setSessionUser(data?.user || null);
@@ -68,7 +69,7 @@ export default function AppShell({ children }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     if (loadingSession) return;
@@ -97,6 +98,13 @@ export default function AppShell({ children }) {
     }
   }, [isAuthRoute, isPublicRoute, loadingSession, router, sessionUser]);
 
+  useEffect(() => {
+    if (loadingSession) return;
+    setRouteLoading(true);
+    const timer = window.setTimeout(() => setRouteLoading(false), 350);
+    return () => window.clearTimeout(timer);
+  }, [pathname, loadingSession]);
+
   const cycleCollapsed = () => {
     setSidebarMode((prev) => (prev === "expanded" ? "collapsed" : "expanded"));
   };
@@ -122,6 +130,15 @@ export default function AppShell({ children }) {
     }
     setSessionUser(null);
     window.location.href = "/auth";
+  };
+
+  const navigateToUserProfileEditor = () => {
+    const userId = String(sessionUser?.id || "").trim();
+    if (!userId) {
+      openProfileModal();
+      return;
+    }
+    router.push(`/users/${encodeURIComponent(userId)}?edit=1`);
   };
 
   const openProfileModal = async () => {
@@ -202,6 +219,10 @@ export default function AppShell({ children }) {
     return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Loading...</div>;
   }
 
+  if (!isPublicRoute && !sessionUser) {
+    return <div className="flex min-h-screen items-center justify-center text-sm text-slate-500">Loading...</div>;
+  }
+
   if (isPublicRoute) return <>{children}</>;
 
   return (
@@ -213,9 +234,18 @@ export default function AppShell({ children }) {
         isAdmin={!!sessionUser?.is_admin}
         currentUser={sessionUser}
         onOpenProfileModal={openProfileModal}
+        onEditProfileNavigate={navigateToUserProfileEditor}
         onLogout={logout}
       />
       <div className={`max-w-full min-w-0 overflow-x-hidden transition-all print:pl-0 ${sidebarWidthClass}`}>
+        {routeLoading ? (
+          <div className="fixed inset-0 z-[55] flex items-center justify-center bg-slate-50/45 backdrop-blur-[1px]">
+            <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2 shadow-sm">
+              <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+              <p className="text-sm font-medium text-slate-700">Loading...</p>
+            </div>
+          </div>
+        ) : null}
         {(() => {
           if (!sessionUser) return null;
           const isImpersonating = !!sessionUser.admin_id;

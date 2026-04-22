@@ -48,7 +48,6 @@ export async function POST(req) {
         session_id: sessionId,
       });
     } catch (auditErr) {
-      // eslint-disable-next-line no-console
       console.error("[audit] task bulk deletion log failed", auditErr);
     }
 
