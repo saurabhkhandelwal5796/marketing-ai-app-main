@@ -84,10 +84,16 @@ export async function PATCH(req) {
     };
 
     if (avatarDataUrl) {
-      if (!avatarDataUrl.startsWith("data:image/")) {
+      if (
+        !avatarDataUrl.startsWith("data:image/") &&
+        !avatarDataUrl.startsWith("http://") &&
+        !avatarDataUrl.startsWith("https://")
+      ) {
         return NextResponse.json({ error: "Invalid profile image format." }, { status: 400 });
       }
       patch.avatar = avatarDataUrl;
+    } else {
+      patch.avatar = null;
     }
 
     if (newPassword) {

@@ -29,10 +29,10 @@ const navItems = [
   { href: "/email-templates", label: "Email Templates", icon: Mail },
   { href: "/create-post", label: "Create & Post", icon: Sparkles },
   { href: "/learning", label: "Learning", icon: BookOpen },
-  { href: "/my-profile", label: "My Profile", icon: UserCircle2 },
   { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
+  { href: "/my-profile", label: "My Profile", icon: UserCircle2 },
 ];
 
 export default function Sidebar({

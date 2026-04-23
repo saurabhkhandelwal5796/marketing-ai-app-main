@@ -14,6 +14,8 @@ create table if not exists public.campaigns (
   recommended_actions jsonb not null default '[]'::jsonb,
   selected_actions jsonb not null default '[]'::jsonb,
   outputs jsonb not null default '{}'::jsonb,
+  campaign_no bigint,
+  status text not null default 'Open',
   created_by text,
   updated_by text,
   created_at timestamptz not null default now(),
@@ -23,6 +25,20 @@ create table if not exists public.campaigns (
 
 alter table public.campaigns add column if not exists created_by text;
 alter table public.campaigns add column if not exists updated_by text;
+alter table public.campaigns add column if not exists campaign_no bigint;
+alter table public.campaigns add column if not exists status text not null default 'Open';
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'campaigns_status_check'
+  ) then
+    alter table public.campaigns
+      add constraint campaigns_status_check
+      check (status in ('Open','In progress','Closed'));
+  end if;
+end $$;
 
 create or replace function public.set_campaigns_updated_at()
 returns trigger as $$

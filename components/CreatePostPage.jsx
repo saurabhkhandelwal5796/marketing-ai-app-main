@@ -1,11 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { trackAction } from "../lib/auditTracker";
 import { useAuditPageVisit, useAuditSessionUserId } from "../lib/useAuditPageVisit";
 import { BriefcaseBusiness, Camera, ChevronDown, ChevronUp, FileText, Mail, MessageCircle, Megaphone, Send, Sparkles } from "lucide-react";
 
 const LS_AUTO_KEY = "autoGeneratePostContent";
+const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024;
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -13,6 +23,21 @@ function normalizeEmail(value) {
 
 function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+}
+
+function normalizeTemplateAttachments(caseStudies) {
+  const normalizedFromList = Array.isArray(caseStudies)
+    ? caseStudies
+    .map((item) => ({
+      name: String(item?.name || "").trim(),
+      type: String(item?.type || "application/octet-stream").trim(),
+      size: Number(item?.size || 0),
+      dataUrl: String(item?.dataUrl || "").trim(),
+      fromTemplate: true,
+    }))
+    .filter((item) => item.name && item.dataUrl)
+    : [];
+  return normalizedFromList;
 }
 
 const PLATFORM_META = {
@@ -44,6 +69,8 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [activeType, setActiveType] = useState("");
   const [contentByType, setContentByType] = useState({});
   const [message, setMessage] = useState("");
+  const [useTemplate, setUseTemplate] = useState(false);
+  const [matchedTemplateName, setMatchedTemplateName] = useState("");
   const [users, setUsers] = useState([]);
   const [recipientEmails, setRecipientEmails] = useState([]);
   const [recipientInput, setRecipientInput] = useState("");
@@ -61,6 +88,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [aiEditingRecipient, setAiEditingRecipient] = useState(false);
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const [checkingLinkedinStatus, setCheckingLinkedinStatus] = useState(false);
+  const attachmentInputRef = useRef(null);
 
   const selectedUserEmails = useMemo(
     () => users.filter((u) => selectedUserRecipients.includes(u.id)).map((u) => normalizeEmail(u.email)),
@@ -90,6 +118,72 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       return next;
     });
     setActiveRecipient((prev) => (prev && recipients.includes(prev) ? prev : recipients[0] || ""));
+  };
+
+  const findBestTemplateForInput = async (text) => {
+    const search = String(text || "").trim();
+    if (!search) return null;
+    const res = await fetch(`/api/email-templates?search=${encodeURIComponent(search)}&page=1&pageSize=20`);
+    const data = await res.json();
+    if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load templates.");
+    const templates = Array.isArray(data?.templates) ? data.templates : [];
+    if (!templates.length) return null;
+    const searchLower = search.toLowerCase();
+    const terms = searchLower
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 2);
+    const keyword = terms[0] || "";
+
+    // Primary: match by industry tags when present (simple contains keyword from input).
+    const byIndustryTag = templates.find((tpl) => {
+      const tags = Array.isArray(tpl?.industryTags)
+        ? tpl.industryTags
+        : Array.isArray(tpl?.industry_tags)
+          ? tpl.industry_tags
+          : [];
+      return tags.some((tag) => {
+        const normalizedTag = String(tag || "").trim().toLowerCase();
+        if (!normalizedTag) return false;
+        return searchLower.includes(normalizedTag) || (keyword ? normalizedTag.includes(keyword) : false);
+      });
+    });
+    if (byIndustryTag) return byIndustryTag;
+
+    // Fallback: basic keyword match against template text for data sets without industry tags.
+    if (!keyword) return null;
+    return (
+      templates.find((tpl) => {
+        const hay = `${tpl?.name || ""} ${tpl?.subject || ""} ${tpl?.body || ""}`.toLowerCase();
+        return hay.includes(keyword);
+      }) || null
+    );
+  };
+
+  const onAttachmentFiles = async (files, typeId) => {
+    if (!files?.length || !typeId) return;
+    const fileList = Array.from(files);
+    for (const f of fileList) {
+      if (f.size > MAX_ATTACHMENT_SIZE) {
+        throw new Error(`"${f.name}" exceeds 5MB limit.`);
+      }
+    }
+    const uploads = await Promise.all(
+      fileList.map(async (file) => ({
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        size: file.size,
+        dataUrl: await readFileAsDataUrl(file),
+      }))
+    );
+    setContentByType((prev) => ({
+      ...prev,
+      [typeId]: {
+        ...prev[typeId],
+        attachments: [...(prev[typeId]?.attachments || []), ...uploads],
+      },
+    }));
   };
 
   useEffect(() => {
@@ -162,11 +256,36 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     if (selectedTypes.length === 0) return;
     setGeneratingContent(true);
     setMessage("");
+    setMatchedTemplateName("");
     try {
+      const emailSelected = selectedTypes.includes("email_campaign") || selectedTypes.includes("newsletter");
+      let templateReference = null;
+      if (useTemplate && emailSelected) {
+        templateReference = await findBestTemplateForInput(input);
+      }
+
       const res = await fetch("/api/create-post/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, selectedTypes }),
+        body: JSON.stringify({
+          input,
+          selectedTypes,
+          templateReference: templateReference
+            ? {
+                name: templateReference?.name || "",
+                subject: templateReference?.subject || "",
+                body: templateReference?.body || "",
+                attachmentUrl:
+                  String(templateReference?.attachmentUrl || "").trim() ||
+                  String(templateReference?.attachment_url || "").trim() ||
+                  String(templateReference?.case_studies?.[0]?.dataUrl || "").trim(),
+                attachmentName:
+                  String(templateReference?.attachmentName || "").trim() ||
+                  String(templateReference?.attachment_name || "").trim() ||
+                  String(templateReference?.case_studies?.[0]?.name || "").trim(),
+              }
+            : null,
+        }),
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate content.");
@@ -174,14 +293,43 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       const next = {};
       (data.contents || []).forEach((item) => {
         const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
+        const isEmailType = item.typeId === "email_campaign" || item.typeId === "newsletter";
+        const templateListAttachments = templateReference && isEmailType ? normalizeTemplateAttachments(templateReference.case_studies) : [];
+        const templateSingleAttachment =
+          templateReference && isEmailType && String(templateReference?.attachmentUrl || templateReference?.attachment_url || "").trim()
+            ? [
+                {
+                  name:
+                    String(templateReference?.attachmentName || "").trim() ||
+                    String(templateReference?.attachment_name || "").trim() ||
+                    "template-attachment",
+                  type: "application/octet-stream",
+                  size: Number(templateReference?.attachmentSize || 0),
+                  dataUrl: String(templateReference?.attachmentUrl || templateReference?.attachment_url || "").trim(),
+                  fromTemplate: true,
+                },
+              ]
+            : [];
+        const templateAttachments = [...templateSingleAttachment, ...templateListAttachments].filter(
+          (file, idx, arr) =>
+            arr.findIndex(
+              (f) => String(f?.name || "").trim() === String(file?.name || "").trim() && String(f?.dataUrl || "").trim() === String(file?.dataUrl || "").trim()
+            ) === idx
+        );
+        const templateSubject = String(templateReference?.subject || "").trim();
+        const templateBody = String(templateReference?.body || "").trim();
         next[item.typeId] = {
           typeLabel: item.typeLabel,
-          content: `${item.main || ""}${hashtagsText}`.trim(),
-          subject: item.subject || "",
+          content: `${(useTemplate && isEmailType && templateBody ? templateBody : item.main) || ""}${hashtagsText}`.trim(),
+          subject: useTemplate && isEmailType && templateSubject ? templateSubject : item.subject || "",
           imageUrl: "",
+          attachments: templateAttachments,
         };
       });
       setContentByType(next);
+      if (templateReference && emailSelected) {
+        setMatchedTemplateName(String(templateReference?.name || ""));
+      }
       const first = selectedTypes[0] || "";
       setActiveType(first);
       setImagePrompt(input.trim());
@@ -387,13 +535,24 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
           placeholder="I want a LinkedIn post for our product launch..."
           className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm"
         />
-        <button
-          onClick={generateSuggestions}
-          disabled={generatingSuggestions || !input.trim()}
-          className="mt-3 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          {generatingSuggestions ? "Submitting..." : "Submit"}
-        </button>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <button
+            onClick={generateSuggestions}
+            disabled={generatingSuggestions || !input.trim()}
+            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {generatingSuggestions ? "Submitting..." : "Submit"}
+          </button>
+          <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={useTemplate}
+              onChange={(e) => setUseTemplate(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-slate-900"
+            />
+            Use template
+          </label>
+        </div>
       </section>
 
       {hasSubmittedInput ? (
@@ -408,6 +567,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
               return (
                 <button
                   key={item.id}
+                  type="button"
                   onClick={() => toggleType(item.id)}
                   className={`rounded-xl border p-4 text-left transition ${
                     selected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"
@@ -446,9 +606,10 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                   return (
                     <button
                       key={typeId}
+                      type="button"
                       onClick={() => setActiveType(typeId)}
-                      className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${
-                        activeType === typeId ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                      className={`no-hover-lift rounded-lg px-3 py-1.5 text-sm font-semibold transition ${
+                        activeType === typeId ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
                       <span className="inline-flex items-center gap-1.5">
@@ -463,6 +624,11 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
               <div className="mt-4 rounded-xl border border-slate-200 p-3">
                 {activeType === "email_campaign" || activeType === "newsletter" ? (
                   <>
+                    {matchedTemplateName ? (
+                      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                        Using template reference: {matchedTemplateName}
+                      </div>
+                    ) : null}
                     <label className="block text-sm font-medium text-slate-700">
                       Subject
                       <input
@@ -490,6 +656,59 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                         className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                       />
                     </label>
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900">Attachments</p>
+                        <button
+                          type="button"
+                          onClick={() => attachmentInputRef.current?.click()}
+                          className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Upload File
+                        </button>
+                      </div>
+                      <input
+                        ref={attachmentInputRef}
+                        type="file"
+                        multiple
+                        className="hidden"
+                        onChange={async (e) => {
+                          try {
+                            await onAttachmentFiles(e.target.files, activeType);
+                          } catch (err) {
+                            setMessage(err?.message || "Failed to attach files.");
+                          } finally {
+                            e.target.value = "";
+                          }
+                        }}
+                      />
+                      {(contentByType[activeType]?.attachments || []).length ? (
+                        <div className="mt-2 space-y-1.5">
+                          {(contentByType[activeType]?.attachments || []).map((file, idx) => (
+                            <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5">
+                              <p className="truncate text-xs text-slate-700">{file.name}</p>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setContentByType((prev) => ({
+                                    ...prev,
+                                    [activeType]: {
+                                      ...prev[activeType],
+                                      attachments: (prev[activeType]?.attachments || []).filter((_, i) => i !== idx),
+                                    },
+                                  }))
+                                }
+                                className="text-xs font-semibold text-slate-600 hover:text-red-600"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-xs text-slate-500">No attachments added.</p>
+                      )}
+                    </div>
                     <div className="mt-2 space-y-2 rounded-xl border border-slate-200 bg-white p-2">
                       {contentByType[activeType].imageUrl ? (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
@@ -622,7 +841,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                       className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
                     >
                       <Mail size={14} className="mr-1 inline" />
-                      Open Email Popup
+                      Configure Email
                     </button>
                   ) : null}
                 </div>
@@ -636,7 +855,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
         <div className={`fixed inset-0 ${emailOverlayZ} bg-slate-900/40 p-4`}>
           <div className="mx-auto flex h-[calc(100vh-2rem)] w-full max-w-6xl flex-col space-y-3 rounded-2xl bg-white p-5 shadow-xl">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">Email Popup</h3>
+              <h3 className="text-base font-semibold text-slate-900">Configure Email</h3>
               <button onClick={() => setShowEmailPopup(false)} className="text-sm text-slate-500">
                 Close
               </button>
@@ -767,6 +986,20 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     className="mt-1.5 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm disabled:opacity-60"
                   />
                 </label>
+                <div className="mt-3 rounded-lg border border-slate-200 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Attachments</p>
+                  {(contentByType[baseEmailType]?.attachments || []).length ? (
+                    <div className="mt-2 space-y-1.5">
+                      {(contentByType[baseEmailType]?.attachments || []).map((file, idx) => (
+                        <div key={`${file.name}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700">
+                          {file.name}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-slate-500">No attachments selected.</p>
+                  )}
+                </div>
                 <div className="mt-3 rounded-lg border border-slate-200 p-3">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">AI Edit</p>
                   <div className="mt-2 flex gap-2">

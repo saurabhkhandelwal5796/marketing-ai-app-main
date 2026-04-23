@@ -27,7 +27,8 @@ import {
   Users,
   Wand2,
 } from "lucide-react";
-import CreatePostPage from "./CreatePostPage";
+// import CreatePostPage from "./CreatePostPage";
+import CreatePostPage from "../app/create-post/page";
 import { getCurrentSessionId, getCurrentUserId } from "../lib/getCurrentUserId";
 import Avatar from "./Avatar";
 

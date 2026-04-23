@@ -49,6 +49,7 @@ export async function PATCH(req, { params }) {
       "recommended_actions",
       "selected_actions",
       "outputs",
+      "status",
     ]);
     const updates = Object.fromEntries(
       Object.entries(body || {}).filter(([key]) => allowedKeys.has(key))
