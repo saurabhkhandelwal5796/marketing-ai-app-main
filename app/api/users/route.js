@@ -63,6 +63,7 @@ export async function POST(req) {
     const supabase = getSupabaseServerClient();
     const body = await req.json();
     const name = String(body?.name || "").trim();
+
     const email = String(body?.email || "")
       .trim()
       .toLowerCase();

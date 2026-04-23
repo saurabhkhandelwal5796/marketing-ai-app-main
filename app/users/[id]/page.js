@@ -108,8 +108,7 @@ export default function UserDetailPage() {
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to login as user.");
-      router.push("/dashboard");
-      router.refresh();
+      window.location.href = "/dashboard";
     } catch (e) {
       setError(e?.message || "Failed to login as user.");
     }

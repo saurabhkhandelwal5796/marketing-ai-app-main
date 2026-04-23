@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+// import { useRouter, useSearchParams } from "next/navigation";
 import { 
   Building2, 
   Camera, 
@@ -46,6 +47,7 @@ export default function MyProfilePage() {
   const [editingInfo, setEditingInfo] = useState(false);
   const [touched, setTouched] = useState({});
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
+  
 
   useEffect(() => {
     const onClickOutside = (event) => {

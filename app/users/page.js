@@ -217,12 +217,14 @@ export default function UsersPage() {
       });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to login as user.");
-      router.replace("/dashboard");
-      router.refresh();
+      window.location.href = "/dashboard";
     } catch (e) {
       setError(e?.message || "Failed to login as user.");
     }
   };
+  
+
+
 
   const updateUserStatus = async (u, newStatus) => {
     setUsers((prev) => prev.map((user) => (user.id === u.id ? { ...user, status: newStatus } : user)));

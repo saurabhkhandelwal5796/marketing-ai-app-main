@@ -49,6 +49,27 @@ export default function AppShell({ children }) {
     }
   }, [sidebarMode]);
 
+  // useEffect(() => {
+  //   let mounted = true;
+  //   const loadSession = async () => {
+  //     setLoadingSession(true);
+  //     try {
+  //       const res = await fetch("/api/auth/session", { cache: "no-store" });
+  //       const data = await res.json();
+  //       if (!mounted) return;
+  //       setSessionUser(data?.user || null);
+  //     } catch {
+  //       if (!mounted) return;
+  //       setSessionUser(null);
+  //     } finally {
+  //       if (mounted) setLoadingSession(false);
+  //     }
+  //   };
+  //   loadSession();
+  //   return () => {
+  //     mounted = false;
+  //   };
+  // }, []);
   useEffect(() => {
     let mounted = true;
     const loadSession = async () => {
@@ -70,6 +91,7 @@ export default function AppShell({ children }) {
       mounted = false;
     };
   }, []);
+
 
   useEffect(() => {
     if (loadingSession) return;
@@ -117,9 +139,7 @@ export default function AppShell({ children }) {
   const restoreAdmin = async () => {
     const res = await fetch("/api/auth/restore", { method: "POST" });
     if (!res.ok) return;
-    const data = await fetch("/api/auth/session").then((r) => r.json());
-    setSessionUser(data?.user || null);
-    router.refresh();
+    window.location.href = "/dashboard";
   };
 
   const logout = async () => {
@@ -140,6 +160,10 @@ export default function AppShell({ children }) {
     }
     router.push(`/users/${encodeURIComponent(userId)}?edit=1`);
   };
+//   const navigateToUserProfileEditor = () => {
+//   router.push("/my-profile?edit=1");
+// };
+
 
   const openProfileModal = async () => {
     setProfileError("");

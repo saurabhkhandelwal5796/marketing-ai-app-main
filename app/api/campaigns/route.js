@@ -52,9 +52,21 @@ export async function GET(req) {
       if (allowedActors.length) query = query.in("created_by", allowedActors);
       else query = query.eq("id", "__none__");
     }
+    // if (search) {
+    //   const escapedSearch = search.replace(/[%_]/g, "");
+    //   const numericSearch = Number.parseInt(search, 10);
+    //   if (Number.isFinite(numericSearch)) {
+    //     query = query.or(`name.ilike.%${escapedSearch}%,campaign_no.eq.${numericSearch}`);
+    //   } else {
+    //     query = query.ilike("name", `%${escapedSearch}%`);
+    //   }
+    // }
     if (search) {
       const escapedSearch = search.replace(/[%_]/g, "");
-      const numericSearch = Number.parseInt(search, 10);
+      const prefixMatch = search.match(/^C-?(\d+)$/i);
+      const numericSearch = prefixMatch
+        ? Number.parseInt(prefixMatch[1], 10)
+        : Number.parseInt(search, 10);
       if (Number.isFinite(numericSearch)) {
         query = query.or(`name.ilike.%${escapedSearch}%,campaign_no.eq.${numericSearch}`);
       } else {
@@ -62,11 +74,12 @@ export async function GET(req) {
       }
     }
 
+
     ({ data: campaigns, error } = await query);
     if (error && (isMissingColumnError(error.message || "") || isMissingCampaignExtraColumnError(error.message || ""))) {
       let fallback = supabase
         .from("campaigns")
-        .select("id,name,company,goal,created_at,updated_at,last_activity_at")
+        .select("id,name,company,goal,created_at,updated_at,last_activity_at,status")
         .order("last_activity_at", { ascending: false })
         .range(offset, offset + limit - 1);
 
@@ -102,7 +115,7 @@ export async function GET(req) {
     const enrichedCampaigns = (campaigns || []).map((item, index) => ({
       ...item,
       campaign_no: Number.isFinite(Number(item?.campaign_no)) ? Number(item.campaign_no) : offset + index + 1,
-      status: ALLOWED_STATUSES.has(String(item?.status || "")) ? item.status : "Open",
+      status: item?.status,
       created_by_name: userNameById[item.created_by] || (item.created_by && !UUID_RE.test(item.created_by) ? item.created_by : "-"),
       last_modified_by_name:
         userNameById[item.updated_by] || (item.updated_by && !UUID_RE.test(item.updated_by) ? item.updated_by : "-"),

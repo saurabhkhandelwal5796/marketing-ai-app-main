@@ -31,6 +31,7 @@ function statusBadgeStyles(status) {
   if (status === "Completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "In Progress") return "border-blue-200 bg-blue-50 text-blue-700";
   if (status === "Overdue") return "border-red-200 bg-red-50 text-red-700";
+
   return "border-slate-300 bg-white text-slate-700";
 }
 
@@ -231,6 +232,23 @@ export default function CampaignMilestonesPage() {
     }
   };
 
+    const handleMilestoneStatusChange = async (milestoneId, newStatus) => {
+    setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, status: newStatus } : m));
+    try {
+      const res = await fetch(`/api/milestones/${milestoneId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update status");
+    } catch (err) {
+      setError(err?.message || "Failed to update milestone status.");
+    }
+  };
+
+
+
   const campaignName = milestones[0]?.campaign_name && milestones[0]?.campaign_name !== "-" ? milestones[0]?.campaign_name : "General Campaign";
   const overallProgress = milestones.length > 0 ? Math.round(milestones.reduce((acc, m) => acc + (m.progress || 0), 0) / milestones.length) : 0;
 
@@ -310,10 +328,15 @@ export default function CampaignMilestonesPage() {
                 const isExpanded = expandedMilestones.has(milestone.id);
                 return (
                   <div key={milestone.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all">
-                    <button
+                    {/* <button
                       onClick={() => toggleExpand(milestone.id)}
                       className="flex w-full items-center justify-between gap-4 p-5 text-left hover:bg-slate-50"
-                    >
+                    > */}
+                        <div
+                            onClick={() => toggleExpand(milestone.id)}
+                            className="flex w-full cursor-pointer items-center justify-between gap-4 p-5 text-left hover:bg-slate-50"
+                          >
+
                       <div className="flex items-center gap-4">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
                           {String(idx + 1).padStart(2, "0")}
@@ -344,9 +367,24 @@ export default function CampaignMilestonesPage() {
                             />
                           </div>
                         </div>
-                        <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${statusBadgeStyles(milestone.status)}`}>
+                        {/* <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${statusBadgeStyles(milestone.status)}`}>
                           {milestone.status}
-                        </span>
+                        </span> */}
+<select
+  value={milestone.status}
+  onClick={(e) => e.stopPropagation()}
+  onChange={(e) => {
+    e.stopPropagation();
+    handleMilestoneStatusChange(milestone.id, e.target.value);
+  }}
+  className={`shrink-0 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold outline-none ${statusBadgeStyles(milestone.status)}`}
+>
+  <option value="Not Started">Not Started</option>
+  <option value="In Progress">In Progress</option>
+  <option value="Completed">Completed</option>
+</select>
+
+
                         <button
                           type="button"
                           onClick={(e) => {
@@ -361,7 +399,9 @@ export default function CampaignMilestonesPage() {
                           {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
                         </div>
                       </div>
-                    </button>
+                    {/* </button> */}
+                   </div>
+
 
                     {isExpanded && (
                       <div className="border-t border-slate-100 bg-slate-50/50 p-5">

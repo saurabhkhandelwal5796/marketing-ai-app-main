@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 const OPENAI_URL = "https://api.openai.com/v1/responses";
 
-const SYSTEM_PROMPT = `You are a senior marketing strategist for B2B campaigns.
+const SYSTEM_PROMPT = `You are a senior marketing strategist. You adapt to any industry, domain, or campaign type based on the user's description and campaign goal.
 Return detailed, practical outputs in JSON only. Avoid fluff and be specific.
 
 Depth requirements:
@@ -180,6 +180,7 @@ ${selectedDetailsText.length ? selectedDetailsText.map((s) => `- ${s}`).join("\n
 
 Rules:
 - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
+- CRITICAL: Identify the core industry/domain from the Campaign Goal and Description. Suggest companies that are BUYERS, SELLERS, or KEY PLAYERS in that exact domain. Always match the domain explicitly stated.
 - Make the companies align with BOTH the description and the selected points above (if provided).
 - Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), sector (1 tag), decisionMakerRole (single role), country (1 country).
 - employees: Return 20-40 REAL, specific employees across the target companies. Include outreach-ready roles (founder, marketing head, growth lead, sales lead, operations head).
@@ -310,8 +311,11 @@ Context:
 Rules:
 - marketingDetails: MINIMUM 20 points (aim 22-26). Each point must have a unique id, a bold-style title, and a detailed explanation paragraph.
 - Ensure coverage across: value proposition, market positioning, competitive advantage, messaging strategy, brand tone, channels, pricing perception, USP, emotional triggers, storytelling angle, SEO keywords, pain points addressed, social proof strategy, call-to-action suggestions, campaign hooks, content themes, awareness vs conversion tactics, seasonal relevance, partnership opportunities, and growth potential.
-- targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
+ - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
+- CRITICAL: Identify the core industry/domain from the Campaign Goal and Description. Suggest companies that are BUYERS, SELLERS, or KEY PLAYERS in that exact domain.Always match the domain explicitly stated.
 - Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), sector (1 tag), decisionMakerRole (single role), country (1 country).
+
+
 - employees: Return 20-40 REAL, specific employees across the target companies. Include likely outreach-ready roles (e.g., founder, marketing head, growth lead, sales lead, operations head).
 - Each employee must include: name, title, company, linkedin, email, phone, website.
 - For employee linkedin values, ONLY use this format: https://www.linkedin.com/in/firstname-lastname

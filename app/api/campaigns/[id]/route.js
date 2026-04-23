@@ -59,25 +59,36 @@ export async function PATCH(req, { params }) {
     const supabase = getSupabaseServerClient();
     let data = null;
     let error = null;
+    // ({ data, error } = await supabase
+    //   .from("campaigns")
+    //   .update({ ...updates, updated_by: currentActor })
+    //   .eq("id", id)
+    //   .select("*")
+    //   .single());
+
+    // if (error && isMissingUpdatedByError(error.message || "")) {
+    //   return NextResponse.json(
+    //     {
+    //       error:
+    //         "Audit column updated_by is missing in campaigns table. Please add created_by/updated_by in Supabase, then retry.",
+    //     },
+    //     { status: 500 }
+    //   );
+    // }
+
+    // if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // return NextResponse.json({ ok: true, campaign: data });
     ({ data, error } = await supabase
-      .from("campaigns")
-      .update({ ...updates, updated_by: currentActor })
-      .eq("id", id)
-      .select("*")
-      .single());
+  .from("campaigns")
+  .update({ ...updates, updated_by: currentActor })
+  .eq("id", id)
+  // .select("id,name,status,updated_at,updated_by")
+  .select("*")
+  .single());
 
-    if (error && isMissingUpdatedByError(error.message || "")) {
-      return NextResponse.json(
-        {
-          error:
-            "Audit column updated_by is missing in campaigns table. Please add created_by/updated_by in Supabase, then retry.",
-        },
-        { status: 500 }
-      );
-    }
+if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+return NextResponse.json({ ok: true, campaign: data });
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, campaign: data });
   } catch (error) {
     return NextResponse.json({ error: error?.message || "Failed to update campaign." }, { status: 500 });
   }

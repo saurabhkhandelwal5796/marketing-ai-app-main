@@ -36,6 +36,7 @@ function computeMilestoneStatus(tasks = [], fallbackStatus = "Not Started", endD
   }
   return normalizeMilestoneStatus(fallbackStatus);
 }
+  
 
 async function enrichMilestones(supabase, milestones) {
   const items = Array.isArray(milestones) ? milestones : [];
@@ -83,7 +84,9 @@ async function enrichMilestones(supabase, milestones) {
     const assignee = userById[milestone.assignee_id] || null;
     const tasks = tasksByMilestoneId[milestone.id] || [];
     const progress = computeProgress(tasks, milestone.progress);
-    const status = computeMilestoneStatus(tasks, milestone.status, milestone.end_date);
+    // const status = computeMilestoneStatus(tasks, milestone.status, milestone.end_date);
+    const status = normalizeMilestoneStatus(milestone.status);
+
     return {
       ...milestone,
       status,
