@@ -116,6 +116,56 @@ export default function CampaignListPage() {
   const toggleSelectOne = (id) => {
     setSelectedCampaignIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   };
+ 
+  // Added
+  const handleStatusChange = async (id, newStatus) => {
+  const original = campaigns.find((c) => c.id === id);
+  setCampaigns((prev) =>
+    prev.map((c) => (c.id === id ? { ...c, status: newStatus } : c))
+  );
+  try {
+    const res = await fetch(`/api/campaigns/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    });
+    const data = await res.json();
+    if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update status.");
+    // if (data?.campaign) {
+    //   setCampaigns((prev) =>
+    //     prev.map((c) =>
+    //       c.id === id
+    //         ? { ...c, updated_at: data.campaign.updated_at, updated_by: data.campaign.updated_by }
+    //         : c
+    //     )
+    //   );
+    // }
+    if (data?.campaign) {
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                status: data.campaign.status,
+                updated_at: data.campaign.updated_at,
+                updated_by: data.campaign.updated_by,
+                last_modified_by_name: c.created_by_name || data.campaign.updated_by,
+              }
+            : c
+        )
+      );
+    }
+  } catch (err) {
+    if (original) {
+      setCampaigns((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, status: original.status } : c))
+      );
+    }
+    setError(err.message || "Failed to update status.");
+  }
+};
+
+  //Added
 
   const handleDeleteSelected = async () => {
     if (!selectedCampaignIds.length || deleting) return;
@@ -189,8 +239,8 @@ export default function CampaignListPage() {
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
-                  <th className="px-4 py-3 font-medium">S.No.</th>
-                  <th className="px-4 py-3 font-medium">Campaign no.</th>
+                  {/* <th className="px-4 py-3 font-medium">S.No.</th> */}
+                  <th className="px-4 py-3 font-medium">Campaign No.</th>
                   <th className="px-4 py-3 font-medium">Campaign Name</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Created Date</th>
@@ -215,17 +265,40 @@ export default function CampaignListPage() {
                     onClick={() => router.push(`/campaigns/${item.id}`)}
                     className="cursor-pointer border-t border-slate-200 transition hover:bg-slate-50"
                   >
-                    <td className="px-4 py-3 text-slate-600">{idx + 1}</td>
-                    <td className="px-4 py-3 text-slate-600">{item.campaign_no ?? "-"}</td>
+                    {/* <td className="px-4 py-3 text-slate-600">{idx + 1}</td> */}
+                    <td className="px-4 py-3 font-medium text-slate-700">
+                    {`C-${String(item.campaign_no ?? idx + 1).padStart(2, "0")}`}
+                  </td> 
+
                     <td className="px-4 py-3 font-medium text-blue-700 underline-offset-2 hover:underline">
                       {item.name || "Generating title..."}
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{item.status || "Open"}</td>
+                    {/* <td className="px-4 py-3 text-slate-600">{item.status || "Open"}</td> */}
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <select
+                        value={item.status || "Open"}
+                        onChange={(e) => handleStatusChange(item.id, e.target.value)}
+                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold outline-none cursor-pointer ${
+                          (item.status || "Open") === "Open"
+                            ? "border-blue-200 bg-blue-50 text-blue-700"
+                            : (item.status || "Open") === "In progress"
+                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                            : "border-slate-200 bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        <option value="Open">Open</option>
+                        <option value="In progress">In progress</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    </td>
+
                     <td className="px-4 py-3 text-slate-600">{formatDate(item.created_at)}</td>
                     <td className="px-4 py-3 text-slate-600">{formatDate(item.updated_at)}</td>
                     <td className="px-4 py-3 text-slate-600">{item.created_by_name || item.created_by || "-"}</td>
                     <td className="px-4 py-3 text-slate-600">
-                      {item.last_modified_by_name || item.last_modified_by || "-"}
+                    {item.last_modified_by_name || item.updated_by || "-"}
+
+                      {/* {item.updated_by || "-"} */}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <input

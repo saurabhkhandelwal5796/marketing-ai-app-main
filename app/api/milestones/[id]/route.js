@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
 import { getSessionFromCookies } from "../../../../lib/authSession";
 
-const ALLOWED_FIELDS = new Set(["title", "description", "campaign_id", "assignee_id", "start_date", "end_date"]);
+const ALLOWED_FIELDS = new Set(["title", "description", "campaign_id", "assignee_id", "start_date", "end_date", "status"]);
 
 function normalizeMilestoneStatus(value) {
   const status = String(value || "").trim();
@@ -61,11 +61,6 @@ export async function PATCH(req, { params }) {
       patch[key] = value;
     }
 
-    // Remove any client-provided status/progress; we always recompute from tasks.
-    // (We keep this normalization helper to avoid accidental API contract drift.)
-    if (typeof patch.status !== "undefined") delete patch.status;
-    if (typeof patch.progress !== "undefined") delete patch.progress;
-
     const { data: updatedMilestone, error: updateError } = await supabase
       .from("milestones")
       .update(patch)
@@ -75,7 +70,6 @@ export async function PATCH(req, { params }) {
 
     if (updateError) throw new Error(updateError.message);
 
-    // If milestone assignee changed, propagate to milestone tasks.
     if (Object.prototype.hasOwnProperty.call(patch, "assignee_id")) {
       const newAssignee = patch.assignee_id || null;
       const { error: tasksAssigneeError } = await supabase
@@ -85,23 +79,43 @@ export async function PATCH(req, { params }) {
       if (tasksAssigneeError) throw new Error(tasksAssigneeError.message);
     }
 
-    // Recompute progress/status based on remaining tasks + updated end_date.
     const { data: tasks, error: tasksError } = await supabase
       .from("milestone_tasks")
       .select("id,status")
       .eq("milestone_id", id);
     if (tasksError) throw new Error(tasksError.message);
 
+    const isManualStatus = Object.prototype.hasOwnProperty.call(patch, "status");
     const progress = computeProgress(tasks || []);
-    const status = computeMilestoneStatus(tasks || [], updatedMilestone?.end_date || null);
+    const status = isManualStatus
+      ? normalizeMilestoneStatus(patch.status)
+      : computeMilestoneStatus(tasks || [], updatedMilestone?.end_date || null);
 
     const { error: recomputeError } = await supabase
       .from("milestones")
-      .update({ progress, status })
+      .update(isManualStatus ? { progress } : { progress, status })
       .eq("id", id);
     if (recomputeError) throw new Error(recomputeError.message);
 
-    // Return fresh milestone row.
+    // Auto-update campaign status based on all its milestones
+    // // Auto-update campaign status based on all its milestones
+    // const campaignId = updatedMilestone?.campaign_id;
+    // if (campaignId) {
+    //   const { data: allMilestones } = await supabase
+    //     .from("milestones")
+    //     .select("id,status")
+    //     .eq("campaign_id", campaignId);
+    //   if (Array.isArray(allMilestones) && allMilestones.length > 0) {
+    //     const effectiveStatus = normalizeMilestoneStatus(patch.status ?? updatedMilestone.status);
+    //     const statuses = allMilestones.map((m) => (m.id === id ? effectiveStatus : m.status));
+    //     let campaignStatus = "Open";
+    //     if (statuses.every((s) => s === "Completed")) campaignStatus = "Closed";
+    //     else if (statuses.some((s) => s === "In Progress" || s === "Completed")) campaignStatus = "In progress";
+    //     await supabase.from("campaigns").update({ status: campaignStatus }).eq("id", campaignId);
+    //   }
+    // }
+
+
     const { data: finalMilestone, error: finalError } = await supabase
       .from("milestones")
       .select("id,title,description,campaign_id,assignee_id,status,start_date,end_date,progress,created_at,updated_at")

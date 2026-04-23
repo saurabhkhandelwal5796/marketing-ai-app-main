@@ -73,12 +73,20 @@ export async function PATCH(req, { params }) {
     if (updateTaskError) throw new Error(updateTaskError.message);
 
     // Recompute milestone progress/status based on tasks
-    const { data: milestoneRow, error: milestoneFetchError } = await supabase
+    // const { data: milestoneRow, error: milestoneFetchError } = await supabase
+    //   .from("milestones")
+    //   .select("id,end_date")
+    //   .eq("id", milestoneId)
+    //   .single();
+    // if (milestoneFetchError) throw new Error(milestoneFetchError.message);
+           const { data: milestoneRow, error: milestoneFetchError } = await supabase
       .from("milestones")
-      .select("id,end_date")
+      .select("id,end_date,campaign_id")
       .eq("id", milestoneId)
       .single();
     if (milestoneFetchError) throw new Error(milestoneFetchError.message);
+
+
 
     const { data: allTasks, error: tasksFetchError } = await supabase
       .from("milestone_tasks")
@@ -89,11 +97,33 @@ export async function PATCH(req, { params }) {
     const progress = computeProgress(allTasks || []);
     const milestoneStatus = computeMilestoneStatus(allTasks || [], milestoneRow?.end_date || null);
 
-    const { error: updateMilestoneError } = await supabase
+    // const { error: updateMilestoneError } = await supabase
+    //   .from("milestones")
+    //   .update({ progress, status: milestoneStatus })
+    //   .eq("id", milestoneId);
+    // if (updateMilestoneError) throw new Error(updateMilestoneError.message);
+        const { error: updateMilestoneError } = await supabase
       .from("milestones")
       .update({ progress, status: milestoneStatus })
       .eq("id", milestoneId);
     if (updateMilestoneError) throw new Error(updateMilestoneError.message);
+
+    // Auto-update campaign status based on all its milestones
+    const campaignId = milestoneRow?.campaign_id || body?.campaign_id || null;
+    if (campaignId) {
+      const { data: allMilestones } = await supabase
+        .from("milestones")
+        .select("id,status")
+        .eq("campaign_id", campaignId);
+      if (Array.isArray(allMilestones) && allMilestones.length > 0) {
+        const statuses = allMilestones.map((m) => (m.id === milestoneId ? milestoneStatus : m.status));
+        let campaignStatus = "Open";
+        if (statuses.every((s) => s === "Completed")) campaignStatus = "Closed";
+        else if (statuses.some((s) => s === "In Progress" || s === "Completed")) campaignStatus = "In progress";
+        await supabase.from("campaigns").update({ status: campaignStatus }).eq("id", campaignId);
+      }
+    }
+
 
     let assigneeName = "-";
     let assigneeAvatar = "";
