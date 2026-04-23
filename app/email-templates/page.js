@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
 function SortableHeader({ label, sortKey, sortBy, sortOrder, onSort }) {
   const isActive = sortBy === sortKey;

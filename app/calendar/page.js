@@ -27,9 +27,8 @@ export default function CalendarPage() {
   const [users, setUsers] = useState([]);
   const [sessionUser, setSessionUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState("");
+  const [toast, setToast] = useState(null);
 
   const [formOpen, setFormOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -37,6 +36,26 @@ export default function CalendarPage() {
   const [selectedMeeting, setSelectedMeeting] = useState(null);
 
   const userMap = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+
+  const trackCalendarAction = async (actionName, details) => {
+    try {
+      const currentUserId = await getCurrentUserId();
+      await fetch("/api/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: currentUserId || "anonymous",
+          event_type: "action",
+          page_name: "Calendar",
+          action_name: actionName,
+          details,
+          session_id: getCurrentSessionId(),
+        }),
+      });
+    } catch {
+      // ignore tracking failures
+    }
+  };
 
   // Audit tracking - page visit
   useEffect(() => {
@@ -65,7 +84,6 @@ export default function CalendarPage() {
 
   const loadMeetings = async (date = activeDate, mode = view) => {
     setLoading(true);
-    setError("");
     try {
       const range = getRangeForView(date, mode);
       const params = new URLSearchParams({
@@ -90,7 +108,7 @@ export default function CalendarPage() {
       setUsers(Array.isArray(usersData.users) ? usersData.users : []);
       setSessionUser(sessionData.user);
     } catch (e) {
-      setError(e?.message || "Failed to load calendar.");
+      showToast("error", e?.message || "Failed to load calendar.");
     } finally {
       setLoading(false);
     }
@@ -103,9 +121,13 @@ export default function CalendarPage() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(""), 2500);
+    const timer = setTimeout(() => setToast(null), 2500);
     return () => clearTimeout(timer);
   }, [toast]);
+
+  const showToast = (type, message) => {
+    setToast({ type, message });
+  };
 
   const openCreateModal = (date = null) => {
     const baseDate = date ? new Date(date) : new Date();
@@ -132,8 +154,11 @@ export default function CalendarPage() {
   const canManageMeeting = (meeting) => !!(sessionUser?.is_admin || meeting?.created_by === sessionUser?.id);
 
   const saveMeeting = async (payload) => {
+    if (!String(payload?.description || "").trim()) {
+      showToast("error", "Description is required.");
+      return;
+    }
     setSaving(true);
-    setError("");
     try {
       const formatted = {
         ...payload,
@@ -153,23 +178,33 @@ export default function CalendarPage() {
           });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to save meeting.");
+      const savedMeeting = data?.meeting || null;
       
       // Track action
       if (editingMeeting?.id) {
-        await trackAction("Updated Calendar Event", `Updated event: ${payload.title}`);
+        await trackCalendarAction("Updated Calendar Event", `Updated event: ${payload.title}`);
       } else {
         const eventDate = formatDateLabel(new Date(payload.start_time));
-        await trackAction("Created Calendar Event", `Created event: ${payload.title} on ${eventDate}`);
+        await trackCalendarAction("Created Calendar Event", `Created event: ${payload.title} on ${eventDate}`);
       }
       
       setFormOpen(false);
       setEditingMeeting(null);
       setSelectedMeeting(null);
       setDetailsOpen(false);
-      setToast(editingMeeting?.id ? "Meeting updated successfully." : "Meeting created successfully.");
-      await loadMeetings(activeDate, view);
+      showToast("success", editingMeeting?.id ? "Meeting updated successfully." : "Meeting is scheduled");
+      if (savedMeeting?.id) {
+        setMeetings((prev) => {
+          if (editingMeeting?.id) {
+            return prev.map((item) => (item.id === savedMeeting.id ? savedMeeting : item));
+          }
+          return [...prev, savedMeeting].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+        });
+      } else {
+        await loadMeetings(activeDate, view);
+      }
     } catch (e) {
-      setError(e?.message || "Failed to save meeting.");
+      showToast("error", e?.message || "Failed to save meeting.");
     } finally {
       setSaving(false);
     }
@@ -179,17 +214,16 @@ export default function CalendarPage() {
     if (!meeting?.id) return;
     const confirmDelete = window.confirm(`Delete "${meeting.title}"?`);
     if (!confirmDelete) return;
-    setError("");
     try {
       const res = await fetch(`/api/meetings/${meeting.id}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete meeting.");
       setDetailsOpen(false);
       setSelectedMeeting(null);
-      setToast("Meeting deleted successfully.");
-      await loadMeetings(activeDate, view);
+      showToast("success", "Meeting deleted successfully.");
+      setMeetings((prev) => prev.filter((item) => item.id !== meeting.id));
     } catch (e) {
-      setError(e?.message || "Failed to delete meeting.");
+      showToast("error", e?.message || "Failed to delete meeting.");
     }
   };
 
@@ -206,12 +240,15 @@ export default function CalendarPage() {
         totalEvents={meetings.length}
       />
 
-      {error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      ) : null}
       {toast ? (
-        <div className="fixed right-6 top-20 z-50 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 shadow-md">
-          {toast}
+        <div
+          className={`fixed left-1/2 top-6 z-[120] -translate-x-1/2 rounded-lg px-4 py-2 text-sm font-medium shadow-md ${
+            toast?.type === "error"
+              ? "border border-red-200 bg-red-50 text-red-700"
+              : "border border-emerald-200 bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {toast?.message}
         </div>
       ) : null}
 

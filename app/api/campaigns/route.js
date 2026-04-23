@@ -19,6 +19,13 @@ const isMissingColumnError = (message = "") =>
   /Could not find the 'updated_by' column of 'campaigns' in the schema cache/i.test(message);
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+const isMissingCampaignExtraColumnError = (message = "") =>
+  /column .*campaign_no.* does not exist/i.test(message) ||
+  /column .*status.* does not exist/i.test(message) ||
+  /Could not find the 'campaign_no' column of 'campaigns' in the schema cache/i.test(message) ||
+  /Could not find the 'status' column of 'campaigns' in the schema cache/i.test(message);
+
+const ALLOWED_STATUSES = new Set(["Open", "In progress", "Closed"]);
 
 export async function GET(req) {
   try {
@@ -30,12 +37,13 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 20, 1), 50);
     const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
+    const search = String(searchParams.get("search") || "").trim();
     const supabase = getSupabaseServerClient();
     let campaigns = null;
     let error = null;
     let query = supabase
       .from("campaigns")
-      .select("id,name,company,goal,created_at,updated_at,last_activity_at,created_by,updated_by")
+      .select("id,name,company,goal,created_at,updated_at,last_activity_at,created_by,updated_by,campaign_no,status")
       .order("last_activity_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -44,9 +52,18 @@ export async function GET(req) {
       if (allowedActors.length) query = query.in("created_by", allowedActors);
       else query = query.eq("id", "__none__");
     }
+    if (search) {
+      const escapedSearch = search.replace(/[%_]/g, "");
+      const numericSearch = Number.parseInt(search, 10);
+      if (Number.isFinite(numericSearch)) {
+        query = query.or(`name.ilike.%${escapedSearch}%,campaign_no.eq.${numericSearch}`);
+      } else {
+        query = query.ilike("name", `%${escapedSearch}%`);
+      }
+    }
 
     ({ data: campaigns, error } = await query);
-    if (error && isMissingColumnError(error.message || "")) {
+    if (error && (isMissingColumnError(error.message || "") || isMissingCampaignExtraColumnError(error.message || ""))) {
       let fallback = supabase
         .from("campaigns")
         .select("id,name,company,goal,created_at,updated_at,last_activity_at")
@@ -59,6 +76,10 @@ export async function GET(req) {
           { campaigns: [], hasMore: false },
           { status: 200 }
         );
+      }
+      if (search) {
+        const escapedSearch = search.replace(/[%_]/g, "");
+        fallback = fallback.ilike("name", `%${escapedSearch}%`);
       }
 
       ({ data: campaigns, error } = await fallback);
@@ -78,8 +99,10 @@ export async function GET(req) {
       const { data: users } = await supabase.from("users").select("id,name").in("id", uuidIds);
       userNameById = Object.fromEntries((users || []).map((user) => [user.id, user.name]));
     }
-    const enrichedCampaigns = (campaigns || []).map((item) => ({
+    const enrichedCampaigns = (campaigns || []).map((item, index) => ({
       ...item,
+      campaign_no: Number.isFinite(Number(item?.campaign_no)) ? Number(item.campaign_no) : offset + index + 1,
+      status: ALLOWED_STATUSES.has(String(item?.status || "")) ? item.status : "Open",
       created_by_name: userNameById[item.created_by] || (item.created_by && !UUID_RE.test(item.created_by) ? item.created_by : "-"),
       last_modified_by_name:
         userNameById[item.updated_by] || (item.updated_by && !UUID_RE.test(item.updated_by) ? item.updated_by : "-"),
@@ -99,6 +122,18 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized. Please log in again." }, { status: 401 });
     }
     const supabase = getSupabaseServerClient();
+    let nextCampaignNo = null;
+    try {
+      const { data: maxCampaign } = await supabase
+        .from("campaigns")
+        .select("campaign_no")
+        .order("campaign_no", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      nextCampaignNo = Number(maxCampaign?.campaign_no || 0) + 1;
+    } catch {
+      nextCampaignNo = null;
+    }
     const baseInsert = {
       name: body?.name || "Generating title...",
       company: body?.company || "",
@@ -112,6 +147,8 @@ export async function POST(req) {
       recommended_actions: [],
       selected_actions: [],
       outputs: {},
+      status: ALLOWED_STATUSES.has(String(body?.status || "")) ? String(body.status) : "Open",
+      ...(nextCampaignNo ? { campaign_no: nextCampaignNo } : {}),
     };
     let data = null;
     let error = null;
@@ -126,6 +163,22 @@ export async function POST(req) {
       ])
       .select("id,name,company,goal,updated_at,last_activity_at,created_by,updated_by")
       .single());
+    if (error && isMissingCampaignExtraColumnError(error.message || "")) {
+      const fallbackInsert = { ...baseInsert };
+      delete fallbackInsert.status;
+      delete fallbackInsert.campaign_no;
+      ({ data, error } = await supabase
+        .from("campaigns")
+        .insert([
+          {
+            ...fallbackInsert,
+            created_by: currentActor || null,
+            updated_by: currentActor || null,
+          },
+        ])
+        .select("id,name,company,goal,updated_at,last_activity_at,created_by,updated_by")
+        .single());
+    }
     if (error && isMissingColumnError(error.message || "")) {
       return NextResponse.json(
         {

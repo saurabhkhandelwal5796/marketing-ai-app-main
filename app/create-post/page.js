@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+// import { useEffect, useMemo, useState } from "react";
 import { BriefcaseBusiness, Camera, ChevronDown, ChevronUp, FileText, Mail, MessageCircle, Megaphone, Send, Sparkles, Pencil, Copy } from "lucide-react";
 
 function normalizeEmail(value) {
@@ -25,8 +26,12 @@ function LoadingSpinner({ size = "h-4 w-4" }) {
   return <span className={`inline-block animate-spin rounded-full border-2 border-white/35 border-t-white ${size}`} />;
 }
 
-export default function CreatePostPage() {
-  const [input, setInput] = useState("");
+// export default function CreatePostPage() {
+export default function CreatePostPage({ initialInput = "", embedded = false }) {
+
+  // const [input, setInput] = useState("");
+  const [input, setInput] = useState(() => String(initialInput || ""));
+
   const [suggestions, setSuggestions] = useState([]);
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [generatingSuggestions, setGeneratingSuggestions] = useState(false);
@@ -52,6 +57,11 @@ export default function CreatePostPage() {
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const [linkedinConnectedAccount, setLinkedinConnectedAccount] = useState("");
   const [checkingLinkedinStatus, setCheckingLinkedinStatus] = useState(false);
+  //Added below 3 lines
+  const [useTemplate, setUseTemplate] = useState(false);
+  const [matchedTemplateName, setMatchedTemplateName] = useState("");
+  const attachmentInputRef = useRef(null);
+
 
   const needsRecipients = useMemo(
     () => selectedTypes.some((type) => type === "email_campaign" || type === "newsletter"),
@@ -87,6 +97,35 @@ export default function CreatePostPage() {
     });
     setActiveRecipient((prev) => (prev && recipients.includes(prev) ? prev : recipients[0] || ""));
   };
+  //Added 
+  const findBestTemplateForInput = async (text) => {
+  const search = String(text || "").trim();
+  if (!search) return null;
+  const STOP_WORDS = new Set(["want","some","plan","have","this","that","with","from","your","will","been","they","them","then","than","when","what","also","into","more","make","like","just","over","such","very","much","need","good","well","only","even","most","many","each","both","here","there","their","about","would","could","should","generate","create","including","business","marketing","campaign","email","send","write","help","give","provide","using","based","please"]);
+  const keywords = search.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 3 && !STOP_WORDS.has(t));
+
+  const bodyFallbacks = [];
+
+  for (const keyword of keywords) {
+    const res = await fetch(`/api/email-templates?search=${encodeURIComponent(keyword)}&page=1&pageSize=20`);
+    const data = await res.json();
+    if (!res.ok || data?.error) continue;
+    const templates = Array.isArray(data?.templates) ? data.templates : [];
+    // Name match is highest priority — return immediately
+    const nameMatch = templates.find((tpl) => String(tpl?.name || "").toLowerCase().includes(keyword));
+    if (nameMatch) return nameMatch;
+    // Save body matches as fallback
+    const bodyMatch = templates.find((tpl) =>
+      `${tpl?.subject || ""} ${tpl?.body || ""}`.toLowerCase().includes(keyword)
+    );
+    if (bodyMatch) bodyFallbacks.push(bodyMatch);
+  }
+
+  return bodyFallbacks[0] || null;
+};
+
+ //Added
+
 
   useEffect(() => {
     let mounted = true;
@@ -113,6 +152,18 @@ export default function CreatePostPage() {
       mounted = false;
     };
   }, []);
+  //Added
+  useEffect(() => {
+    if (!embedded || !initialInput) return;
+    setInput(String(initialInput));
+  }, [embedded, initialInput]);
+
+  useEffect(() => {
+    if (!embedded || !initialInput?.trim()) return;
+    generateStrategy();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [embedded]);
+  //Added
 
   const generateStrategy = async () => {
     if (!input.trim()) return;
@@ -179,39 +230,105 @@ export default function CreatePostPage() {
     }
   };
 
-  const generateContentForSelectedTypes = async () => {
-    if (!input.trim() || selectedTypes.length === 0) return;
-    setGeneratingContent(true);
-    setMessage("");
-    try {
-      const res2 = await fetch("/api/create-post/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, selectedTypes }),
-      });
-      const data2 = await res2.json();
-      if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to generate content.");
+  // const generateContentForSelectedTypes = async () => {
+  //   if (!input.trim() || selectedTypes.length === 0) return;
+  //   setGeneratingContent(true);
+  //   setMessage("");
+  //   try {
+  //     const res2 = await fetch("/api/create-post/generate", {
+  //       method: "POST",
+  //       headers: { "Content-Type": "application/json" },
+  //       body: JSON.stringify({ input, selectedTypes }),
+  //     });
+  //     const data2 = await res2.json();
+  //     if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to generate content.");
 
-      const next = { ...contentByType };
-      (data2.contents || []).forEach((item) => {
-        const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
-        next[item.typeId] = {
-          typeLabel: item.typeLabel,
-          content: `${item.main || ""}${hashtagsText}`.trim(),
-          subject: item.subject || "",
-          imageUrl: contentByType[item.typeId]?.imageUrl || "",
-        };
-      });
-      setContentByType(next);
-      if (!selectedTypes.includes(activeType)) {
-         setActiveType(selectedTypes[0] || "");
-      }
-    } catch (e) {
-      setMessage(e?.message || "Failed to generate content.");
-    } finally {
-      setGeneratingContent(false);
+  //     const next = { ...contentByType };
+  //     (data2.contents || []).forEach((item) => {
+  //       const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
+  //       next[item.typeId] = {
+  //         typeLabel: item.typeLabel,
+  //         content: `${item.main || ""}${hashtagsText}`.trim(),
+  //         subject: item.subject || "",
+  //         imageUrl: contentByType[item.typeId]?.imageUrl || "",
+  //       };
+  //     });
+  //     setContentByType(next);
+  //     if (!selectedTypes.includes(activeType)) {
+  //        setActiveType(selectedTypes[0] || "");
+  //     }
+  //   } catch (e) {
+  //     setMessage(e?.message || "Failed to generate content.");
+  //   } finally {
+  //     setGeneratingContent(false);
+  //   }
+  // };  
+  //Added
+  const generateContentForSelectedTypes = async () => {
+  if (!input.trim() || selectedTypes.length === 0) return;
+  setGeneratingContent(true);
+  setMessage("");
+  setMatchedTemplateName("");
+  try {
+    const emailSelected = selectedTypes.includes("email_campaign") || selectedTypes.includes("newsletter");
+    let matchedTemplate = null;
+    if (useTemplate && emailSelected) {
+      matchedTemplate = await findBestTemplateForInput(input);
     }
+
+    const res2 = await fetch("/api/create-post/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input, selectedTypes }),
+    });
+    const data2 = await res2.json();
+    if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to generate content.");
+
+    // const next = { ...contentByType };
+    // (data2.contents || []).forEach((item) => {
+    //   const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
+    //   const isEmailType = item.typeId === "email_campaign" || item.typeId === "newsletter";
+    //   const autoAttachments = matchedTemplate && isEmailType
+    //     ? (Array.isArray(matchedTemplate.case_studies) ? matchedTemplate.case_studies : [])
+    //         .map((f) => ({ name: String(f?.name || "").trim(), type: String(f?.type || "application/octet-stream"), size: Number(f?.size || 0), dataUrl: String(f?.dataUrl || "").trim(), fromTemplate: true }))
+    //         .filter((f) => f.name && f.dataUrl)
+    //     : [];
+    //   next[item.typeId] = {
+    //     typeLabel: item.typeLabel,
+    //     content: `${item.main || ""}${hashtagsText}`.trim(),
+    //     subject: item.subject || "",
+    //     imageUrl: contentByType[item.typeId]?.imageUrl || "",
+    //     attachments: autoAttachments,
+    //   };
+    // });
+    //Added
+    const next = {};  // ← Start fresh instead of spreading old contentByType
+(data2.contents || []).forEach((item) => {
+  const hashtagsText = Array.isArray(item.hashtags) && item.hashtags.length ? `\n\n${item.hashtags.join(" ")}` : "";
+  const isEmailType = item.typeId === "email_campaign" || item.typeId === "newsletter";
+  const autoAttachments = matchedTemplate && isEmailType
+    ? (Array.isArray(matchedTemplate.case_studies) ? matchedTemplate.case_studies : [])
+        .map((f) => ({ name: String(f?.name || "").trim(), type: String(f?.type || "application/octet-stream"), size: Number(f?.size || 0), dataUrl: String(f?.dataUrl || "").trim(), fromTemplate: true }))
+        .filter((f) => f.name && f.dataUrl)
+    : [];
+  next[item.typeId] = {
+    typeLabel: item.typeLabel,
+    content: `${item.main || ""}${hashtagsText}`.trim(),
+    subject: item.subject || "",
+    imageUrl: contentByType[item.typeId]?.imageUrl || "",  // Keep image if exists
+    attachments: autoAttachments,  // Fresh attachments from new template match
   };
+}); //Added
+
+    setContentByType(next);
+    if (matchedTemplate && emailSelected) setMatchedTemplateName(String(matchedTemplate.name || ""));
+    if (!selectedTypes.includes(activeType)) setActiveType(selectedTypes[0] || "");
+  } catch (e) {
+    setMessage(e?.message || "Failed to generate content.");
+  } finally {
+    setGeneratingContent(false);
+  }
+};       //Added
 
   const generateImageForActiveType = async () => {
     if (!activeType) return;
@@ -480,7 +597,7 @@ export default function CreatePostPage() {
                  ))
                )}
              </div>
-             {suggestions.length > 0 && (
+             {/* {suggestions.length > 0 && (
                <div className="mt-5 flex justify-end border-t border-slate-100 pt-4">
                  <button
                    onClick={generateContentForSelectedTypes}
@@ -491,7 +608,30 @@ export default function CreatePostPage() {
                   {generatingContent ? "Generating..." : "Confirm Platforms & Generate"}
                  </button>
                </div>
-             )}
+             )} */}
+            {suggestions.length > 0 && (
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={useTemplate}
+                  onChange={(e) => setUseTemplate(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                Use template
+              </label>
+              <button
+                onClick={generateContentForSelectedTypes}
+                disabled={generatingContent || selectedTypes.length === 0}
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-50"
+              >
+                {generatingContent ? <LoadingSpinner /> : null}
+                {generatingContent ? "Generating..." : "Confirm Platforms & Generate"}
+              </button>
+            </div>
+          )}
+
+
            </section>
 
            {/* C. Content Editor */}
@@ -551,7 +691,7 @@ export default function CreatePostPage() {
              <div className="mt-4 flex flex-col rounded-xl border border-slate-200 bg-slate-50 p-3">
                 {activeType && contentByType[activeType] ? (
                   <>
-                    {(activeType === "email_campaign" || activeType === "newsletter") && (
+                    {/* {(activeType === "email_campaign" || activeType === "newsletter") && (
                       <input
                         value={contentByType[activeType].subject}
                         onChange={(e) => setContentByType(prev => ({...prev, [activeType]: {...prev[activeType], subject: e.target.value}}))}
@@ -564,7 +704,97 @@ export default function CreatePostPage() {
                       onChange={(e) => setContentByType(prev => ({...prev, [activeType]: {...prev[activeType], content: e.target.value}}))}
                       rows={14}
                       className="w-full resize-none bg-transparent px-2 py-1 text-sm text-slate-800 outline-none"
-                    />
+                    /> */}
+           {(activeType === "email_campaign" || activeType === "newsletter") && (
+  <input
+    value={contentByType[activeType].subject}
+    onChange={(e) => setContentByType(prev => ({...prev, [activeType]: {...prev[activeType], subject: e.target.value}}))}
+    placeholder="Email Subject"
+    className="mb-2 w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+  />
+)}
+<textarea
+  value={contentByType[activeType].content}
+  onChange={(e) => setContentByType(prev => ({...prev, [activeType]: {...prev[activeType], content: e.target.value}}))}
+  rows={14}
+  className="w-full resize-none bg-transparent px-2 py-1 text-sm text-slate-800 outline-none"
+/>
+{(activeType === "email_campaign" || activeType === "newsletter") && (
+  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-sm font-semibold text-slate-900">Attachments</p>
+      <button
+        type="button"
+        onClick={() => attachmentInputRef.current?.click()}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        + Add from computer
+      </button>
+    </div>
+    <input
+      ref={attachmentInputRef}
+      type="file"
+      multiple
+      className="hidden"
+      onChange={async (e) => {
+        const MAX = 5 * 1024 * 1024;
+        try {
+          const fileList = Array.from(e.target.files || []);
+          for (const f of fileList) {
+            if (f.size > MAX) throw new Error(`"${f.name}" exceeds 5 MB limit.`);
+          }
+          const uploads = await Promise.all(
+            fileList.map((file) =>
+              new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve({ name: file.name, type: file.type || "application/octet-stream", size: file.size, dataUrl: String(reader.result || "") });
+                reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+                reader.readAsDataURL(file);
+              })
+            )
+          );
+          setContentByType((prev) => ({
+            ...prev,
+            [activeType]: {
+              ...prev[activeType],
+              attachments: [...(prev[activeType]?.attachments || []), ...uploads],
+            },
+          }));
+        } catch (err) {
+          setMessage(err?.message || "Failed to attach file.");
+        } finally {
+          e.target.value = "";
+        }
+      }}
+    />
+    {(contentByType[activeType]?.attachments || []).length > 0 ? (
+      <div className="mt-2 space-y-1.5">
+        {(contentByType[activeType].attachments).map((file, idx) => (
+          <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+            <p className="truncate text-xs text-slate-700">{file.name}</p>
+            <button
+              type="button"
+              onClick={() =>
+                setContentByType((prev) => ({
+                  ...prev,
+                  [activeType]: {
+                    ...prev[activeType],
+                    attachments: prev[activeType].attachments.filter((_, i) => i !== idx),
+                  },
+                }))
+              }
+              className="ml-2 shrink-0 text-xs font-semibold text-slate-400 hover:text-red-600"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+    ) : (
+      <p className="mt-2 text-xs text-slate-400">No attachments added.</p>
+    )}
+  </div>
+)}         
                   </>
                 ) : (
                   <div className="flex h-72 items-center justify-center text-sm font-medium text-slate-400">
@@ -879,6 +1109,7 @@ export default function CreatePostPage() {
                      />
                    </div>
                 </div>
+
 
                 <div className="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
                   <div className="flex items-center gap-2 mb-3">

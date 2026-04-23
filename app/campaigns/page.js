@@ -23,6 +23,7 @@ export default function CampaignListPage() {
   const [selectedCampaignIds, setSelectedCampaignIds] = useState([]);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
+  const [search, setSearch] = useState("");
   const PAGE_SIZE = 15;
   const [isFetching, setIsFetching] = useState(false);
   const createInFlightRef = useRef(false);
@@ -36,7 +37,12 @@ export default function CampaignListPage() {
     else setLoading(true);
     if (!append) setError("");
     try {
-      const res = await fetch(`/api/campaigns?limit=${PAGE_SIZE}&offset=${nextOffset}`);
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(nextOffset),
+      });
+      if (search.trim()) params.set("search", search.trim());
+      const res = await fetch(`/api/campaigns?${params.toString()}`);
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to fetch campaigns.");
       const nextRows = Array.isArray(data?.campaigns) ? data.campaigns : [];
@@ -51,7 +57,7 @@ export default function CampaignListPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [PAGE_SIZE]);
+  }, [PAGE_SIZE, search]);
 
   useEffect(() => {
     loadCampaigns({ nextOffset: 0, append: false });
@@ -93,6 +99,10 @@ export default function CampaignListPage() {
     }
   };
 
+  useEffect(() => {
+    setSelectedCampaignIds([]);
+  }, [search]);
+
   const allSelected = campaigns.length > 0 && selectedCampaignIds.length === campaigns.length;
 
   const toggleSelectAll = () => {
@@ -133,10 +143,18 @@ export default function CampaignListPage() {
   return (
     <main className="p-6">
       <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-slate-900">Campaigns</h1>
             <p className="mt-1 text-sm text-slate-500">Open an existing campaign or create a new one.</p>
+          </div>
+          <div className="w-full max-w-sm">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by Campaign no. or name"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+            />
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -172,7 +190,9 @@ export default function CampaignListPage() {
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th className="px-4 py-3 font-medium">S.No.</th>
+                  <th className="px-4 py-3 font-medium">Campaign no.</th>
                   <th className="px-4 py-3 font-medium">Campaign Name</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 font-medium">Created Date</th>
                   <th className="px-4 py-3 font-medium">Last Modified Date</th>
                   <th className="px-4 py-3 font-medium">Created By</th>
@@ -196,9 +216,11 @@ export default function CampaignListPage() {
                     className="cursor-pointer border-t border-slate-200 transition hover:bg-slate-50"
                   >
                     <td className="px-4 py-3 text-slate-600">{idx + 1}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.campaign_no ?? "-"}</td>
                     <td className="px-4 py-3 font-medium text-blue-700 underline-offset-2 hover:underline">
                       {item.name || "Generating title..."}
                     </td>
+                    <td className="px-4 py-3 text-slate-600">{item.status || "Open"}</td>
                     <td className="px-4 py-3 text-slate-600">{formatDate(item.created_at)}</td>
                     <td className="px-4 py-3 text-slate-600">{formatDate(item.updated_at)}</td>
                     <td className="px-4 py-3 text-slate-600">{item.created_by_name || item.created_by || "-"}</td>

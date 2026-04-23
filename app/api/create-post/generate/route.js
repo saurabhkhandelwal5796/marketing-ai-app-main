@@ -64,7 +64,7 @@ function parseJson(text) {
   }
 }
 
-async function generateForType(apiKey, typeId, prompt) {
+async function generateForType(apiKey, typeId, prompt, templateReference = null) {
   const platform = humanizeType(typeId);
   const isEmailType = typeId === "email_campaign" || typeId === "newsletter";
   const channelRules = isEmailType
@@ -95,6 +95,13 @@ Rules:
 - hashtags should be empty [] for email/newsletter.
 - subject required only for email/newsletter, otherwise empty string.
 - Keep language clear and publish-ready.
+${isEmailType && templateReference
+  ? `- For email output, use this template as style/reference (do not copy blindly; adapt to the user prompt):
+Template Name: ${String(templateReference?.name || "")}
+Template Subject: ${String(templateReference?.subject || "")}
+Template Body:
+${String(templateReference?.body || "")}`
+  : ""}
 ${channelRules}`;
 
   const res = await fetch(OPENAI_URL, {
@@ -130,6 +137,10 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const prompt = String(body?.input || "").trim();
     const selectedTypes = Array.isArray(body?.selectedTypes) ? body.selectedTypes.filter(Boolean) : [];
+    const templateReference =
+      body?.templateReference && typeof body.templateReference === "object"
+        ? body.templateReference
+        : null;
     if (!prompt || selectedTypes.length === 0) {
       return NextResponse.json({ error: "Input and selected types are required." }, { status: 400 });
     }
@@ -142,7 +153,7 @@ export async function POST(req) {
       contents = await Promise.all(
         selectedTypes.map(async (typeId) => {
           try {
-            return await generateForType(apiKey, typeId, prompt);
+            return await generateForType(apiKey, typeId, prompt, templateReference);
           } catch {
             return fallbackContent(typeId, prompt);
           }

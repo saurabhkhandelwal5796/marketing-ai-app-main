@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Plus, Search } from "lucide-react";
+import { Download, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 import Avatar from "../../components/Avatar";
@@ -248,13 +248,6 @@ export default function MilestonesPage() {
             >
               <Download size={16} />
               Export
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              <Plus size={16} />
-              Create Campaign
             </button>
           </div>
         </section>
