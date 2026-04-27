@@ -46,23 +46,36 @@ export default function PrimaryKPIs({ metrics, loading }) {
     <div className="space-y-6">
       {/* ROW 1: Campaign + Tasks */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
-        <KPICard loading={loading} title="Open Campaigns" value={metrics.openCampaigns || 0} growth={12.4} subText="Overall" icon={Megaphone} />
-        <KPICard loading={loading} title="Closed Campaigns" value={metrics.closedCampaigns || 0} growth={8.1} subText="This year" icon={CheckCircle2} />
-        <KPICard loading={loading} title="Open Tasks" value={metrics.openTasks || 0} growth={-2.3} subText="Overall" icon={ClipboardList} />
-        <KPICard loading={loading} title="Closed Tasks" value={metrics.closedTasks || 0} growth={15.2} subText="This year" icon={CheckCircle2} />
+        {/* <KPICard loading={loading} title="Open Campaigns" value={metrics.openCampaigns || 0} growth={12.4} subText="Overall" icon={Megaphone} /> */}
+        {/* <KPICard loading={loading} title="Closed Campaigns" value={metrics.closedCampaigns || 0} growth={8.1} subText="This year" icon={CheckCircle2} /> */}
+        {/* <KPICard loading={loading} title="Open Tasks" value={metrics.openTasks || 0} growth={-2.3} subText="Overall" icon={ClipboardList} /> */}
+        {/* <KPICard loading={loading} title="Closed Tasks" value={metrics.closedTasks || 0} growth={15.2} subText="This year" icon={CheckCircle2} /> */}
+        <KPICard loading={loading} title="Open Campaigns" value={metrics.openCampaigns || 0} subText="Overall" icon={Megaphone} />
+        <KPICard loading={loading} title="Closed Campaigns" value={metrics.closedCampaigns || 0} subText="Overall" icon={CheckCircle2} />
+        <KPICard loading={loading} title="Open Tasks" value={metrics.openTasks || 0} subText="Overall" icon={ClipboardList} />
+        <KPICard loading={loading} title="Closed Tasks" value={metrics.closedTasks || 0} subText="Overall" icon={CheckCircle2} />
+
       </div>
 
       {/* ROW 2: Milestones */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <KPICard loading={loading} title="Open Milestones" value={metrics.openMilestones || 0} growth={5.5} subText="Overall" icon={Flag} />
-        <KPICard loading={loading} title="Closed Milestones" value={metrics.closedMilestones || 0} growth={20.1} subText="This year" icon={CheckCircle2} />
+        {/* <KPICard loading={loading} title="Open Milestones" value={metrics.openMilestones || 0} growth={5.5} subText="Overall" icon={Flag} />
+        <KPICard loading={loading} title="Closed Milestones" value={metrics.closedMilestones || 0} growth={20.1} subText="This year" icon={CheckCircle2} /> */}
+      <KPICard loading={loading} title="Open Milestones" value={metrics.openMilestones || 0} subText="Overall" icon={Flag} />
+      <KPICard loading={loading} title="In Progress Milestones" value={metrics.inProgressMilestones || 0} subText="Overall" icon={Flag} />
+      <KPICard loading={loading} title="Overdue Milestones" value={metrics.overdueMilestones || 0} subText="Overall" icon={Flag} />
+      <KPICard loading={loading} title="Closed Milestones" value={metrics.closedMilestones || 0} subText="Overall" icon={CheckCircle2} />
+
       </div>
 
       {/* ROW 3: Channels */}
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-        <KPICard loading={loading} title="Emails Sent" value={metrics.totalEmails || 0} growth={18.5} subText="All time" icon={Mail} />
+        {/* <KPICard loading={loading} title="Emails Sent" value={metrics.totalEmails || 0} growth={18.5} subText="All time" icon={Mail} />
         <KPICard loading={loading} title="LinkedIn Posts" value={metrics.totalLinkedIn || 0} growth={42.3} subText="All time" icon={Globe} />
-        <KPICard loading={loading} title="WhatsApp Msgs" value={metrics.totalWhatsApp || 0} growth={-5.1} subText="All time" icon={MessageCircle} />
+        <KPICard loading={loading} title="WhatsApp Msgs" value={metrics.totalWhatsApp || 0} growth={-5.1} subText="All time" icon={MessageCircle} /> */}
+        <KPICard loading={loading} title="Emails Sent" value={metrics.totalEmails || 0} subText="All time" icon={Mail} />
+        <KPICard loading={loading} title="LinkedIn Posts" value={metrics.totalLinkedIn || 0} subText="All time" icon={Globe} />
+        <KPICard loading={loading} title="WhatsApp Msgs" value={metrics.totalWhatsApp || 0} subText="All time" icon={MessageCircle} />
       </div>
     </div>
   );

@@ -48,7 +48,7 @@ async function enrichMilestones(supabase, milestones) {
 
   const [{ data: campaigns = [] }, { data: users = [] }, { data: taskRows = [] }] = await Promise.all([
     campaignIds.length
-      ? supabase.from("campaigns").select("id,name,company,goal").in("id", campaignIds)
+      ? supabase.from("campaigns").select("id,name,company,goal,created_at").in("id", campaignIds)
       : Promise.resolve({ data: [] }),
     assigneeIds.length
       ? supabase.from("users").select("id,name,email,avatar").in("id", assigneeIds)
@@ -93,6 +93,7 @@ async function enrichMilestones(supabase, milestones) {
       progress,
       campaign_name: campaign?.name || "-",
       campaign_company: campaign?.company || "",
+      campaign_created_at: campaign?.created_at || null,
       assignee_name: assignee?.name || "-",
       assignee_avatar: assignee?.avatar || "",
       task_count: tasks.length,

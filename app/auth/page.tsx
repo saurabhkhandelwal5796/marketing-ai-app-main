@@ -4,7 +4,9 @@ import Image from "next/image";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ensureAuditSessionAtLogin, trackEvent } from "../../lib/auditTracker";
-import { Sparkles } from "lucide-react";
+// import { Sparkles } from "lucide-react";
+import { Sparkles, Eye, EyeOff } from "lucide-react";
+
 
 type AuthMode = "signup" | "signin";
 type SignupField = "firstName" | "lastName" | "email" | "company" | "password" | "confirmPassword";
@@ -78,6 +80,10 @@ export default function AuthPage() {
     password: false,
     confirmPassword: false,
   });
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showSignupConfirm, setShowSignupConfirm] = useState(false);
+  const [showSigninPassword, setShowSigninPassword] = useState(false);
+
   const signupErrors = getSignupErrors(signup);
   const isSignupValid = Object.keys(signupErrors).length === 0;
 
@@ -164,7 +170,9 @@ export default function AuthPage() {
       if (data?.user?.id) {
         trackEvent(String(data.user.id), "login", { page_name: "Auth" });
       }
-      router.replace("/dashboard");
+      // router.replace("/dashboard");
+      window.location.href = "/dashboard";
+
     } catch (err) {
       const message = err instanceof Error ? err.message : "Sign in failed.";
       setError(message);
@@ -293,7 +301,7 @@ export default function AuthPage() {
                 </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <label className="block text-sm font-medium text-slate-700">
-                    Password
+                    {/* Password
                     <input
                       type="password"
                       minLength={8}
@@ -302,16 +310,34 @@ export default function AuthPage() {
                       value={signup.password}
                       onChange={(e) => setSignup((p) => ({ ...p, password: e.target.value }))}
                       onBlur={() => markTouched("password")}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 ${
+                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 ${ */}
+                      Password
+                  <div className="relative mt-1">
+                    <input
+                      type={showSignupPassword ? "text" : "password"}
+                      minLength={8}
+                      required
+                      autoComplete="new-password"
+                      value={signup.password}
+                      onChange={(e) => setSignup((p) => ({ ...p, password: e.target.value }))}
+                      onBlur={() => markTouched("password")}
+                      className={`w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none focus:ring-2 ${
+
                         fieldError("password")
                           ? "border-red-400 focus:border-red-500 focus:ring-red-100"
                           : "border-slate-300 focus:border-blue-500 focus:ring-blue-100"
                       }`}
                     />
+                        <button type="button" onClick={() => setShowSignupPassword((v) => !v)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabIndex={-1}>
+                      {showSignupPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                </div>
+
                     {fieldError("password") ? <p className="mt-1 text-xs text-red-600">{fieldError("password")}</p> : null}
                   </label>
                   <label className="block text-sm font-medium text-slate-700">
-                    Confirm Password
+                    {/* Confirm Password
                     <input
                       type="password"
                       minLength={8}
@@ -320,12 +346,30 @@ export default function AuthPage() {
                       value={signup.confirmPassword}
                       onChange={(e) => setSignup((p) => ({ ...p, confirmPassword: e.target.value }))}
                       onBlur={() => markTouched("confirmPassword")}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 ${
+                      className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 ${ */}
+                      Confirm Password
+                      <div className="relative mt-1">
+                        <input
+                          type={showSignupConfirm ? "text" : "password"}
+                          minLength={8}
+                          required
+                          autoComplete="new-password"
+                          value={signup.confirmPassword}
+                          onChange={(e) => setSignup((p) => ({ ...p, confirmPassword: e.target.value }))}
+                          onBlur={() => markTouched("confirmPassword")}
+                          className={`w-full rounded-lg border px-3 py-2 pr-10 text-sm outline-none focus:ring-2 ${
+
                         fieldError("confirmPassword")
                           ? "border-red-400 focus:border-red-500 focus:ring-red-100"
                           : "border-slate-300 focus:border-blue-500 focus:ring-blue-100"
                       }`}
                     />
+                      <button type="button" onClick={() => setShowSignupConfirm((v) => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabIndex={-1}>
+                        {showSignupConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                  </div>
+
                     {fieldError("confirmPassword") ? (
                       <p className="mt-1 text-xs text-red-600">{fieldError("confirmPassword")}</p>
                     ) : null}
@@ -359,14 +403,29 @@ export default function AuthPage() {
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                   Password
-                  <input
+                  {/* <input
                     type="password"
                     required
                     autoComplete="new-password"
                     value={signin.password}
                     onChange={(e) => setSignin((p) => ({ ...p, password: e.target.value }))}
                     className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  /> */}
+                  <div className="relative mt-1">
+                  <input
+                    type={showSigninPassword ? "text" : "password"}
+                    required
+                    autoComplete="new-password"
+                    value={signin.password}
+                    onChange={(e) => setSignin((p) => ({ ...p, password: e.target.value }))}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                   />
+                  <button type="button" onClick={() => setShowSigninPassword((v) => !v)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600" tabIndex={-1}>
+                    {showSigninPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+
                 </label>
                 <button
                   type="submit"

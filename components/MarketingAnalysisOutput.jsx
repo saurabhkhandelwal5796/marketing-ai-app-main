@@ -618,6 +618,13 @@ export default function MarketingAnalysisOutput({
   const [outreachSubject, setOutreachSubject] = useState("");
   const [outreachBody, setOutreachBody] = useState("");
   const [outreachSending, setOutreachSending] = useState(false);
+  //Added
+  const [linkedinComposerOpen, setLinkedinComposerOpen] = useState(false);
+  const [linkedinRecipient, setLinkedinRecipient] = useState("");
+  const [linkedinMessage, setLinkedinMessage] = useState("");
+  const [linkedinSending, setLinkedinSending] = useState(false);
+  //Added
+
 
   const hasMarketingPlan = Array.isArray(marketingPlan) && marketingPlan.length > 0;
   const assistantAnswer = String(employeeAssistantData?.answer || "");
@@ -777,30 +784,30 @@ export default function MarketingAnalysisOutput({
     }, 650);
   };
 
-  useEffect(() => {
-    // Ask AI finished (planLoading true -> false) -> refresh audience
-    const prev = !!prevPlanLoadingRef.current;
-    const next = !!planLoading;
-    prevPlanLoadingRef.current = next;
-    if (prev && !next) scheduleAudienceRefresh({ reason: "ask_ai" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planLoading]);
+  // useEffect(() => {
+  //   // Ask AI finished (planLoading true -> false) -> refresh audience
+  //   const prev = !!prevPlanLoadingRef.current;
+  //   const next = !!planLoading;
+  //   prevPlanLoadingRef.current = next;
+  //   if (prev && !next) scheduleAudienceRefresh({ reason: "ask_ai" });
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [planLoading]);
 
-  useEffect(() => {
-    // Selecting marketing plan steps -> refresh audience
-    if (!String(description || "").trim()) return;
-    if (!didMountRef.current) return;
-    scheduleAudienceRefresh({ reason: "plan_points_changed" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStepIds, description, marketingPlan]);
+  // useEffect(() => {
+  //   // Selecting marketing plan steps -> refresh audience
+  //   if (!String(description || "").trim()) return;
+  //   if (!didMountRef.current) return;
+  //   scheduleAudienceRefresh({ reason: "plan_points_changed" });
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [selectedStepIds, description, marketingPlan]);
 
-  useEffect(() => {
-    // Selecting detailed points -> refresh audience
-    if (!String(description || "").trim()) return;
-    if (!didMountRef.current) return;
-    scheduleAudienceRefresh({ reason: "detail_points_changed" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDetailIds]);
+  // useEffect(() => {
+  //   // Selecting detailed points -> refresh audience
+  //   if (!String(description || "").trim()) return;
+  //   if (!didMountRef.current) return;
+  //   scheduleAudienceRefresh({ reason: "detail_points_changed" });
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [selectedDetailIds]);
 
   useEffect(() => {
     didMountRef.current = true;
@@ -1721,7 +1728,7 @@ export default function MarketingAnalysisOutput({
       });
       setSelectedDetailIds(new Set());
       setTaskGenerationReady(false);
-      setTagFilter("");
+      setActiveTagFilters([]);
       setThreadsByPointId({});
       setThreadDraftsByPointId({});
       setThreadLoadingByPointId({});
@@ -2689,7 +2696,7 @@ export default function MarketingAnalysisOutput({
 
           {activeTab === "audience" ? (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
                   <button
                     type="button"
@@ -2719,11 +2726,54 @@ export default function MarketingAnalysisOutput({
                 >
                   Download CSV
                 </button>
+              </div> */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
+                <button
+                  type="button"
+                  onClick={() => setAudienceView("companies")}
+                  className={cx(
+                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                    audienceView === "companies" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
+                  )}
+                >
+                  Companies
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAudienceView("employees")}
+                  className={cx(
+                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                    audienceView === "employees" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
+                  )}
+                >
+                  Employees
+                </button>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={downloadAudienceCsv}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Download CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => generateTargetAudience({ reason: "regenerate" })}
+                  // disabled={audienceLoading || (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0)}
+                  disabled={audienceLoading || targetAudience.length === 0 || (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0)}
+                  className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {audienceLoading ? "Regenerating..." : "Regenerate"}
+                </button>
+              </div>
+            </div>
+
 
               {audienceView === "companies" ? (
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {targetAudience.length === 0 ? (
+                  {/* {targetAudience.length === 0 ? (
                     <div className="col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
                       {audienceLoading ? (
                         <ThinkingDisplay preset="marketing_analysis" />
@@ -2731,7 +2781,37 @@ export default function MarketingAnalysisOutput({
                         "Target audience will update when you Ask AI and when you select points."
                       )}
                     </div>
-                  ) : null}
+                  ) : null} */}
+                  {targetAudience.length === 0 ? (
+  <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+    <p className="text-base font-semibold text-slate-900">
+      {audienceLoading ? "Generating target audience" : "Generate Target Audience"}
+    </p>
+    <div className="mt-3 flex justify-center">
+      {audienceLoading ? (
+        <ThinkingDisplay preset="marketing_analysis" className="justify-center" />
+      ) : (
+        <button
+          type="button"
+          onClick={() => generateTargetAudience({ reason: "manual_generate" })}
+          // disabled={!hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0}
+          disabled={!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0}
+
+          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          <Users size={16} />
+          Generate
+        </button>
+      )}
+    </div>
+    {!audienceLoading ? (
+      <p className="mt-3 text-sm text-slate-500">
+        Click Generate to view the target audience. This option becomes available upon giving input in description ,selecting points from either the "Marketing Plans" or "Selected Marketing Plans" sections.
+      </p>
+    ) : null}
+  </div>
+) : null}
+
                   {targetAudience.map((c, idx) => (
                     <motion.article
                       key={`${c.name}-${idx}`}
@@ -2776,55 +2856,128 @@ export default function MarketingAnalysisOutput({
                           const hasAny = !!outreach.email || !!outreach.phone || !!outreach.linkedin || !!outreach.website;
                           if (!hasAny) return null;
                           return (
-                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                              <p className="text-xs font-semibold text-slate-700">Outreach Channels</p>
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {outreach.email ? (
-                                  <a
-                                    href={`mailto:${outreach.email}`}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    title={outreach.email}
-                                  >
-                                    <Mail size={14} />
-                                    Email
-                                  </a>
-                                ) : null}
-                                {outreach.phone ? (
-                                  <a
-                                    href={`tel:${outreach.phone}`}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    title={outreach.phone}
-                                  >
-                                    <Phone size={14} />
-                                    Phone
-                                  </a>
-                                ) : null}
-                                {outreach.linkedin ? (
-                                  <a
-                                    href={outreach.linkedin}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    title="LinkedIn"
-                                  >
-                                    <Link size={14} />
-                                    LinkedIn
-                                  </a>
-                                ) : null}
-                                {outreach.website ? (
-                                  <a
-                                    href={outreach.website}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                    title="Website"
-                                  >
-                                    <Globe size={14} />
-                                    Website
-                                  </a>
-                                ) : null}
-                              </div>
+                            // <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            //   <p className="text-xs font-semibold text-slate-700">Outreach Channels</p>
+                            //   <div className="mt-2 flex flex-wrap gap-2">
+                            //     {outreach.email ? (
+                            //       <a
+                            //         href={`mailto:${outreach.email}`}
+                            //         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            //         title={outreach.email}
+                            //       >
+                            //         <Mail size={14} />
+                            //         Email
+                            //       </a>
+                            //     ) : null}
+                            //     {outreach.phone ? (
+                            //       <a
+                            //         href={`tel:${outreach.phone}`}
+                            //         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            //         title={outreach.phone}
+                            //       >
+                            //         <Phone size={14} />
+                            //         Phone
+                            //       </a>
+                            //     ) : null}
+                            //     {outreach.linkedin ? (
+                            //       <a
+                            //         href={outreach.linkedin}
+                            //         target="_blank"
+                            //         rel="noreferrer"
+                            //         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            //         title="LinkedIn"
+                            //       >
+                            //         <Link size={14} />
+                            //         LinkedIn
+                            //       </a>
+                            //     ) : null}
+                            //     {outreach.website ? (
+                            //       <a
+                            //         href={outreach.website}
+                            //         target="_blank"
+                            //         rel="noreferrer"
+                            //         className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            //         title="Website"
+                            //       >
+                            //         <Globe size={14} />
+                            //         Website
+                            //       </a>
+                            //     ) : null}
+                            //   </div>
+                            // </div>
+                           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs font-semibold text-slate-700">Outreach Channels</p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {/* Email Pill - Always show */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (outreach.email) {
+                                    openContactPopup(e, "email", c.name || "company", outreach.email);
+                                  } else {
+                                    openContactPopup(e, "email", c.name || "company", "Email is not found");
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                title={outreach.email || "Email not available"}
+                              >
+                                <Mail size={14} />
+                                Email
+                              </button>
+
+                              {/* Contact No. Pill - Always show */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (outreach.phone) {
+                                    openContactPopup(e, "call", c.name || "company", outreach.phone);
+                                  } else {
+                                    openContactPopup(e, "call", c.name || "company", "Contact no. is not found");
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                title={outreach.phone || "Contact number not available"}
+                              >
+                                <Phone size={14} />
+                                Contact No.
+                              </button>
+
+                              {/* LinkedIn Pill - Always show */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (outreach.linkedin) {
+                                    window.open(outreach.linkedin, "_blank", "noopener,noreferrer");
+                                  } else {
+                                    openContactPopup(e, "linkedin", c.name || "company", "LinkedIn is not found");
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                title={outreach.linkedin || "LinkedIn not available"}
+                              >
+                                <Link size={14} />
+                                LinkedIn
+                              </button>
+
+                              {outreach.website ? (
+                                <a
+                                  href={outreach.website}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                  title="Website"
+                                >
+                                  <Globe size={14} />
+                                  Website
+                                </a>
+                              ) : null}
                             </div>
+                          </div>
+ 
                           );
                         })()}
                       </div>
@@ -2892,7 +3045,7 @@ export default function MarketingAnalysisOutput({
                               <Info size={12} />
                             </span>
                           </div>
-                          {hasAnyOutreach ? (
+                          {/* {hasAnyOutreach ? (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {outreach.email ? (
                                 <a
@@ -2947,7 +3100,70 @@ export default function MarketingAnalysisOutput({
                             </div>
                           ) : (
                             <p className="mt-3 text-xs text-slate-500">No verified channels available.</p>
-                          )}
+                          )} */}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                        {/* Email Pill - Always show */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            applyEmployeeChannelContext(emp, "email");
+                            if (outreach.email) {
+                              openContactPopup(e, "email", emp.name || "employee", outreach.email);
+                            } else {
+                              openContactPopup(e, "email", emp.name || "employee", "Email is not found");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                          title={outreach.email || "Email not available"}
+                        >
+                          <Mail size={12} />
+                          Email
+                        </button>
+
+                        {/* Contact No. Pill - Always show */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            applyEmployeeChannelContext(emp, "call");
+                            if (outreach.phone) {
+                              openContactPopup(e, "call", emp.name || "employee", outreach.phone);
+                            } else {
+                              openContactPopup(e, "call", emp.name || "employee", "Contact no. is not found");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
+                          title={outreach.phone || "Contact number not available"}
+                        >
+                          <Phone size={12} />
+                          Contact No.
+                        </button>
+
+                        {/* LinkedIn Pill - Always show */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            applyEmployeeChannelContext(emp, "linkedin");
+                            if (outreach.linkedin) {
+                              openContactPopup(e, "linkedin", emp.name || "employee", linkedinUrl);
+                            } else {
+                              openContactPopup(e, "linkedin", emp.name || "employee", "LinkedIn is not found");
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-600 px-2 py-0.5 text-[11px] text-white hover:bg-blue-700"
+                          title={outreach.linkedin || "LinkedIn not available"}
+                        >
+                          <Link size={12} />
+                          LinkedIn
+                        </button>
+                      </div>
+
+
                         </div>
                       );
                     })}
@@ -3032,7 +3248,7 @@ export default function MarketingAnalysisOutput({
                         {assistantAnswer || "AI response will appear here."}
                       </p>
                     </div>
-                    {assistantAnswer && assistantChannelContext ? (
+                    {/* {assistantAnswer && assistantChannelContext ? (
                       <div className="mt-3 grid grid-cols-1 gap-2">
                         {assistantChannelContext === "email" ? (
                           <button
@@ -3079,7 +3295,54 @@ export default function MarketingAnalysisOutput({
                           </button>
                         ) : null}
                       </div>
+                    ) : null}  */}
+
+                    
+                    {assistantChannelContext === "linkedin" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(assistantAnswer || "").catch(() => {});
+                            showToast("success", "LinkedIn message copied.");
+                          }}
+                          className="inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                        >
+                          Copy Message
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const linkedinUrl = selectedEmployeeOutreach.linkedin || "";
+                            if (linkedinUrl) {
+                              navigator.clipboard.writeText(assistantAnswer || "").catch(() => {});
+                              window.open(linkedinUrl, "_blank", "noopener,noreferrer");
+                              showToast("success", "LinkedIn opened. Message copied to clipboard - paste it in the chat.");
+                            } else {
+                              showToast("error", "LinkedIn URL not available for this contact.");
+                            }
+                          }}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                        >
+                          <Link size={16} />
+                          Send via LinkedIn
+                        </button>
+                        {/* <button
+                          type="button"
+                          onClick={() => {
+                            setLinkedinRecipient(selectedEmployee?.name || "");
+                            setLinkedinMessage(assistantAnswer || "");
+                            setLinkedinComposerOpen(true);
+                          }}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+                        >
+                          <Link size={16} />
+                          Send via LinkedIn
+                        </button> */}
+
+                      </>
                     ) : null}
+
                   </aside>
                 </div>
               )}

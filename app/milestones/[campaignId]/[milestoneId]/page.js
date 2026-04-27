@@ -36,7 +36,7 @@ function progressBarColor(status) {
   return "bg-slate-400";
 }
 
-const STATUSES = ["Not Started", "In Progress", "Completed"];
+const STATUSES = ["Not Started", "In Progress", "Completed", "Overdue"];
 const TASK_TYPES = [
   "Generic Task",
   "Company Research",

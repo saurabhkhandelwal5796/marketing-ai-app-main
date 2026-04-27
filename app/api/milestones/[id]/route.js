@@ -99,21 +99,29 @@ export async function PATCH(req, { params }) {
 
     // Auto-update campaign status based on all its milestones
     // // Auto-update campaign status based on all its milestones
-    // const campaignId = updatedMilestone?.campaign_id;
-    // if (campaignId) {
-    //   const { data: allMilestones } = await supabase
-    //     .from("milestones")
-    //     .select("id,status")
-    //     .eq("campaign_id", campaignId);
-    //   if (Array.isArray(allMilestones) && allMilestones.length > 0) {
-    //     const effectiveStatus = normalizeMilestoneStatus(patch.status ?? updatedMilestone.status);
-    //     const statuses = allMilestones.map((m) => (m.id === id ? effectiveStatus : m.status));
-    //     let campaignStatus = "Open";
-    //     if (statuses.every((s) => s === "Completed")) campaignStatus = "Closed";
-    //     else if (statuses.some((s) => s === "In Progress" || s === "Completed")) campaignStatus = "In progress";
-    //     await supabase.from("campaigns").update({ status: campaignStatus }).eq("id", campaignId);
-    //   }
-    // }
+    // Around line 100, replace the commented section with:
+   const campaignId = updatedMilestone?.campaign_id;
+if (campaignId) {
+  const { data: allMilestones } = await supabase
+    .from("milestones")
+    .select("id,status")
+    .eq("campaign_id", campaignId);
+  if (Array.isArray(allMilestones) && allMilestones.length > 0) {
+    const effectiveStatus = isManualStatus ? normalizeMilestoneStatus(patch.status) : status;
+    const statuses = allMilestones.map((m) => (m.id === id ? effectiveStatus : m.status));
+    
+    let campaignStatus = "Open";
+    if (statuses.every((s) => s === "Completed")) {
+      campaignStatus = "Closed";
+    } else if (statuses.every((s) => s === "Not Started")) {
+      campaignStatus = "Open";
+    } else {
+      campaignStatus = "In progress";
+    }
+    
+    await supabase.from("campaigns").update({ status: campaignStatus }).eq("id", campaignId);
+  }
+}
 
 
     const { data: finalMilestone, error: finalError } = await supabase

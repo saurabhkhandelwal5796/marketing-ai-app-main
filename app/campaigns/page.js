@@ -267,7 +267,8 @@ export default function CampaignListPage() {
                   >
                     {/* <td className="px-4 py-3 text-slate-600">{idx + 1}</td> */}
                     <td className="px-4 py-3 font-medium text-slate-700">
-                    {`C-${String(item.campaign_no ?? idx + 1).padStart(2, "0")}`}
+                    {/* {`C-${String(item.campaign_no ?? idx + 1).padStart(2, "0")}`} */}
+                    {item.campaign_no || `C-${String(idx + 1).padStart(2, "0")}`}
                   </td> 
 
                     <td className="px-4 py-3 font-medium text-blue-700 underline-offset-2 hover:underline">
