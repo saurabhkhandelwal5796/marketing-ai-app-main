@@ -767,7 +767,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
         }
       }}
     />
-    {(contentByType[activeType]?.attachments || []).length > 0 ? (
+    {/* {(contentByType[activeType]?.attachments || []).length > 0 ? (
       <div className="mt-2 space-y-1.5">
         {(contentByType[activeType].attachments).map((file, idx) => (
           <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
@@ -792,7 +792,49 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       </div>
     ) : (
       <p className="mt-2 text-xs text-slate-400">No attachments added.</p>
-    )}
+    )} */}
+
+    {(contentByType[activeType]?.attachments || []).length > 0 ? (
+        <div className="mt-2 space-y-1.5">
+          {(contentByType[activeType].attachments).map((file, idx) => (
+            <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = file.dataUrl;
+                  link.download = file.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="truncate text-xs text-blue-600 hover:text-blue-800 hover:underline cursor-pointer flex-1 text-left"
+              >
+                {file.name}
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setContentByType((prev) => ({
+                    ...prev,
+                    [activeType]: {
+                      ...prev[activeType],
+                      attachments: prev[activeType].attachments.filter((_, i) => i !== idx),
+                    },
+                  }))
+                }
+                className="ml-2 shrink-0 text-xs font-semibold text-slate-400 hover:text-red-600"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-slate-400">No attachments added.</p>
+      )}
+
+
   </div>
 )}         
                   </>
@@ -922,7 +964,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                    </button>
                 )}
 
-                {(activeType === "email_campaign" || activeType === "newsletter") && (
+                {/* {(activeType === "email_campaign" || activeType === "newsletter") && (
                    <button
                       onClick={openEmailPopup}
                       className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-800 hover:shadow-md"
@@ -930,7 +972,67 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                       <Mail size={16} />
                       Configure Email Campaign
                    </button>
-                )}
+                )} */}
+                {/* {(activeType === "email_campaign" || activeType === "newsletter") && (
+                <>
+                  <button
+                    onClick={openEmailPopup}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-800 hover:shadow-md"
+                  >
+                    <Mail size={16} />
+                    Configure Email Campaign
+                  </button>
+                  <button
+                    onClick={() => {
+                        const subject = contentByType[activeType]?.subject || "";
+                        const body = contentByType[activeType]?.content || "";
+                        const mailtoUrl = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        window.location.href = mailtoUrl;
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-50"
+                  >
+                    <Send size={16} />
+                    Send Email
+                  </button>
+              </>
+            )} */}
+            {(activeType === "email_campaign" || activeType === "newsletter") && (
+              <>
+                  <button
+                    onClick={openEmailPopup}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-800 hover:shadow-md"
+                  >
+                    <Mail size={16} />
+                    Configure Email Campaign
+                  </button>
+                  <button
+                    onClick={() => {
+                        const subject = contentByType[activeType]?.subject || "";
+                        const body = contentByType[activeType]?.content || "";
+                        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        window.open(gmailUrl, '_blank');
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-50"
+                  >
+                    <Mail size={16} />
+                    Send via Gmail
+                  </button>
+                  <button
+                    onClick={() => {
+                        const subject = contentByType[activeType]?.subject || "";
+                        const body = contentByType[activeType]?.content || "";
+                        const outlookUrl = `https://outlook.office.com/mail/deeplink/compose?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        window.open(outlookUrl, '_blank');
+                    }}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700 shadow-sm transition-all hover:scale-[0.98] hover:bg-blue-100"
+                  >
+                    <Mail size={16} />
+                    Send via Outlook
+                  </button>
+              </>
+            )}
+
+
 
                 {/* Generic publish fallback for other platforms */}
                 {activeType && activeType !== "linkedin_post" && activeType !== "instagram_post" && activeType !== "email_campaign" && activeType !== "newsletter" && (

@@ -95,8 +95,12 @@ export default function MilestonesPage() {
       group.milestones.push(milestone);
       group.statusCounts[milestone.status] = (group.statusCounts[milestone.status] || 0) + 1;
       group.totalProgress += milestone.progress || 0;
-      group.latestCreatedAt = Math.max(group.latestCreatedAt, new Date(milestone.created_at || 0).getTime() || 0);
-      
+      // group.latestCreatedAt = Math.max(group.latestCreatedAt, new Date(milestone.created_at || 0).getTime() || 0);
+      const campaignCreatedAt = milestone.campaign_created_at ? new Date(milestone.campaign_created_at).getTime() : 0;
+      if (!isNaN(campaignCreatedAt) && campaignCreatedAt > 0) {
+        group.latestCreatedAt = campaignCreatedAt;
+      }
+
       if (milestone.assignee_id) {
         group.assignees.set(milestone.assignee_id, {
           name: milestone.assignee_name,
@@ -467,6 +471,7 @@ export default function MilestonesPage() {
                         Open
                       </button>
                     </div>
+                    
                   ))}
                 </div>
                 )}

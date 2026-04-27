@@ -5,6 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { getAuditSessionDurationMs, trackLogout } from "../lib/auditTracker";
 import Avatar from "./Avatar";
+import { useAutoLogout } from "../lib/useAutoLogout";
+
 
 export default function AppShell({ children }) {
   const pathname = usePathname();
@@ -29,6 +31,7 @@ export default function AppShell({ children }) {
     confirmPassword: "",
   });
   const showTopHeader = pathname === "/dashboard";
+  
 
   useEffect(() => {
     try {
@@ -151,6 +154,8 @@ export default function AppShell({ children }) {
     setSessionUser(null);
     window.location.href = "/auth";
   };
+  useAutoLogout(logout, 20);
+
 
   const navigateToUserProfileEditor = () => {
     const userId = String(sessionUser?.id || "").trim();

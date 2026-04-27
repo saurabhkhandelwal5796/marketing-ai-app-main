@@ -43,6 +43,7 @@ export default function DashboardPage() {
   const [rows, setRows] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [milestones, setMilestones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [days, setDays] = useState("30");
   const [sessionUser, setSessionUser] = useState(null);
@@ -70,18 +71,35 @@ export default function DashboardPage() {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [logsRes, campRes, tasksRes] = await Promise.all([
-        fetch("/api/campaign-logs?limit=500"),
-        fetch("/api/campaigns?limit=500"),
-        fetch("/api/tasks?limit=500"),
-      ]);
-      const dataLogs = await logsRes.json();
-      const dataCamp = await campRes.json();
-      const dataTasks = await tasksRes.json();
+      // const [logsRes, campRes, tasksRes] = await Promise.all([
+      //   fetch("/api/campaign-logs?limit=500"),
+      //   fetch("/api/campaigns?limit=500"),
+      //   fetch("/api/tasks?limit=500"),
+      // ]);
+      // const dataLogs = await logsRes.json();
+      // const dataCamp = await campRes.json();
+      // const dataTasks = await tasksRes.json();
 
-      if (logsRes.ok && !dataLogs?.error) setRows(dataLogs.rows || []);
-      if (campRes.ok && !dataCamp?.error) setCampaigns(dataCamp.campaigns || []);
-      if (tasksRes.ok && !dataTasks?.error) setTasks(dataTasks.tasks || []);
+      // if (logsRes.ok && !dataLogs?.error) setRows(dataLogs.rows || []);
+      // if (campRes.ok && !dataCamp?.error) setCampaigns(dataCamp.campaigns || []);
+      // if (tasksRes.ok && !dataTasks?.error) setTasks(dataTasks.tasks || []);
+      const [logsRes, campRes, tasksRes, milestonesRes] = await Promise.all([
+          fetch("/api/campaign-logs?limit=500"),
+          // fetch("/api/campaigns?limit=500"),
+          fetch("/api/campaigns?all=true"),
+          fetch("/api/tasks?limit=500"),
+          fetch("/api/milestones?limit=500"),
+        ]);
+        const dataLogs = await logsRes.json();
+        const dataCamp = await campRes.json();
+        const dataTasks = await tasksRes.json();
+        const dataMilestones = await milestonesRes.json();
+
+        if (logsRes.ok && !dataLogs?.error) setRows(dataLogs.rows || []);
+        if (campRes.ok && !dataCamp?.error) setCampaigns(dataCamp.campaigns || []);
+        if (tasksRes.ok && !dataTasks?.error) setTasks(dataTasks.tasks || []);
+        if (milestonesRes.ok && !dataMilestones?.error) setMilestones(dataMilestones.milestones || []);
+
     } finally {
       setLoading(false);
     }
@@ -109,6 +127,10 @@ export default function DashboardPage() {
     if (!sessionUser || sessionUser.is_admin) return dateFiltered;
     return dateFiltered.filter((t) => String(t.assignee_id || "") === String(sessionUser.id || ""));
   }, [tasks, days, sessionUser]);
+  const filteredMilestones = useMemo(() => {
+  return milestones.filter((m) => withinDays(m.created_at, days));
+}, [milestones, days]);
+
   const campaignIdSet = useMemo(
     () => new Set(filteredCampaigns.map((c) => c.id).filter(Boolean)),
     [filteredCampaigns]
@@ -120,16 +142,23 @@ export default function DashboardPage() {
 
   const unifiedMetrics = useMemo(() => {
     const totalCampaigns = filteredCampaigns.length;
-    const closedCampaigns = filteredCampaigns.filter(c => String(c.status).toLowerCase() === "cancelled" || String(c.status).toLowerCase() === "completed").length;
-    const openCampaigns = totalCampaigns - closedCampaigns;
+    const closedCampaigns = filteredCampaigns.filter(c => String(c.status).toLowerCase() === "closed").length;
+    const openCampaigns = filteredCampaigns.filter(c => String(c.status).toLowerCase() === "open").length;
 
-    const totalTasks = filteredTasks.length;
-    const closedTasks = filteredTasks.filter(t => String(t.status).toLowerCase() === "completed" || String(t.status).toLowerCase() === "done").length;
-    const openTasks = totalTasks - closedTasks;
+   const totalTasks = filteredTasks.length;
+   const openTasks = filteredTasks.filter(t => String(t.status).toLowerCase() === "to do").length;
+   const closedTasks = filteredTasks.filter(t => String(t.status).toLowerCase() === "completed" || String(t.status).toLowerCase() === "done").length;
 
-    const totalMilestones = filteredTasks.filter(t => t.task_type === "Milestone").length;
-    const closedMilestones = 0; 
-    const openMilestones = totalMilestones - closedMilestones;
+
+    // const totalMilestones = filteredTasks.filter(t => t.task_type === "Milestone").length;
+    // const closedMilestones = 0; 
+    // const openMilestones = totalMilestones - closedMilestones;
+    const totalMilestones = filteredMilestones.length;
+    const openMilestones = filteredMilestones.filter(m => m.status === "Not Started").length;
+    const inProgressMilestones = filteredMilestones.filter(m => m.status === "In Progress").length;
+    const overdueMilestones = filteredMilestones.filter(m => m.status === "Overdue").length;
+    const closedMilestones = filteredMilestones.filter(m => m.status === "Completed").length;
+
 
     let totalEmails = 0, totalLinkedIn = 0, totalWhatsApp = 0;
     let emailOpens = 0, emailClicks = 0;
@@ -151,7 +180,7 @@ export default function DashboardPage() {
     return {
       totalCampaigns, openCampaigns, closedCampaigns,
       totalTasks, openTasks, closedTasks,
-      totalMilestones, openMilestones, closedMilestones,
+      totalMilestones, openMilestones, inProgressMilestones, overdueMilestones, closedMilestones,
       totalEmails, totalLinkedIn, totalWhatsApp,
       emailOpenRate, emailClickRate,
       linkedinEngagementRate: "5.4",
@@ -159,7 +188,7 @@ export default function DashboardPage() {
       whatsappReadRate: "92.5",
       whatsappReplyRate: "14.2",
     };
-  }, [scopedRows, filteredCampaigns, filteredTasks]);
+  }, [scopedRows, filteredCampaigns, filteredTasks, filteredMilestones]);
 
   return (
     <main className="space-y-6 px-4 py-8 md:px-8 bg-[#f8fafc] min-h-screen">

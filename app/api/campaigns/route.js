@@ -35,8 +35,12 @@ export async function GET(req) {
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 20, 1), 50);
+    // const limit = Math.min(Math.max(Number(searchParams.get("limit")) || 20, 1), 50);
+    // const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
+    const all = searchParams.get("all") === "true";
+    const limit = all ? 10000 : Math.min(Math.max(Number(searchParams.get("limit")) || 20, 1), 50);
     const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
+
     const search = String(searchParams.get("search") || "").trim();
     const supabase = getSupabaseServerClient();
     let campaigns = null;
@@ -44,11 +48,16 @@ export async function GET(req) {
     let query = supabase
       .from("campaigns")
       .select("id,name,company,goal,created_at,updated_at,last_activity_at,created_by,updated_by,campaign_no,status")
-      .order("last_activity_at", { ascending: false })
+      // .order("last_activity_at", { ascending: false })
+      .order("created_at", { ascending: false })
+
       .range(offset, offset + limit - 1);
 
-    if (!session.is_admin) {
-      const allowedActors = [session.id, session.email, session.name].filter(Boolean);
+    // if (!session.is_admin) {
+    if (!session.is_admin || session.admin_id) {
+
+       const allowedActors = [session.id, session.email, session.name].filter(Boolean);
+    
       if (allowedActors.length) query = query.in("created_by", allowedActors);
       else query = query.eq("id", "__none__");
     }
@@ -61,26 +70,50 @@ export async function GET(req) {
     //     query = query.ilike("name", `%${escapedSearch}%`);
     //   }
     // }
-    if (search) {
-      const escapedSearch = search.replace(/[%_]/g, "");
-      const prefixMatch = search.match(/^C-?(\d+)$/i);
-      const numericSearch = prefixMatch
-        ? Number.parseInt(prefixMatch[1], 10)
-        : Number.parseInt(search, 10);
-      if (Number.isFinite(numericSearch)) {
-        query = query.or(`name.ilike.%${escapedSearch}%,campaign_no.eq.${numericSearch}`);
-      } else {
-        query = query.ilike("name", `%${escapedSearch}%`);
-      }
-    }
+    // if (search) {
+    //   const escapedSearch = search.replace(/[%_]/g, "");
+    //   const prefixMatch = search.match(/^C-?(\d+)$/i);
+    //   const numericSearch = prefixMatch
+    //     ? Number.parseInt(prefixMatch[1], 10)
+    //     : Number.parseInt(search, 10);
+    //   if (Number.isFinite(numericSearch)) {
+    //     query = query.or(`name.ilike.%${escapedSearch}%,campaign_no.eq.${numericSearch}`);
+    //   } else {
+    //     query = query.ilike("name", `%${escapedSearch}%`);
+    //   }
+    // }
+//     if (search) {
+//   const escapedSearch = search.replace(/[%_]/g, "");
+//   const prefixMatch = search.match(/^C-?(\d+)$/i);
+  
+//   if (prefixMatch) {
+//     // User searched for "C-1" or "C01" or just "1"
+//     const searchNum = prefixMatch[1];
+//     const formattedCampaignNo = `C-${searchNum.padStart(2, '0')}`;
+//     query = query.or(`name.ilike.%${escapedSearch}%,campaign_no.eq.${formattedCampaignNo}`);
+//   } else {
+//     query = query.ilike("name", `%${escapedSearch}%`);
+//   }
+// }
+if (search) {
+  const escapedSearch = search.replace(/[%_]/g, "");
+  query = query.or(`name.ilike.%${escapedSearch}%,campaign_no.eq.${escapedSearch}`);
+}
+
+
+
 
 
     ({ data: campaigns, error } = await query);
+    console.log('🔍 Query result:', { campaignsCount: campaigns?.length, error: error?.message });
+if (campaigns?.length) {
+  console.log('🔍 First campaign created_by:', campaigns[0]?.created_by);
+}
     if (error && (isMissingColumnError(error.message || "") || isMissingCampaignExtraColumnError(error.message || ""))) {
       let fallback = supabase
         .from("campaigns")
         .select("id,name,company,goal,created_at,updated_at,last_activity_at,status")
-        .order("last_activity_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (!session.is_admin) {
@@ -114,7 +147,8 @@ export async function GET(req) {
     }
     const enrichedCampaigns = (campaigns || []).map((item, index) => ({
       ...item,
-      campaign_no: Number.isFinite(Number(item?.campaign_no)) ? Number(item.campaign_no) : offset + index + 1,
+      // campaign_no: Number.isFinite(Number(item?.campaign_no)) ? Number(item.campaign_no) : offset + index + 1,
+      campaign_no: item?.campaign_no || `C-${String(offset + index + 1).padStart(2, '0')}`,
       status: item?.status,
       created_by_name: userNameById[item.created_by] || (item.created_by && !UUID_RE.test(item.created_by) ? item.created_by : "-"),
       last_modified_by_name:
@@ -135,18 +169,70 @@ export async function POST(req) {
       return NextResponse.json({ error: "Unauthorized. Please log in again." }, { status: 401 });
     }
     const supabase = getSupabaseServerClient();
-    let nextCampaignNo = null;
-    try {
-      const { data: maxCampaign } = await supabase
-        .from("campaigns")
-        .select("campaign_no")
-        .order("campaign_no", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      nextCampaignNo = Number(maxCampaign?.campaign_no || 0) + 1;
-    } catch {
-      nextCampaignNo = null;
-    }
+    // let nextCampaignNo = null;
+    // try {
+    //   const { data: maxCampaign } = await supabase
+    //     .from("campaigns")
+    //     .select("campaign_no")
+    //     .order("campaign_no", { ascending: false })
+    //     .limit(1)
+    //     .maybeSingle();
+    //   nextCampaignNo = Number(maxCampaign?.campaign_no || 0) + 1;
+    // } catch {
+    //   nextCampaignNo = null;
+    // }
+//     let nextCampaignNo = null;
+// try {
+//   const { data: campaigns } = await supabase
+//     .from("campaigns")
+//     .select("campaign_no")
+//     .not("campaign_no", "is", null)
+//     .order("campaign_no", { ascending: false });
+  
+//   if (campaigns && campaigns.length > 0) {
+//     // Extract the highest number from C-XX format
+//     const numbers = campaigns
+//       .map(c => {
+//         const match = c.campaign_no?.match(/^C-(\d+)$/);
+//         return match ? parseInt(match[1], 10) : 0;
+//       })
+//       .filter(n => !isNaN(n));
+    
+//     const maxNum = numbers.length > 0 ? Math.max(...numbers) : 0;
+//     nextCampaignNo = `C-${String(maxNum + 1).padStart(2, '0')}`;
+//   } else {
+//     nextCampaignNo = 'C-01';
+//   }
+// } catch {
+//   nextCampaignNo = 'C-01';
+// }
+
+let nextCampaignNo = null;
+try {
+  const { data: campaigns } = await supabase
+    .from("campaigns")
+    .select("campaign_no")
+    .not("campaign_no", "is", null);
+  
+  if (campaigns && campaigns.length > 0) {
+    const numbers = campaigns
+      .map(c => {
+        const match = c.campaign_no?.match(/^C-(\d+)$/);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(n => !isNaN(n) && n > 0);
+    
+    const maxNum = numbers.length > 0 ? Math.max(...numbers) : 0;
+    nextCampaignNo = `C-${String(maxNum + 1).padStart(2, '0')}`;
+  } else {
+    nextCampaignNo = 'C-01';
+  }
+} catch (err) {
+  console.error('Error generating campaign number:', err);
+  nextCampaignNo = 'C-01';
+}
+
+
     const baseInsert = {
       name: body?.name || "Generating title...",
       company: body?.company || "",
