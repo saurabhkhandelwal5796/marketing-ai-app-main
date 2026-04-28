@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 import { Pencil, Trash2 } from "lucide-react";
 import Avatar from "../../components/Avatar";
+import { useSorting } from "../../lib/useSorting";
+import SortableHeader from "../../components/SortableHeader";
+
 
 const PENDING_VIEW_TASK_KEY = "audit.pendingViewedTask";
 
@@ -40,12 +43,35 @@ function ymd(d) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// function formatDatePretty(dateStrOrIso) {
+//   if (!dateStrOrIso) return "-";
+//   const d = new Date(dateStrOrIso.includes("T") ? dateStrOrIso : `${dateStrOrIso}T00:00:00`);
+//   if (Number.isNaN(d.getTime())) return "-";
+//   return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+// }
 function formatDatePretty(dateStrOrIso) {
   if (!dateStrOrIso) return "-";
   const d = new Date(dateStrOrIso.includes("T") ? dateStrOrIso : `${dateStrOrIso}T00:00:00`);
   if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  return d.toLocaleString("en-IN", { 
+    day: "2-digit", 
+    month: "short", 
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata"
+  });
 }
+
+function formatDateOnly(dateStr) {
+  if (!dateStr) return "-";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+
 
 function isPastDue(dateStr) {
   if (!dateStr) return false;
@@ -268,6 +294,8 @@ export default function MyTasksPage() {
     list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return list;
   }, [tasks, activeFilter, search, userId]);
+    const { sortedData: sortedTasks, sortBy, sortOrder, onSort } = useSorting(tasksFiltered, "created_at", "desc");
+
 
   // Keep selection in sync with currently loaded tasks
   useEffect(() => {
@@ -300,12 +328,15 @@ export default function MyTasksPage() {
 
   const byStatus = useMemo(() => {
     const buckets = { "To Do": [], "In Progress": [], Done: [] };
-    tasksFiltered.forEach((t) => {
+    // tasksFiltered.forEach((t) => {
+          sortedTasks.forEach((t) => {
       const k = buckets[t.status] ? t.status : "To Do";
       buckets[k].push(t);
     });
     return buckets;
-  }, [tasksFiltered]);
+  // }, [tasksFiltered]);
+    }, [sortedTasks]);
+
 
   const updateStatus = async (taskId, status) => {
     setError("");
@@ -563,9 +594,24 @@ export default function MyTasksPage() {
                     <th className="px-4 py-3">Assignee</th>
                     <th className="px-4 py-3">Priority</th>
                     <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Due Date</th>
+                    {/* <th className="px-4 py-3">Due Date</th> */}
+                    <SortableHeader 
+                      label="Due Date" 
+                      sortKey="due_date" 
+                      sortBy={sortBy} 
+                      sortOrder={sortOrder} 
+                      onSort={onSort} 
+                    />
                     <th className="px-4 py-3">Campaign</th>
-                    <th className="px-4 py-3">Created Date</th>
+                    {/* <th className="px-4 py-3">Created Date</th> */}
+                    <SortableHeader 
+                      label="Created Date" 
+                      sortKey="created_at" 
+                      sortBy={sortBy} 
+                      sortOrder={sortOrder} 
+                      onSort={onSort} 
+                    />
+
                     <th className="px-4 py-3">Actions</th>
                   </tr>
                 </thead>
@@ -577,7 +623,8 @@ export default function MyTasksPage() {
                       </td>
                     </tr>
                   ) : (
-                    tasksFiltered.map((t) => {
+                    // tasksFiltered.map((t) => {
+                      sortedTasks.map((t) => {
                       const assignee = t.assignee_id ? users.find((u) => u.id === t.assignee_id) : null;
                       const camp = t.campaign_id ? campaignsById[t.campaign_id] : null;
                       const overdue = isPastDue(t.due_date) && t.status !== "Done";
@@ -645,7 +692,7 @@ export default function MyTasksPage() {
                             </span>
                           </td>
                           <td className={`px-4 py-3 ${overdue ? "font-semibold text-red-700" : "text-slate-700"}`}>
-                            {t.due_date ? formatDatePretty(t.due_date) : "-"}
+                            {t.due_date ? formatDateOnly(t.due_date) : "-"}
                           </td>
                           <td className="px-4 py-3">
                             {camp?.name ? (
