@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, UserPlus, Search, MoreHorizontal, Users } from "lucide-react";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
+import { useSorting } from "../../lib/useSorting";
+import SortableHeader from "../../components/SortableHeader";
+
 
 function buildUserEditDetails(originalUser, nextForm) {
   if (!originalUser) return "User details updated.";
@@ -104,6 +107,9 @@ export default function UsersPage() {
       setLoading(false);
     }
   };
+
+const { sortedData: sortedUsers, sortBy, sortOrder, onSort } = useSorting(users, "created_at", "desc");
+
 
   const loadPendingRequests = async () => {
     setRequestsLoading(true);
@@ -427,6 +433,7 @@ export default function UsersPage() {
             >
               <option value="all">All Status</option>
               <option value="Active">Active</option>
+              <option value="Inactive">Inactive</option>
             </select>
             <button
               onClick={() => {
@@ -466,12 +473,23 @@ export default function UsersPage() {
                   <th className="px-6 py-4 font-semibold text-slate-500">Email</th>
                   <th className="px-6 py-4 font-semibold text-slate-500">Role</th>
                   <th className="px-6 py-4 font-semibold text-slate-500">Status</th>
-                  <th className="px-6 py-4 font-semibold text-slate-500">Created</th>
+                  {/* <th className="px-6 py-4 font-semibold text-slate-500">Created</th> */}
+                  <SortableHeader 
+                    label="Created Date" 
+                    sortKey="created_at" 
+                    sortBy={sortBy} 
+                    sortOrder={sortOrder} 
+                    onSort={onSort}
+                    className="px-6 py-4 font-semibold text-slate-500"
+                  />
+
                   <th className="px-6 py-4 text-right font-semibold text-slate-500">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {users.map((u) => {
+                {/* {users.map((u) => { */}
+                {sortedUsers.map((u) => {
+
                   const status = u.status || "Active";
                   const statusStyles =
                     status === "Active"
@@ -502,9 +520,21 @@ export default function UsersPage() {
                           {status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                      {/* <td className="px-6 py-4 text-xs font-medium text-slate-500">
                         {new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                      </td> */}
+                                            <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                        {new Date(u.created_at).toLocaleString("en-IN", { 
+                          year: 'numeric', 
+                          month: 'short', 
+                          day: 'numeric',
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                          timeZone: "Asia/Kolkata"
+                        })}
                       </td>
+
                       <td className="px-6 py-4 text-right">
                         <div className="relative inline-block">
                           <button

@@ -99,46 +99,131 @@ export async function PATCH(req, { params }) {
       patch[k] = v;
     }
 
+    // if (milestoneTaskId) {
+    //   const milestonePatch = {};
+    //   if (Object.prototype.hasOwnProperty.call(body || {}, "status")) {
+    //     milestonePatch.status = mapTaskStatusToMilestone(body.status);
+    //   }
+    //   if (Object.prototype.hasOwnProperty.call(body || {}, "assignee_id")) {
+    //     milestonePatch.assignee_id = body?.assignee_id || null;
+    //   }
+    //   if (Object.keys(milestonePatch).length === 0) {
+    //     return NextResponse.json({ error: "No supported fields for milestone task update." }, { status: 400 });
+    //   }
+
+    //   let updateQuery = supabase
+    //     .from("milestone_tasks")
+    //     .update(milestonePatch)
+    //     .eq("id", milestoneTaskId)
+    //     .select("id,title,task_type,assignee_id,status,created_at,milestones!inner(campaign_id,end_date,description)")
+    //     .single();
+    //   if (!session.is_admin) updateQuery = updateQuery.eq("assignee_id", session.id);
+    //   const { data, error } = await updateQuery;
+    //   if (error) throw new Error(error.message);
+
+    //   return NextResponse.json({
+    //     task: {
+    //       id: `milestone:${data.id}`,
+    //       title: data.title,
+    //       description: data?.milestones?.description || null,
+    //       assignee_id: data.assignee_id,
+    //       assignee_team: null,
+    //       priority: "Medium",
+    //       status: mapMilestoneStatusToTask(data.status),
+    //       task_type: data.task_type || "Generic Task",
+    //       due_date: data?.milestones?.end_date || null,
+    //       channel_tags: [],
+    //       campaign_context: "Milestone task",
+    //       campaign_id: data?.milestones?.campaign_id || null,
+    //       created_at: data.created_at,
+    //     },
+    //   });
+    // }
+
     if (milestoneTaskId) {
-      const milestonePatch = {};
-      if (Object.prototype.hasOwnProperty.call(body || {}, "status")) {
-        milestonePatch.status = mapTaskStatusToMilestone(body.status);
-      }
-      if (Object.prototype.hasOwnProperty.call(body || {}, "assignee_id")) {
-        milestonePatch.assignee_id = body?.assignee_id || null;
-      }
-      if (Object.keys(milestonePatch).length === 0) {
-        return NextResponse.json({ error: "No supported fields for milestone task update." }, { status: 400 });
-      }
+  const milestonePatch = {};
+  if (Object.prototype.hasOwnProperty.call(body || {}, "status")) {
+    milestonePatch.status = mapTaskStatusToMilestone(body.status);
+  }
+  if (Object.prototype.hasOwnProperty.call(body || {}, "assignee_id")) {
+    milestonePatch.assignee_id = body?.assignee_id || null;
+  }
+  if (Object.keys(milestonePatch).length === 0) {
+    return NextResponse.json({ error: "No supported fields for milestone task update." }, { status: 400 });
+  }
 
-      let updateQuery = supabase
-        .from("milestone_tasks")
-        .update(milestonePatch)
-        .eq("id", milestoneTaskId)
-        .select("id,title,task_type,assignee_id,status,created_at,milestones!inner(campaign_id,end_date,description)")
-        .single();
-      if (!session.is_admin) updateQuery = updateQuery.eq("assignee_id", session.id);
-      const { data, error } = await updateQuery;
-      if (error) throw new Error(error.message);
+  let updateQuery = supabase
+    .from("milestone_tasks")
+    .update(milestonePatch)
+    .eq("id", milestoneTaskId)
+    .select("id,title,task_type,assignee_id,status,created_at,milestone_id,milestones!inner(campaign_id,end_date,description)")
+    .single();
+  if (!session.is_admin) updateQuery = updateQuery.eq("assignee_id", session.id);
+  const { data, error } = await updateQuery;
+  if (error) throw new Error(error.message);
 
-      return NextResponse.json({
-        task: {
-          id: `milestone:${data.id}`,
-          title: data.title,
-          description: data?.milestones?.description || null,
-          assignee_id: data.assignee_id,
-          assignee_team: null,
-          priority: "Medium",
-          status: mapMilestoneStatusToTask(data.status),
-          task_type: data.task_type || "Generic Task",
-          due_date: data?.milestones?.end_date || null,
-          channel_tags: [],
-          campaign_context: "Milestone task",
-          campaign_id: data?.milestones?.campaign_id || null,
-          created_at: data.created_at,
-        },
-      });
+  // Recalculate milestone status when task status changes
+  if (data.milestone_id) {
+    const { data: allTasks } = await supabase
+      .from("milestone_tasks")
+      .select("id,status")
+      .eq("milestone_id", data.milestone_id);
+    
+    if (allTasks && allTasks.length > 0) {
+      const completed = allTasks.filter(t => t.status === "Completed").length;
+      const progress = Math.round((completed / allTasks.length) * 100);
+      
+      let milestoneStatus = "Not Started";
+      if (completed === allTasks.length) milestoneStatus = "Completed";
+      else if (completed > 0) milestoneStatus = "In Progress";
+      
+      await supabase
+        .from("milestones")
+        .update({ progress, status: milestoneStatus })
+        .eq("id", data.milestone_id);
+
+      // Update campaign status if all milestones are completed
+      const campaignId = data?.milestones?.campaign_id;
+      if (campaignId) {
+        const { data: allMilestones } = await supabase
+          .from("milestones")
+          .select("id,status")
+          .eq("campaign_id", campaignId);
+        
+        if (allMilestones && allMilestones.length > 0) {
+          const statuses = allMilestones.map(m => m.id === data.milestone_id ? milestoneStatus : m.status);
+          let campaignStatus = "Open";
+          if (statuses.every(s => s === "Completed")) campaignStatus = "Closed";
+          else if (statuses.some(s => s === "In Progress" || s === "Completed")) campaignStatus = "In progress";
+          
+          await supabase
+            .from("campaigns")
+            .update({ status: campaignStatus })
+            .eq("id", campaignId);
+        }
+      }
     }
+  }
+
+  return NextResponse.json({
+    task: {
+      id: `milestone:${data.id}`,
+      title: data.title,
+      description: data?.milestones?.description || null,
+      assignee_id: data.assignee_id,
+      assignee_team: null,
+      priority: "Medium",
+      status: mapMilestoneStatusToTask(data.status),
+      task_type: data.task_type || "Generic Task",
+      due_date: data?.milestones?.end_date || null,
+      channel_tags: [],
+      campaign_context: "Milestone task",
+      campaign_id: data?.milestones?.campaign_id || null,
+      created_at: data.created_at,
+    },
+  });
+}
+
 
     let query = supabase
       .from("tasks")

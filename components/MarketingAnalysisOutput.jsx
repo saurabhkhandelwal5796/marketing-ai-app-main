@@ -593,6 +593,9 @@ export default function MarketingAnalysisOutput({
   const [expandedMilestoneIds, setExpandedMilestoneIds] = useState(new Set());
   const [planUpdatedFlash, setPlanUpdatedFlash] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState(null);
+const [editingMilestoneTmpId, setEditingMilestoneTmpId] = useState(null);
+const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("");
+
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [assistantChannelContext, setAssistantChannelContext] = useState("");
   const [employeePrompt, setEmployeePrompt] = useState("");
@@ -1138,6 +1141,8 @@ export default function MarketingAnalysisOutput({
     setExpandedMilestoneIds(new Set());
     setPlanUpdatedFlash(false);
     setEditingTaskId(null);
+    setEditingMilestoneTmpId(null);
+
 
     try {
       if (!campaignId) throw new Error("Campaign is required to generate milestones.");
@@ -4166,48 +4171,57 @@ export default function MarketingAnalysisOutput({
                   </p>
                   <div className="space-y-2">
                     {(Array.isArray(trackerDrawerMilestone.tasks) ? trackerDrawerMilestone.tasks : []).map((task, idx) => (
+                      // <div
+                      //   key={`drawer-task-${task.id}`}
+                      //   role="button"
+                      //   tabIndex={0}
+                      //   onClick={() => {
+                      //     const returnTo = `${
+                      //       typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
+                      //     }#tracker-detail`;
+                      //     if (typeof window !== "undefined") {
+                      //       window.sessionStorage.setItem(
+                      //         TRACKER_RETURN_CONTEXT_KEY,
+                      //         JSON.stringify({ campaignId, milestoneId: trackerDrawerMilestone.id })
+                      //       );
+                      //     }
+                      //     router.push(
+                      //       `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
+                      //     );
+
+                      //   }}
+                      //   onKeyDown={(e) => {
+                      //     if (e.key === "Enter" || e.key === " ") {
+                      //       e.preventDefault();
+                      //       const returnTo = `${
+                      //         typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
+                      //       }#tracker-detail`;
+                      //       if (typeof window !== "undefined") {
+                      //         window.sessionStorage.setItem(
+                      //           TRACKER_RETURN_CONTEXT_KEY,
+                      //           JSON.stringify({ campaignId, milestoneId: trackerDrawerMilestone.id })
+                      //         );
+                      //       }
+                      //       router.push(
+                      //         `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
+                      //       );
+
+                      //     }
+                      //   }}
+                      //   className={cx(
+                      //     "rounded-lg border border-slate-200 px-3 py-2 cursor-pointer transition hover:shadow-md",
+                      //     idx % 2 === 0 ? "bg-slate-50" : "bg-slate-100/50"
+                      //   )}
+                      // >
+
                       <div
-                        key={`drawer-task-${task.id}`}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => {
-                          const returnTo = `${
-                            typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
-                          }#tracker-detail`;
-                          if (typeof window !== "undefined") {
-                            window.sessionStorage.setItem(
-                              TRACKER_RETURN_CONTEXT_KEY,
-                              JSON.stringify({ campaignId, milestoneId: trackerDrawerMilestone.id })
-                            );
-                          }
-                          router.push(
-                            `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
-                          );
+  key={`drawer-task-${task.id}`}
+  className={cx(
+    "relative rounded-lg border border-slate-200 px-3 py-2 transition hover:shadow-md",
+    idx % 2 === 0 ? "bg-slate-50" : "bg-slate-100/50"
+  )}
+>
 
-                        }}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            const returnTo = `${
-                              typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
-                            }#tracker-detail`;
-                            if (typeof window !== "undefined") {
-                              window.sessionStorage.setItem(
-                                TRACKER_RETURN_CONTEXT_KEY,
-                                JSON.stringify({ campaignId, milestoneId: trackerDrawerMilestone.id })
-                              );
-                            }
-                            router.push(
-                              `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
-                            );
-
-                          }
-                        }}
-                        className={cx(
-                          "rounded-lg border border-slate-200 px-3 py-2 cursor-pointer transition hover:shadow-md",
-                          idx % 2 === 0 ? "bg-slate-50" : "bg-slate-100/50"
-                        )}
-                      >
                         <div className="flex flex-wrap items-center gap-2 text-xs">
                           <span className="font-semibold text-slate-800">{task.title}</span>
                           <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[10px] text-slate-600">
@@ -4243,6 +4257,29 @@ export default function MarketingAnalysisOutput({
                             </span>
                           ) : null}
                         </div>
+                        <button
+  type="button"
+  onClick={(e) => {
+    e.stopPropagation();
+    const returnTo = `${
+      typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
+    }#tracker-detail`;
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(
+        TRACKER_RETURN_CONTEXT_KEY,
+        JSON.stringify({ campaignId, milestoneId: trackerDrawerMilestone.id })
+      );
+    }
+    router.push(
+      `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
+    );
+  }}
+  className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 hover:scale-110"
+  title="View task details"
+>
+  <ChevronRight size={14} />
+</button>
+
                       </div>
                     ))}
                   </div>
@@ -4320,8 +4357,44 @@ export default function MarketingAnalysisOutput({
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <span className="text-xs font-bold text-slate-400">{String(idx + 1).padStart(2, "0")}.</span>
-                                  <span className="text-sm font-semibold text-slate-900">{m.title}</span>
+                                  {/* <span className="text-xs font-bold text-slate-400">{String(idx + 1).padStart(2, "0")}.</span> */}
+                                  {/* <span className="text-sm font-semibold text-slate-900">{m.title}</span> */}
+                                  <div className="flex items-center gap-2">
+  <span className="text-xs font-bold text-slate-400">{String(idx + 1).padStart(2, "0")}.</span>
+  {editingMilestoneTmpId === m.tmpId ? (
+    <input
+      autoFocus
+      value={editingMilestoneTitleDraft}
+      onChange={(e) => setEditingMilestoneTitleDraft(e.target.value)}
+      onBlur={() => {
+        const val = editingMilestoneTitleDraft.trim();
+        if (val) setMilestoneReviewMilestones((prev) =>
+          prev.map((ms) => ms.tmpId === m.tmpId ? { ...ms, title: val } : ms)
+        );
+        setEditingMilestoneTmpId(null);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setEditingMilestoneTmpId(null);
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="rounded-md border border-blue-400 px-2 py-0.5 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-100"
+    />
+  ) : (
+    <>
+      <span className="text-sm font-semibold text-slate-900">{m.title}</span>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setEditingMilestoneTmpId(m.tmpId); setEditingMilestoneTitleDraft(m.title); }}
+        className="rounded p-0.5 text-slate-400 hover:text-slate-700 shrink-0"
+        title="Edit milestone title"
+      >
+        <Pencil size={12} />
+      </button>
+    </>
+  )}
+</div>
+
                                 </div>
                                 <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
                                   <span>{formatMilestoneDate(m.start_date)} → {formatMilestoneDate(m.end_date)}</span>
@@ -4464,15 +4537,57 @@ export default function MarketingAnalysisOutput({
                     </div>
                   )}
 
+
                   {/* Assignee selection — only shown after confirm */}
                   {milestonePlanConfirmed && (
                     <div className="rounded-xl border border-slate-200 bg-white p-4" style={{ animation: "fadeIn 0.3s ease-out" }}>
                       <p className="text-sm font-semibold text-slate-900 mb-3">Assign owners to each milestone:</p>
                       <div className="space-y-3">
                         {milestoneReviewMilestones.map((m, idx) => (
-                          <div key={m.tmpId} className="flex items-center gap-3">
+                          // <div key={m.tmpId} className="flex items-center gap-3">
+                          // <div key={m.tmpId} className="flex items-center justify-between gap-3">
+                             <div key={m.tmpId} className="flex items-center justify-between gap-3">
+
                             <span className="text-xs font-bold text-slate-400 w-8">{String(idx + 1).padStart(2, "0")}.</span>
                             <p className="flex-1 text-sm font-medium text-slate-700 truncate">{m.title}</p>
+                          
+{/* <div className="min-w-0 flex-1">
+  {editingMilestoneTmpId === m.tmpId ? (
+    <input
+      autoFocus
+      value={editingMilestoneTitleDraft}
+      onChange={(e) => setEditingMilestoneTitleDraft(e.target.value)}
+      onBlur={() => {
+        const val = editingMilestoneTitleDraft.trim();
+        if (val) setMilestoneReviewMilestones((prev) =>
+          prev.map((ms) => ms.tmpId === m.tmpId ? { ...ms, title: val } : ms)
+        );
+        setEditingMilestoneTmpId(null);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+        if (e.key === "Escape") setEditingMilestoneTmpId(null);
+      }}
+      className="w-full rounded-lg border border-blue-400 px-2 py-0.5 text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-100"
+    />
+  ) : (
+    <div className="flex items-center gap-1.5">
+      <p className="text-sm font-semibold text-slate-900 truncate">{m.title}</p>
+      <button
+        type="button"
+        // onClick={() => { setEditingMilestoneTmpId(m.tmpId); setEditingMilestoneTitleDraft(m.title); }}
+         onClick={(e) => { e.stopPropagation(); setEditingMilestoneTmpId(m.tmpId); setEditingMilestoneTitleDraft(m.title); }}
+        className="rounded p-0.5 text-slate-400 hover:text-slate-700 shrink-0"
+        title="Edit milestone title"
+      >
+        <Pencil size={13} />
+      </button>
+    </div>
+  )}
+</div> */}
+
+
+
                             <select
                               value={m.assignee_id}
                               onChange={(e) =>
@@ -4480,7 +4595,8 @@ export default function MarketingAnalysisOutput({
                                   prev.map((x) => (x.tmpId === m.tmpId ? { ...x, assignee_id: e.target.value } : x))
                                 )
                               }
-                              className="w-44 rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              // className="w-44 rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                              className="w-44 shrink-0 rounded-xl border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                               disabled={usersLoading}
                             >
                               <option value="">{usersLoading ? "Loading..." : "Select assignee"}</option>

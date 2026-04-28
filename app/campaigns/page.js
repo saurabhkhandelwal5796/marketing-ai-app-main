@@ -3,13 +3,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
+import { useSorting } from "../../lib/useSorting";
+import SortableHeader from "../../components/SortableHeader";
 
+// const formatDate = (value) => {
+//   if (!value) return "-";
+//   const date = new Date(value);
+//   if (Number.isNaN(date.getTime())) return "-";
+//   return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+// };
 const formatDate = (value) => {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return date.toLocaleString("en-IN", { 
+    day: "numeric", 
+    month: "short", 
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata"
+  });
 };
+
 
 export default function CampaignListPage() {
   useAuditUserAndPage("Campaigns");
@@ -25,6 +42,7 @@ export default function CampaignListPage() {
   const [hasMore, setHasMore] = useState(true);
   const [search, setSearch] = useState("");
   const PAGE_SIZE = 15;
+  const { sortedData: sortedCampaigns, sortBy, sortOrder, onSort } = useSorting(campaigns, "created_at", "desc");
   const [isFetching, setIsFetching] = useState(false);
   const createInFlightRef = useRef(false);
   const fetchInFlightRef = useRef(false);
@@ -233,9 +251,14 @@ export default function CampaignListPage() {
         <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
           {loading ? (
             <div className="p-4 text-sm text-slate-500">Loading campaigns...</div>
-          ) : campaigns.length === 0 ? (
-            <div className="p-6 text-sm text-slate-500">No campaigns found</div>
-          ) : (
+          // ) : campaigns.length === 0 ? (
+          //   <div className="p-6 text-sm text-slate-500">No campaigns found</div>
+          // ) : (
+             ) : sortedCampaigns.length === 0 ? (
+                <div className="p-6 text-sm text-slate-500">No campaigns found</div>
+              ) : (
+
+
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
@@ -243,8 +266,11 @@ export default function CampaignListPage() {
                   <th className="px-4 py-3 font-medium">Campaign No.</th>
                   <th className="px-4 py-3 font-medium">Campaign Name</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Created Date</th>
-                  <th className="px-4 py-3 font-medium">Last Modified Date</th>
+                  {/* <th className="px-4 py-3 font-medium">Created Date</th> 
+                  <th className="px-4 py-3 font-medium">Last Modified Date</th> */}
+                  <SortableHeader label="Created Date" sortKey="created_at" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} />
+                   <SortableHeader label="Last Modified Date" sortKey="updated_at" sortBy={sortBy} sortOrder={sortOrder} onSort={onSort} />
+
                   <th className="px-4 py-3 font-medium">Created By</th>
                   <th className="px-4 py-3 font-medium">Last Modified By</th>
                   <th className="px-4 py-3 font-medium text-center">
@@ -258,9 +284,13 @@ export default function CampaignListPage() {
                   </th>
                 </tr>
               </thead>
-              <tbody>
+              {/* <tbody>
                 {campaigns.map((item, idx) => (
-                  <tr
+                  <tr */}
+                  <tbody>
+                    {sortedCampaigns.map((item, idx) => (
+                      <tr
+
                     key={item.id}
                     onClick={() => router.push(`/campaigns/${item.id}`)}
                     className="cursor-pointer border-t border-slate-200 transition hover:bg-slate-50"
