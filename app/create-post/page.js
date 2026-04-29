@@ -12,6 +12,34 @@ function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
 }
 
+async function parseRecipientFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const emails = [];
+        
+        // Parse CSV or text-based formats
+        const lines = text.split(/\r?\n/);
+        lines.forEach(line => {
+          // Match email patterns in the line
+          const emailMatches = line.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+          if (emailMatches) {
+            emails.push(...emailMatches.map(e => normalizeEmail(e)));
+          }
+        });
+        
+        resolve([...new Set(emails)].filter(isEmail));
+      } catch (err) {
+        reject(new Error(`Failed to parse file: ${err.message}`));
+      }
+    };
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+    reader.readAsText(file);
+  });
+}
+
 const PLATFORM_META = {
   linkedin_post: { label: "LinkedIn", Icon: BriefcaseBusiness, color: "text-blue-700" },
   instagram_post: { label: "Instagram", Icon: Camera, color: "text-pink-600" },
@@ -61,6 +89,9 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [useTemplate, setUseTemplate] = useState(false);
   const [matchedTemplateName, setMatchedTemplateName] = useState("");
   const attachmentInputRef = useRef(null);
+  const [recipientFile, setRecipientFile] = useState(null);
+  const [recipientFileEmails, setRecipientFileEmails] = useState([]);
+  const recipientFileInputRef = useRef(null);
 
 
   const needsRecipients = useMemo(
@@ -382,6 +413,44 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     const nextRecipients = recipientEmails.filter((email) => email !== emailToRemove);
     setRecipientEmails(nextRecipients);
     syncDrafts([...new Set([...nextRecipients, ...selectedUserEmails])], baseEmailSubject, baseEmailBody);
+  };
+
+  const handleRecipientFileUpload = async (file) => {
+    if (!file) return;
+    
+    const validTypes = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain'
+    ];
+    
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(csv|xlsx|xls|txt)$/i)) {
+      setMessage('Please upload a CSV, Excel, or text file.');
+      return;
+    }
+    
+    try {
+      setMessage('Parsing recipient file...');
+      const emails = await parseRecipientFile(file);
+      
+      if (emails.length === 0) {
+        setMessage('No valid email addresses found in the file.');
+        return;
+      }
+      
+      setRecipientFile(file);
+      setRecipientFileEmails(emails);
+      
+      // Add to recipient list
+      const combined = [...new Set([...recipientEmails, ...emails])];
+      setRecipientEmails(combined);
+      syncDrafts([...new Set([...combined, ...selectedUserEmails])], baseEmailSubject, baseEmailBody);
+      
+      setMessage(`Added ${emails.length} email(s) from ${file.name}`);
+    } catch (err) {
+      setMessage(err.message || 'Failed to parse recipient file.');
+    }
   };
 
   const removeRecipient = (emailToRemove) => {
@@ -836,6 +905,41 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
 
 
   </div>
+)}
+
+{(activeType === "email_campaign" || activeType === "newsletter") && (
+  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-sm font-semibold text-slate-900">Recipients (CSV/Excel)</p>
+      <button
+        type="button"
+        onClick={() => recipientFileInputRef.current?.click()}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        {recipientFile ? 'Change File' : 'Upload File'}
+      </button>
+    </div>
+    <input
+      ref={recipientFileInputRef}
+      type="file"
+      accept=".csv,.xlsx,.xls,.txt"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) handleRecipientFileUpload(file);
+        e.target.value = '';
+      }}
+    />
+    {recipientFile ? (
+      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+        <p className="text-xs text-slate-700">
+          <span className="font-semibold">{recipientFile.name}</span> - {recipientFileEmails.length} email(s) found
+        </p>
+      </div>
+    ) : (
+      <p className="mt-2 text-xs text-slate-400">No recipient file uploaded.</p>
+    )}
+  </div>
 )}         
                   </>
                 ) : (
@@ -1009,7 +1113,8 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     onClick={() => {
                         const subject = contentByType[activeType]?.subject || "";
                         const body = contentByType[activeType]?.content || "";
-                        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        const to = allRecipients.join(',');
+                        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                         window.open(gmailUrl, '_blank');
                     }}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-50"
@@ -1021,7 +1126,8 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     onClick={() => {
                         const subject = contentByType[activeType]?.subject || "";
                         const body = contentByType[activeType]?.content || "";
-                        const outlookUrl = `https://outlook.office.com/mail/deeplink/compose?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        const to = allRecipients.join(';');
+                        const outlookUrl = `https://outlook.office.com/mail/deeplink/compose?to=${to}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                         window.open(outlookUrl, '_blank');
                     }}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700 shadow-sm transition-all hover:scale-[0.98] hover:bg-blue-100"
