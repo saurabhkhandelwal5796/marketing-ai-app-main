@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuditUserAndPage } from "../../lib/useAuditPageVisit";
-import { useSorting } from "../../lib/useSorting";
 import SortableHeader from "../../components/SortableHeader";
 
 // const formatDate = (value) => {
@@ -42,10 +41,20 @@ export default function CampaignListPage() {
   const [hasMore, setHasMore] = useState(true);
   const [search, setSearch] = useState("");
   const PAGE_SIZE = 15;
-  const { sortedData: sortedCampaigns, sortBy, sortOrder, onSort } = useSorting(campaigns, "created_at", "desc");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState("desc");
   const [isFetching, setIsFetching] = useState(false);
   const createInFlightRef = useRef(false);
   const fetchInFlightRef = useRef(false);
+
+  const onSort = (key) => {
+    if (sortBy === key) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
+      setSortOrder("asc");
+    }
+  };
 
   const loadCampaigns = useCallback(async ({ nextOffset = 0, append = false } = {}) => {
     if (fetchInFlightRef.current) return;
@@ -58,6 +67,8 @@ export default function CampaignListPage() {
       const params = new URLSearchParams({
         limit: String(PAGE_SIZE),
         offset: String(nextOffset),
+        sortBy: sortBy,
+        sortOrder: sortOrder,
       });
       if (search.trim()) params.set("search", search.trim());
       const res = await fetch(`/api/campaigns?${params.toString()}`);
@@ -75,7 +86,13 @@ export default function CampaignListPage() {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [PAGE_SIZE, search]);
+  }, [PAGE_SIZE, search, sortBy, sortOrder]);
+
+  useEffect(() => {
+    setOffset(0);
+    setCampaigns([]);
+    loadCampaigns({ nextOffset: 0, append: false });
+  }, [sortBy, sortOrder]);
 
   useEffect(() => {
     loadCampaigns({ nextOffset: 0, append: false });
@@ -254,7 +271,7 @@ export default function CampaignListPage() {
           // ) : campaigns.length === 0 ? (
           //   <div className="p-6 text-sm text-slate-500">No campaigns found</div>
           // ) : (
-             ) : sortedCampaigns.length === 0 ? (
+             ) : campaigns.length === 0 ? (
                 <div className="p-6 text-sm text-slate-500">No campaigns found</div>
               ) : (
 
@@ -288,7 +305,7 @@ export default function CampaignListPage() {
                 {campaigns.map((item, idx) => (
                   <tr */}
                   <tbody>
-                    {sortedCampaigns.map((item, idx) => (
+                    {campaigns.map((item, idx) => (
                       <tr
 
                     key={item.id}

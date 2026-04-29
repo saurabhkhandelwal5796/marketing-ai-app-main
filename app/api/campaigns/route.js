@@ -42,15 +42,16 @@ export async function GET(req) {
     const offset = Math.max(Number(searchParams.get("offset")) || 0, 0);
 
     const search = String(searchParams.get("search") || "").trim();
+    const sortBy = searchParams.get("sortBy") || "created_at";
+    const sortOrder = searchParams.get("sortOrder") || "desc";
+    const ascending = sortOrder === "asc";
     const supabase = getSupabaseServerClient();
     let campaigns = null;
     let error = null;
     let query = supabase
       .from("campaigns")
       .select("id,name,company,goal,created_at,updated_at,last_activity_at,created_by,updated_by,campaign_no,status")
-      // .order("last_activity_at", { ascending: false })
-      .order("created_at", { ascending: false })
-
+      .order(sortBy, { ascending })
       .range(offset, offset + limit - 1);
 
     // if (!session.is_admin) {

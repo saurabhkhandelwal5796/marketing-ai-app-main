@@ -12,13 +12,16 @@ export async function GET(req) {
     const { searchParams } = new URL(req.url);
     const userId = searchParams.get("userId");
     const campaignId = searchParams.get("campaignId");
+    const sortBy = searchParams.get("sortBy") || "created_at";
+    const sortOrder = searchParams.get("sortOrder") || "desc";
+    const ascending = sortOrder === "asc";
 
     let query = supabase
       .from("tasks")
       .select(
         "id,title,description,assignee_id,assignee_team,priority,status,task_type,due_date,channel_tags,campaign_context,campaign_id,created_at"
       )
-      .order("created_at", { ascending: false });
+      .order(sortBy, { ascending });
     if (session.is_admin) {
       if (userId) query = query.eq("assignee_id", userId);
     } else {
@@ -66,7 +69,24 @@ export async function GET(req) {
       };
     });
 
-    return NextResponse.json({ tasks: [...(data || []), ...normalizedMilestoneTasks] });
+    // Combine and sort all tasks
+    const allTasks = [...(data || []), ...normalizedMilestoneTasks];
+    allTasks.sort((a, b) => {
+      const aVal = a[sortBy];
+      const bVal = b[sortBy];
+      
+      // Handle null/undefined values
+      if (aVal == null && bVal == null) return 0;
+      if (aVal == null) return ascending ? 1 : -1;
+      if (bVal == null) return ascending ? -1 : 1;
+      
+      // Compare values
+      if (aVal < bVal) return ascending ? -1 : 1;
+      if (aVal > bVal) return ascending ? 1 : -1;
+      return 0;
+    });
+
+    return NextResponse.json({ tasks: allTasks });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to fetch tasks." }, { status: 500 });
   }

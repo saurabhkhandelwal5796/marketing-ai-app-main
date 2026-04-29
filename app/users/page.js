@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Trash2, UserPlus, Search, MoreHorizontal, Users } from "lucide-react";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
-import { useSorting } from "../../lib/useSorting";
 import SortableHeader from "../../components/SortableHeader";
 
 
@@ -64,8 +63,19 @@ export default function UsersPage() {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 10, total: 0 });
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState("desc");
 
   const [openDropdownId, setOpenDropdownId] = useState(null);
+
+  const onSort = (key) => {
+    if (sortBy === key) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
+      setSortOrder("asc");
+    }
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -92,6 +102,8 @@ export default function UsersPage() {
       status: overrides.status ?? statusFilter,
       page: String(overrides.page ?? page),
       pageSize: String(pageSize),
+      sortBy: overrides.sortBy ?? sortBy,
+      sortOrder: overrides.sortOrder ?? sortOrder,
     });
     setLoading(true);
     setError("");
@@ -107,9 +119,6 @@ export default function UsersPage() {
       setLoading(false);
     }
   };
-
-const { sortedData: sortedUsers, sortBy, sortOrder, onSort } = useSorting(users, "created_at", "desc");
-
 
   const loadPendingRequests = async () => {
     setRequestsLoading(true);
@@ -174,9 +183,9 @@ const { sortedData: sortedUsers, sortBy, sortOrder, onSort } = useSorting(users,
 
   useEffect(() => {
     if (!sessionUser?.is_admin) return;
-    load({ page });
+    load({ page, sortBy, sortOrder });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, sortBy, sortOrder]);
 
   const openCreateForm = () => {
     setEditingUser(null);
@@ -487,8 +496,7 @@ const { sortedData: sortedUsers, sortBy, sortOrder, onSort } = useSorting(users,
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {/* {users.map((u) => { */}
-                {sortedUsers.map((u) => {
+                {users.map((u) => {
 
                   const status = u.status || "Active";
                   const statusStyles =
