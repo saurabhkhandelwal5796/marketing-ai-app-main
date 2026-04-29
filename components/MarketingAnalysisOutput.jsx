@@ -346,6 +346,14 @@ function initials(name) {
   return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
+function audienceNameKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function employeeKey(employee) {
+  return `${audienceNameKey(employee?.name)}::${audienceNameKey(employee?.company)}::${audienceNameKey(employee?.title)}`;
+}
+
 function templateKey(tpl) {
   const title = String(tpl?.title || "").trim().toLowerCase();
   const type = String(tpl?.task_type || "").trim().toLowerCase();
@@ -463,6 +471,7 @@ export default function MarketingAnalysisOutput({
   const [employees, setEmployees] = useState([]);
   const [audienceView, setAudienceView] = useState("companies"); // companies | employees
   const [audienceLoading, setAudienceLoading] = useState(false);
+  const [moreAudienceLoading, setMoreAudienceLoading] = useState(false);
   const audienceAbortRef = useRef(null);
   const audienceTimerRef = useRef(null);
   const prevPlanLoadingRef = useRef(planLoading);
@@ -721,7 +730,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     if (typeof initialAiMessage === "string") setAiMessage(initialAiMessage);
   }, [initialAiMessage]);
 
-  const generateTargetAudience = async ({ reason = "" } = {}) => {
+  const generateTargetAudience = async ({ reason = "", append = false } = {}) => {
     const desc = String(description || "").trim();
     if (!desc) return;
 
@@ -749,7 +758,12 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     const controller = new AbortController();
     audienceAbortRef.current = controller;
 
-    setAudienceLoading(true);
+    const existingAudienceNames = append
+      ? targetAudience.map((item) => String(item?.name || "").trim()).filter(Boolean)
+      : [];
+
+    if (append) setMoreAudienceLoading(true);
+    else setAudienceLoading(true);
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -764,18 +778,50 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
           step: "target_audience",
           selectedPlanSteps: planSteps,
           selectedDetails,
+          existingAudienceNames,
           responseContext: reason,
         }),
       });
       const data = await parseJsonResponse(res, "Failed to generate target audience.");
-      setTargetAudience(Array.isArray(data?.targetAudience) ? data.targetAudience : []);
-      setEmployees(Array.isArray(data?.employees) ? data.employees : []);
+      const nextAudience = Array.isArray(data?.targetAudience) ? data.targetAudience : [];
+      const nextEmployees = Array.isArray(data?.employees) ? data.employees : [];
+
+      if (append) {
+        const seenAudience = new Set(targetAudience.map((item) => audienceNameKey(item?.name)).filter(Boolean));
+        const audienceAdditions = nextAudience.filter((item) => {
+          const key = audienceNameKey(item?.name);
+          if (!key || seenAudience.has(key)) return false;
+          seenAudience.add(key);
+          return true;
+        });
+        const newCompanyKeys = new Set(audienceAdditions.map((item) => audienceNameKey(item?.name)).filter(Boolean));
+        const employeesForNewCompanies = nextEmployees.filter((employee) =>
+          newCompanyKeys.has(audienceNameKey(employee?.company))
+        );
+        const employeeAdditions = employeesForNewCompanies.length ? employeesForNewCompanies : nextEmployees;
+
+        setTargetAudience((prev) => [...prev, ...audienceAdditions]);
+        setEmployees((prev) => {
+          const seenEmployees = new Set(prev.map(employeeKey).filter(Boolean));
+          const additions = employeeAdditions.filter((employee) => {
+            const key = employeeKey(employee);
+            if (!key || seenEmployees.has(key)) return false;
+            seenEmployees.add(key);
+            return true;
+          });
+          return [...prev, ...additions];
+        });
+      } else {
+        setTargetAudience(nextAudience);
+        setEmployees(nextEmployees);
+      }
       setAudienceView("companies");
     } catch (e) {
       if (e?.name === "AbortError") return;
       setError(e?.message || "Failed to generate target audience.");
     } finally {
-      setAudienceLoading(false);
+      if (append) setMoreAudienceLoading(false);
+      else setAudienceLoading(false);
     }
   };
 
@@ -2810,7 +2856,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     </div>
     {!audienceLoading ? (
       <p className="mt-3 text-sm text-slate-500">
-        Click Generate to view the target audience. This option becomes available upon giving input in description ,selecting points from either the "Marketing Plans" or "Selected Marketing Plans" sections.
+        Click Generate to view the target audience. This option becomes available upon giving input in description, selecting points from either the Marketing Plans or Selected Marketing Plans sections.
       </p>
     ) : null}
   </div>
@@ -2987,6 +3033,24 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                       </div>
                     </motion.article>
                   ))}
+
+                  {targetAudience.length > 0 ? (
+                    <div className="col-span-full flex justify-center pt-2">
+                      <button
+                        type="button"
+                        onClick={() => generateTargetAudience({ reason: "more_audience", append: true })}
+                        disabled={
+                          audienceLoading ||
+                          moreAudienceLoading ||
+                          (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0)
+                        }
+                        className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                      >
+                        <Users size={16} />
+                        {moreAudienceLoading ? "Fetching more..." : "Get more audience"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
