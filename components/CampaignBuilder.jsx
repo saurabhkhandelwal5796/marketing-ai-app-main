@@ -99,6 +99,8 @@ export default function CampaignBuilder({ campaignId }) {
   const hydratedRef = useRef(false);
   const leftPanelRef = useRef(null);
   const campaignCreatedAuditLoggedRef = useRef(false);
+  const askAbortRef = useRef(null);
+  const generateContentAbortRef = useRef(null);
 
   const [historyMarketingDetails, setHistoryMarketingDetails] = useState(null);
   const [historyTargetAudience, setHistoryTargetAudience] = useState(null);
@@ -151,6 +153,13 @@ export default function CampaignBuilder({ campaignId }) {
     };
     document.addEventListener("mousedown", handleOutsideClick);
     return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      askAbortRef.current?.abort();
+      generateContentAbortRef.current?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -301,6 +310,12 @@ export default function CampaignBuilder({ campaignId }) {
   };
 
   const handleAskAi = async (text) => {
+    if (askAbortRef.current) {
+      askAbortRef.current.abort();
+      askAbortRef.current = null;
+      setAskLoading(false);
+      return;
+    }
     setIsLeftPanelExpanded(false);
     setError("");
     setSendSuccess("");
@@ -308,11 +323,14 @@ export default function CampaignBuilder({ campaignId }) {
     setChatMessages((prev) => [...prev, userMsg]);
     setDescription(text);
     setAskLoading(true);
+    const controller = new AbortController();
+    askAbortRef.current = controller;
 
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           company,
           campaign,
@@ -373,9 +391,13 @@ export default function CampaignBuilder({ campaignId }) {
         },
       ]);
     } catch (err) {
+      if (err?.name === "AbortError") return;
       setError(err.message || "Unable to ask AI right now.");
     } finally {
-      setAskLoading(false);
+      if (askAbortRef.current === controller) {
+        askAbortRef.current = null;
+        setAskLoading(false);
+      }
     }
   };
   const handleAskAI = () => handleAskAi(description);
@@ -393,10 +415,19 @@ export default function CampaignBuilder({ campaignId }) {
   };
 
   const handleGenerateContent = async (actionsToGenerate = selectedActions) => {
+    if (generateContentAbortRef.current) {
+      generateContentAbortRef.current.abort();
+      generateContentAbortRef.current = null;
+      setGenerateLoading(false);
+      setRegeneratingAction("");
+      return;
+    }
     if (!actionsToGenerate.length) return;
     setGenerateLoading(true);
     setError("");
     setSendSuccess("");
+    const controller = new AbortController();
+    generateContentAbortRef.current = controller;
 
     const selectedPlanSteps = marketingPlan
       .filter((step) => selectedStepIds.includes(step.id))
@@ -406,6 +437,7 @@ export default function CampaignBuilder({ campaignId }) {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           company,
           campaign,
@@ -422,10 +454,14 @@ export default function CampaignBuilder({ campaignId }) {
       if (!res.ok || data?.error) throw new Error(data?.error || "Content generation failed.");
       setOutputs((prev) => ({ ...prev, ...toActionResponseMap(data) }));
     } catch (err) {
+      if (err?.name === "AbortError") return;
       setError(err.message || "Unable to generate content right now.");
     } finally {
-      setGenerateLoading(false);
-      setRegeneratingAction("");
+      if (generateContentAbortRef.current === controller) {
+        generateContentAbortRef.current = null;
+        setGenerateLoading(false);
+        setRegeneratingAction("");
+      }
     }
   };
 
@@ -682,7 +718,6 @@ export default function CampaignBuilder({ campaignId }) {
                           ) : null}
                           <button
                             type="button"
-                            disabled={askLoading}
                             onMouseDown={(e) => {
                               e.stopPropagation();
                             }}
@@ -706,7 +741,7 @@ export default function CampaignBuilder({ campaignId }) {
                               opacity: askLoading ? 0.7 : 1,
                             }}
                           >
-                            {askLoading ? "Generating..." : "✦ Ask AI"}
+                            {askLoading ? "Stop" : "✦ Ask AI"}
                           </button>
                         </div>
                       </div>

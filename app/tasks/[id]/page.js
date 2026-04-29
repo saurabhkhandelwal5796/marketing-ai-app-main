@@ -31,11 +31,10 @@ function StatusPipeline({ value, onChange }) {
       {STATUS_STEPS.map((step, idx) => {
         const isCurrent = idx === activeIdx;
         const isCompleted = activeIdx === STATUS_STEPS.length - 1 ? true : idx < activeIdx;
-        const classes = isCurrent
-          ? "bg-blue-600 text-white border-blue-600"
-          : isCompleted
-          ? "bg-emerald-600 text-white border-emerald-600"
-          : "bg-slate-100 text-slate-500 border-slate-300";
+        const classes = isCurrent || isCompleted
+                        ? "bg-emerald-600 text-white border-emerald-600"
+                        : "bg-slate-100 text-slate-500 border-slate-300";
+
 
         return (
           <div key={step} className="flex min-w-[90px] flex-1 items-center gap-1">
@@ -61,6 +60,23 @@ function todayYmd() {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
+
+function formatDatePretty(iso) {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  });
+}
+
+
 
 export default function TaskDetailPage({ params }) {
   const router = useRouter();
@@ -491,6 +507,19 @@ export default function TaskDetailPage({ params }) {
                 />
                 {dueReason ? <p className="mt-1 text-xs italic text-slate-500">{dueReason}</p> : null}
               </div>
+              
+              <div>
+  <p className="text-xs font-semibold text-slate-700">Priority</p>
+  <select
+    value={task.priority || "Medium"}
+    onChange={(e) => patch({ priority: e.target.value })}
+    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+  >
+    {PRIORITIES.map((p) => (
+      <option key={p} value={p}>{p}</option>
+    ))}
+  </select>
+</div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                 <p className="text-xs font-semibold text-slate-700">Task ID</p>
@@ -498,7 +527,10 @@ export default function TaskDetailPage({ params }) {
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                 <p className="text-xs font-semibold text-slate-700">Created Date</p>
-                <p className="mt-1">{task.created_at}</p>
+                {/* <p className="mt-1">{task.created_at}</p> */}
+                <p className="mt-1">{formatDatePretty(task.created_at)}</p>
+
+
               </div>
             </div>
           </div>

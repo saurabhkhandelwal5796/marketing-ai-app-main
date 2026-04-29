@@ -63,12 +63,15 @@ export async function POST(req, { params }) {
       task_type: String(body?.task_type || "Generic Task").trim() || "Generic Task",
       assignee_id: body?.assignee_id || null,
       status: normalizeTaskStatus(body?.status),
+      due_date: body?.due_date || milestone?.end_date || null,
+      priority: ["Low", "Medium", "High", "Urgent"].includes(body?.priority) ? body.priority : "Medium",
+
     };
 
     const { data, error } = await supabase
       .from("milestone_tasks")
       .insert([payload])
-      .select("id,milestone_id,title,task_type,assignee_id,status,created_at")
+      .select("id,milestone_id,title,task_type,assignee_id,priority,status,due_date,created_at")
       .single();
     if (error) throw new Error(error.message);
 

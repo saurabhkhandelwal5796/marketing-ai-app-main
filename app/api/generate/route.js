@@ -112,6 +112,7 @@ export async function POST(req) {
       description = "",
       selectedPlanSteps = [],
       selectedActions = [],
+      existingAudienceNames = [],
       step = "suggestions",
       attachmentName = "",
       responseContext = "",
@@ -135,6 +136,9 @@ export async function POST(req) {
       const planStepsText = Array.isArray(selectedPlanSteps) ? selectedPlanSteps.filter(Boolean).slice(0, 20) : [];
       const selectedDetailsText = Array.isArray(body?.selectedDetails)
         ? body.selectedDetails.filter(Boolean).slice(0, 30)
+        : [];
+      const existingAudienceText = Array.isArray(existingAudienceNames)
+        ? existingAudienceNames.map((name) => String(name || "").trim()).filter(Boolean).slice(0, 80)
         : [];
 
       const prompt = `Return ONLY valid JSON with this shape:
@@ -177,13 +181,18 @@ Context:
 ${planStepsText.length ? planStepsText.map((s) => `- ${s}`).join("\n") : "- (none)"}
 - Selected Marketing Detail Points (may be empty):
 ${selectedDetailsText.length ? selectedDetailsText.map((s) => `- ${s}`).join("\n") : "- (none)"}
+- Companies already shown to the user (do not repeat these):
+${existingAudienceText.length ? existingAudienceText.map((s) => `- ${s}`).join("\n") : "- (none)"}
 
 Rules:
 - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
+- Do NOT include any company listed in "Companies already shown to the user".
 - CRITICAL: Identify the core industry/domain from the Campaign Goal and Description. Suggest companies that are BUYERS, SELLERS, or KEY PLAYERS in that exact domain. Always match the domain explicitly stated.
 - Make the companies align with BOTH the description and the selected points above (if provided).
 - Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), sector (1 tag), decisionMakerRole (single role), country (1 country).
 - employees: Return 20-40 REAL, specific employees across the target companies. Include outreach-ready roles (founder, marketing head, growth lead, sales lead, operations head).
+- Employees must belong ONLY to companies included in the targetAudience array in this same response. Use the exact same company name string.
+- When companies already shown are provided, employee records must also avoid those existing companies.
 - Each employee must include: name, title, company, linkedin, email, phone, website.
 - For employee linkedin values, ONLY use this format: https://www.linkedin.com/in/firstname-lastname
 - Do NOT return linkedin.com/profile, linkedin.com/404, or any non-/in/ profile path for employees.

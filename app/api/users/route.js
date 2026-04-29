@@ -24,6 +24,9 @@ export async function GET(req) {
     const status = String(searchParams.get("status") || "all").trim();
     const page = Math.max(1, Number(searchParams.get("page") || "1"));
     const pageSize = Math.min(50, Math.max(1, Number(searchParams.get("pageSize") || "10")));
+    const sortBy = searchParams.get("sortBy") || "created_at";
+    const sortOrder = searchParams.get("sortOrder") || "desc";
+    const ascending = sortOrder === "asc";
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
@@ -31,7 +34,7 @@ export async function GET(req) {
     let query = supabase
       .from("users")
       .select("id,name,email,role,avatar,is_admin,status,created_at,first_name,last_name,company", { count: "exact" })
-      .order("created_at", { ascending: false })
+      .order(sortBy, { ascending })
       .range(from, to);
     if (!session.is_admin) query = query.eq("id", session.id);
     if (role === "Admin") query = query.eq("is_admin", true);

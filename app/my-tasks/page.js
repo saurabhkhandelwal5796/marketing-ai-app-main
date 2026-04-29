@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 import { Pencil, Trash2 } from "lucide-react";
 import Avatar from "../../components/Avatar";
-import { useSorting } from "../../lib/useSorting";
 import SortableHeader from "../../components/SortableHeader";
 
 
@@ -162,6 +161,17 @@ export default function MyTasksPage() {
   const [activeFilter, setActiveFilter] = useState("All Tasks");
   const [search, setSearch] = useState("");
   const selectAllRef = useRef(null);
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortOrder, setSortOrder] = useState("desc");
+
+  const onSort = (key) => {
+    if (sortBy === key) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(key);
+      setSortOrder("asc");
+    }
+  };
 
   useEffect(() => {
     const startTime = Date.now();
@@ -217,7 +227,14 @@ export default function MyTasksPage() {
     setLoadingTasks(true);
     setError("");
     try {
-      const res = await fetch(`/api/tasks`);
+      const params = new URLSearchParams({
+        sortBy: sortBy,
+        sortOrder: sortOrder,
+      });
+      if (userId) {
+        params.set("userId", userId);
+      }
+      const res = await fetch(`/api/tasks?${params.toString()}`);
       const data = await res.json();
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to load tasks.");
       const list = Array.isArray(data.tasks) ? data.tasks : [];
@@ -232,7 +249,7 @@ export default function MyTasksPage() {
 
   useEffect(() => {
     loadTasks();
-  }, []);
+  }, [sortBy, sortOrder, userId]);
 
   useEffect(() => {
     const loadCampaigns = async () => {
@@ -264,10 +281,10 @@ export default function MyTasksPage() {
 
     let list = tasks.filter((t) => t && typeof t.id === "string" && t.id.length > 0);
 
-    // Always respect the selected assignee filter when one is chosen.
-    if (userId) {
-      list = list.filter((t) => t.assignee_id === userId);
-    }
+    // Don't filter by userId here - it's already filtered by API
+    // if (userId) {
+    //   list = list.filter((t) => t.assignee_id === userId);
+    // }
 
     if (activeFilter === "My Tasks") {
       list = list.filter((t) => (userId ? t.assignee_id === userId : false));
@@ -290,11 +307,9 @@ export default function MyTasksPage() {
       list = list.filter((t) => String(t.title || "").toLowerCase().includes(q));
     }
 
-    // most recent first
-    list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    // Don't sort here - data is already sorted from API
     return list;
   }, [tasks, activeFilter, search, userId]);
-    const { sortedData: sortedTasks, sortBy, sortOrder, onSort } = useSorting(tasksFiltered, "created_at", "desc");
 
 
   // Keep selection in sync with currently loaded tasks
@@ -328,14 +343,12 @@ export default function MyTasksPage() {
 
   const byStatus = useMemo(() => {
     const buckets = { "To Do": [], "In Progress": [], Done: [] };
-    // tasksFiltered.forEach((t) => {
-          sortedTasks.forEach((t) => {
+    tasksFiltered.forEach((t) => {
       const k = buckets[t.status] ? t.status : "To Do";
       buckets[k].push(t);
     });
     return buckets;
-  // }, [tasksFiltered]);
-    }, [sortedTasks]);
+  }, [tasksFiltered]);
 
 
   const updateStatus = async (taskId, status) => {
@@ -623,8 +636,7 @@ export default function MyTasksPage() {
                       </td>
                     </tr>
                   ) : (
-                    // tasksFiltered.map((t) => {
-                      sortedTasks.map((t) => {
+                    tasksFiltered.map((t) => {
                       const assignee = t.assignee_id ? users.find((u) => u.id === t.assignee_id) : null;
                       const camp = t.campaign_id ? campaignsById[t.campaign_id] : null;
                       const overdue = isPastDue(t.due_date) && t.status !== "Done";

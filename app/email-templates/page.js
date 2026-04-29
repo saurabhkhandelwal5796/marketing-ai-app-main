@@ -338,7 +338,7 @@ export default function EmailTemplatesPage() {
                 {templates.map((item) => (
                     <tr
                       key={item.id}
-                      className="cursor-pointer border-t border-slate-100 transition-all duration-200 hover:bg-slate-50 hover:shadow-[inset_0_1px_0_rgba(15,23,42,0.02)]"
+  className={`cursor-pointer border-t border-slate-100 transition-all duration-200 hover:bg-slate-50 hover:shadow-[inset_0_1px_0_rgba(15,23,42,0.02)] ${openActionId === item.id ? 'relative z-10' : ''}`}
                     >
                       <td className="px-4 py-4 text-left text-base font-semibold text-indigo-700">
                         <button

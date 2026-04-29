@@ -12,6 +12,34 @@ function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
 }
 
+async function parseRecipientFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const emails = [];
+        
+        // Parse CSV or text-based formats
+        const lines = text.split(/\r?\n/);
+        lines.forEach(line => {
+          // Match email patterns in the line
+          const emailMatches = line.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+          if (emailMatches) {
+            emails.push(...emailMatches.map(e => normalizeEmail(e)));
+          }
+        });
+        
+        resolve([...new Set(emails)].filter(isEmail));
+      } catch (err) {
+        reject(new Error(`Failed to parse file: ${err.message}`));
+      }
+    };
+    reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+    reader.readAsText(file);
+  });
+}
+
 const PLATFORM_META = {
   linkedin_post: { label: "LinkedIn", Icon: BriefcaseBusiness, color: "text-blue-700" },
   instagram_post: { label: "Instagram", Icon: Camera, color: "text-pink-600" },
@@ -57,10 +85,21 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const [linkedinConnectedAccount, setLinkedinConnectedAccount] = useState("");
   const [checkingLinkedinStatus, setCheckingLinkedinStatus] = useState(false);
-  //Added below 3 lines
+  //Added below 7 lines
   const [useTemplate, setUseTemplate] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [emailTemplates, setEmailTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+
   const [matchedTemplateName, setMatchedTemplateName] = useState("");
   const attachmentInputRef = useRef(null);
+  const [recipientFile, setRecipientFile] = useState(null);
+  const [recipientFileEmails, setRecipientFileEmails] = useState([]);
+  const recipientFileInputRef = useRef(null);
+  const strategyAbortRef = useRef(null);
+  const contentAbortRef = useRef(null);
+  const imageAbortRef = useRef(null);
+  const aiEditAbortRef = useRef(null);
 
 
   const needsRecipients = useMemo(
@@ -125,6 +164,21 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
 };
 
  //Added
+  useEffect(() => {
+  fetch("/api/auth/session")
+    .then((r) => r.json())
+    .then((d) => { if (d?.user) setCurrentUser(d.user); })
+    .catch(() => {});
+}, []);
+
+useEffect(() => {
+  if (!useTemplate) return;
+  fetch("/api/email-templates?pageSize=50")
+    .then((r) => r.json())
+    .then((d) => setEmailTemplates(Array.isArray(d?.templates) ? d.templates : []))
+    .catch(() => {});
+}, [useTemplate]);
+
 
 
   useEffect(() => {
@@ -165,16 +219,34 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   }, [embedded]);
   //Added
 
+  useEffect(() => {
+    return () => {
+      strategyAbortRef.current?.abort();
+      contentAbortRef.current?.abort();
+      imageAbortRef.current?.abort();
+      aiEditAbortRef.current?.abort();
+    };
+  }, []);
+
   const generateStrategy = async () => {
+    if (strategyAbortRef.current) {
+      strategyAbortRef.current.abort();
+      strategyAbortRef.current = null;
+      setGeneratingSuggestions(false);
+      return;
+    }
     if (!input.trim()) return;
     const isRefresh = suggestions.length > 0;
     setGeneratingSuggestions(true);
     setMessage("");
+    const controller = new AbortController();
+    strategyAbortRef.current = controller;
     
     try {
       const res = await fetch("/api/create-post/suggestions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           input,
           refresh: isRefresh,
@@ -194,20 +266,33 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       setImagePrompt(input.trim());
       setMessage(isRefresh ? "Platform strategy updated with fresh suggestions." : "");
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setMessage(e?.message || "Failed to generate strategy.");
     } finally {
-      setGeneratingSuggestions(false);
+      if (strategyAbortRef.current === controller) {
+        strategyAbortRef.current = null;
+        setGeneratingSuggestions(false);
+      }
     }
   };
 
   const regenerateActiveContent = async () => {
+    if (contentAbortRef.current) {
+      contentAbortRef.current.abort();
+      contentAbortRef.current = null;
+      setGeneratingContent(false);
+      return;
+    }
     if (!input.trim() || !activeType) return;
     setGeneratingContent(true);
     setMessage("");
+    const controller = new AbortController();
+    contentAbortRef.current = controller;
     try {
       const res2 = await fetch("/api/create-post/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ input, selectedTypes: [activeType] }),
       });
       const data2 = await res2.json();
@@ -224,9 +309,13 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       });
       setContentByType(next);
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setMessage(e?.message || "Failed to regenerate.");
     } finally {
-      setGeneratingContent(false);
+      if (contentAbortRef.current === controller) {
+        contentAbortRef.current = null;
+        setGeneratingContent(false);
+      }
     }
   };
 
@@ -265,21 +354,43 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   // };  
   //Added
   const generateContentForSelectedTypes = async () => {
+  if (contentAbortRef.current) {
+    contentAbortRef.current.abort();
+    contentAbortRef.current = null;
+    setGeneratingContent(false);
+    return;
+  }
   if (!input.trim() || selectedTypes.length === 0) return;
   setGeneratingContent(true);
   setMessage("");
   setMatchedTemplateName("");
+  const controller = new AbortController();
+  contentAbortRef.current = controller;
   try {
     const emailSelected = selectedTypes.includes("email_campaign") || selectedTypes.includes("newsletter");
+    // let matchedTemplate = null;
+    // if (useTemplate && emailSelected) {
+    //   matchedTemplate = await findBestTemplateForInput(input);
+    // }
     let matchedTemplate = null;
-    if (useTemplate && emailSelected) {
-      matchedTemplate = await findBestTemplateForInput(input);
-    }
+if (useTemplate && emailSelected && selectedTemplateId) {
+  matchedTemplate = emailTemplates.find((t) => t.id === selectedTemplateId) || null;
+}
+
 
     const res2 = await fetch("/api/create-post/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input, selectedTypes }),
+      signal: controller.signal,
+      // body: JSON.stringify({ input, selectedTypes }),
+      body: JSON.stringify({
+          input,
+          selectedTypes,
+          senderName: currentUser?.name || "",
+          senderEmail: currentUser?.email || "",
+          senderCompany: currentUser?.company || "",
+        }),
+
     });
     const data2 = await res2.json();
     if (!res2.ok || data2?.error) throw new Error(data2?.error || "Failed to generate content.");
@@ -324,21 +435,34 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     if (matchedTemplate && emailSelected) setMatchedTemplateName(String(matchedTemplate.name || ""));
     if (!selectedTypes.includes(activeType)) setActiveType(selectedTypes[0] || "");
   } catch (e) {
+    if (e?.name === "AbortError") return;
     setMessage(e?.message || "Failed to generate content.");
   } finally {
-    setGeneratingContent(false);
+    if (contentAbortRef.current === controller) {
+      contentAbortRef.current = null;
+      setGeneratingContent(false);
+    }
   }
 };       //Added
 
   const generateImageForActiveType = async () => {
+    if (imageAbortRef.current) {
+      imageAbortRef.current.abort();
+      imageAbortRef.current = null;
+      setGeneratingImageForType("");
+      return;
+    }
     if (!activeType) return;
     const prompt = imagePrompt.trim() || contentByType[activeType]?.content || input;
     if (!prompt) return;
     setGeneratingImageForType(activeType);
+    const controller = new AbortController();
+    imageAbortRef.current = controller;
     try {
       const mediaRes = await fetch("/api/create-post/media", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ prompt, count: 1 }),
       });
       const mediaData = await mediaRes.json();
@@ -351,9 +475,13 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
         },
       }));
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setMessage(e?.message || "Failed to generate image.");
     } finally {
-      setGeneratingImageForType("");
+      if (imageAbortRef.current === controller) {
+        imageAbortRef.current = null;
+        setGeneratingImageForType("");
+      }
     }
   };
 
@@ -382,6 +510,44 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     const nextRecipients = recipientEmails.filter((email) => email !== emailToRemove);
     setRecipientEmails(nextRecipients);
     syncDrafts([...new Set([...nextRecipients, ...selectedUserEmails])], baseEmailSubject, baseEmailBody);
+  };
+
+  const handleRecipientFileUpload = async (file) => {
+    if (!file) return;
+    
+    const validTypes = [
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/plain'
+    ];
+    
+    if (!validTypes.includes(file.type) && !file.name.match(/\.(csv|xlsx|xls|txt)$/i)) {
+      setMessage('Please upload a CSV, Excel, or text file.');
+      return;
+    }
+    
+    try {
+      setMessage('Parsing recipient file...');
+      const emails = await parseRecipientFile(file);
+      
+      if (emails.length === 0) {
+        setMessage('No valid email addresses found in the file.');
+        return;
+      }
+      
+      setRecipientFile(file);
+      setRecipientFileEmails(emails);
+      
+      // Add to recipient list
+      const combined = [...new Set([...recipientEmails, ...emails])];
+      setRecipientEmails(combined);
+      syncDrafts([...new Set([...combined, ...selectedUserEmails])], baseEmailSubject, baseEmailBody);
+      
+      setMessage(`Added ${emails.length} email(s) from ${file.name}`);
+    } catch (err) {
+      setMessage(err.message || 'Failed to parse recipient file.');
+    }
   };
 
   const removeRecipient = (emailToRemove) => {
@@ -448,17 +614,26 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   };
 
   const rewriteRecipientEmailWithAI = async () => {
+    if (aiEditAbortRef.current) {
+      aiEditAbortRef.current.abort();
+      aiEditAbortRef.current = null;
+      setAiEditingRecipient(false);
+      return;
+    }
     if (!activeRecipient) return;
     const prompt = aiPromptForRecipient.trim();
     if (!prompt) return;
     setAiEditingRecipient(true);
     setMessage("");
+    const controller = new AbortController();
+    aiEditAbortRef.current = controller;
     try {
       const current = recipientDrafts[activeRecipient] || { subject: baseEmailSubject, body: baseEmailBody };
       const aiInput = `${prompt}\n\nCurrent subject: ${current.subject}\nCurrent email body:\n${current.body}\n\nRewrite for recipient: ${activeRecipient}`;
       const res = await fetch("/api/create-post/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({ input: aiInput, selectedTypes: ["email_campaign"] }),
       });
       const data = await res.json();
@@ -472,9 +647,13 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       setAiPromptForRecipient("");
       setMessage(`AI updated email for ${activeRecipient}.`);
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setMessage(e?.message || "Failed to update email with AI.");
     } finally {
-      setAiEditingRecipient(false);
+      if (aiEditAbortRef.current === controller) {
+        aiEditAbortRef.current = null;
+        setAiEditingRecipient(false);
+      }
     }
   };
 
@@ -547,11 +726,11 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                 </div>
                 <button
                    onClick={generateStrategy}
-                   disabled={generatingSuggestions || generatingContent || !input.trim()}
+                   disabled={!generatingSuggestions && (generatingContent || !input.trim())}
                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[0.98] hover:bg-indigo-700 hover:shadow-md disabled:opacity-50 sm:w-auto"
                 >
                    {generatingSuggestions || generatingContent ? <LoadingSpinner /> : <Sparkles size={16} />}
-                   {suggestions.length > 0 ? "Update Strategy" : "Generate Strategy"}
+                   {generatingSuggestions ? "Stop" : suggestions.length > 0 ? "Update Strategy" : "Generate Strategy"}
                 </button>
              </div>
            </section>
@@ -610,8 +789,10 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                </div>
              )} */}
             {suggestions.length > 0 && (
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-              <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+            // <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
+            <div className="mt-5 border-t border-slate-100 pt-4">
+
+              {/* <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
                 <input
                   type="checkbox"
                   checked={useTemplate}
@@ -619,16 +800,81 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                   className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 Use template
-              </label>
+              </label> */}
+
+{/*               
+              <div className="flex flex-wrap items-center gap-3">
+  <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+    <input
+      type="checkbox"
+      checked={useTemplate}
+      onChange={(e) => { setUseTemplate(e.target.checked); setSelectedTemplateId(""); }}
+      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+    />
+    Use template
+  </label>
+  {useTemplate && (
+    <select
+      value={selectedTemplateId}
+      onChange={(e) => setSelectedTemplateId(e.target.value)}
+      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+    >
+      <option value="">Select template...</option>
+      {emailTemplates.map((t) => (
+        <option key={t.id} value={t.id}>{t.name}</option>
+      ))}
+    </select>
+  )}
+</div>
+
               <button
                 onClick={generateContentForSelectedTypes}
-                disabled={generatingContent || selectedTypes.length === 0}
+                disabled={!generatingContent && selectedTypes.length === 0}
                 className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-50"
               >
                 {generatingContent ? <LoadingSpinner /> : null}
-                {generatingContent ? "Generating..." : "Confirm Platforms & Generate"}
+                {generatingContent ? "Stop" : "Confirm Platforms & Generate"}
               </button>
-            </div>
+            </div> */}
+<div className="mt-3 flex items-center justify-between gap-3">
+  <div className="space-y-2">
+    <label className={`inline-flex cursor-pointer items-center gap-2 text-sm font-medium ${needsRecipients ? "text-slate-700" : "cursor-not-allowed text-slate-400"}`}>
+      <input
+        type="checkbox"
+        checked={useTemplate}
+        disabled={!needsRecipients}
+        onChange={(e) => { setUseTemplate(e.target.checked); setSelectedTemplateId(""); }}
+        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+      />
+      Use Email Template
+    </label>
+    {useTemplate && needsRecipients && (
+      <select
+        value={selectedTemplateId}
+        onChange={(e) => setSelectedTemplateId(e.target.value)}
+        className="block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+      >
+        <option value="">Select template...</option>
+        {emailTemplates.map((t) => (
+          <option key={t.id} value={t.id}>{t.name}</option>
+        ))}
+      </select>
+    )}
+  </div>
+  <button
+    onClick={generateContentForSelectedTypes}
+    // disabled={!generatingContent && selectedTypes.length === 0}
+    disabled={!generatingContent && (selectedTypes.length === 0 || (useTemplate && !selectedTemplateId))}
+    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-50"
+  >
+    {generatingContent ? <LoadingSpinner /> : null}
+    {generatingContent ? "Stop" : "Confirm Platforms & Generate"}
+  </button>
+</div>
+</div>
+
+
+
           )}
 
 
@@ -836,6 +1082,41 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
 
 
   </div>
+)}
+
+{(activeType === "email_campaign" || activeType === "newsletter") && (
+  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-sm font-semibold text-slate-900">Recipients (CSV/Excel)</p>
+      <button
+        type="button"
+        onClick={() => recipientFileInputRef.current?.click()}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+      >
+        {recipientFile ? 'Change File' : 'Upload File'}
+      </button>
+    </div>
+    <input
+      ref={recipientFileInputRef}
+      type="file"
+      accept=".csv,.xlsx,.xls,.txt"
+      className="hidden"
+      onChange={(e) => {
+        const file = e.target.files?.[0];
+        if (file) handleRecipientFileUpload(file);
+        e.target.value = '';
+      }}
+    />
+    {recipientFile ? (
+      <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+        <p className="text-xs text-slate-700">
+          <span className="font-semibold">{recipientFile.name}</span> - {recipientFileEmails.length} email(s) found
+        </p>
+      </div>
+    ) : (
+      <p className="mt-2 text-xs text-slate-400">No recipient file uploaded.</p>
+    )}
+  </div>
 )}         
                   </>
                 ) : (
@@ -893,12 +1174,12 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                 </div>
                 <button
                    onClick={generateImageForActiveType}
-                   disabled={generatingImageForType === activeType || !activeType}
+                   disabled={!generatingImageForType && !activeType}
                    className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:scale-[0.98] disabled:opacity-50"
                 >
                    <span className="inline-flex items-center gap-2">
                     {activeType && generatingImageForType === activeType ? <LoadingSpinner /> : null}
-                    {activeType && generatingImageForType === activeType ? "Generating Image..." : "Generate Image"}
+                    {activeType && generatingImageForType === activeType ? "Stop" : "Generate Image"}
                    </span>
                 </button>
              </div>
@@ -910,7 +1191,6 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
              <div className="flex flex-col gap-2.5">
                 <button 
                    onClick={regenerateActiveContent}
-                   disabled={generatingContent}
                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-all hover:bg-slate-50 disabled:opacity-50"
                 >
                    {generatingContent ? (
@@ -918,7 +1198,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                    ) : (
                      <Sparkles size={16} className="text-indigo-600" />
                    )}
-                   {generatingContent ? "Regenerating..." : "Regenerate Text"}
+                   {generatingContent ? "Stop" : "Regenerate Text"}
                 </button>
                 
                 <div className="my-1 border-t border-slate-100"></div>
@@ -1009,7 +1289,8 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     onClick={() => {
                         const subject = contentByType[activeType]?.subject || "";
                         const body = contentByType[activeType]?.content || "";
-                        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        const to = allRecipients.join(',');
+                        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                         window.open(gmailUrl, '_blank');
                     }}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:scale-[0.98] hover:bg-slate-50"
@@ -1021,7 +1302,8 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     onClick={() => {
                         const subject = contentByType[activeType]?.subject || "";
                         const body = contentByType[activeType]?.content || "";
-                        const outlookUrl = `https://outlook.office.com/mail/deeplink/compose?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+                        const to = allRecipients.join(';');
+                        const outlookUrl = `https://outlook.office.com/mail/deeplink/compose?to=${to}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
                         window.open(outlookUrl, '_blank');
                     }}
                     className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700 shadow-sm transition-all hover:scale-[0.98] hover:bg-blue-100"
@@ -1227,12 +1509,12 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
                     />
                     <button
                       onClick={rewriteRecipientEmailWithAI}
-                      disabled={!activeRecipient || !aiPromptForRecipient.trim() || aiEditingRecipient}
+                      disabled={!aiEditingRecipient && (!activeRecipient || !aiPromptForRecipient.trim())}
                       className="whitespace-nowrap rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-indigo-700 disabled:opacity-50"
                     >
                       <span className="inline-flex items-center gap-2">
                         {aiEditingRecipient ? <LoadingSpinner /> : null}
-                        {aiEditingRecipient ? "Applying..." : "Apply AI Edit"}
+                        {aiEditingRecipient ? "Stop" : "Apply AI Edit"}
                       </span>
                     </button>
                   </div>

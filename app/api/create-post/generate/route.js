@@ -64,8 +64,9 @@ function parseJson(text) {
   }
 }
 
-async function generateForType(apiKey, typeId, prompt, templateReference = null) {
-  const platform = humanizeType(typeId);
+// async function generateForType(apiKey, typeId, prompt, templateReference = null) {
+async function generateForType(apiKey, typeId, prompt, templateReference = null, sender = {}) {
+const platform = humanizeType(typeId);
   const isEmailType = typeId === "email_campaign" || typeId === "newsletter";
   const channelRules = isEmailType
     ? `Email-specific requirements:
@@ -102,6 +103,7 @@ Template Subject: ${String(templateReference?.subject || "")}
 Template Body:
 ${String(templateReference?.body || "")}`
   : ""}
+${(sender.senderName || sender.senderEmail || sender.senderCompany) ? `\nSender signature (use these exact values instead of placeholders like [Your Name], [Your Company], [Your Email]):\n- Name: ${sender.senderName || ""}\n- Email: ${sender.senderEmail || ""}\n- Company: ${sender.senderCompany || ""}` : ""}
 ${channelRules}`;
 
   const res = await fetch(OPENAI_URL, {
@@ -141,6 +143,10 @@ export async function POST(req) {
       body?.templateReference && typeof body.templateReference === "object"
         ? body.templateReference
         : null;
+        const senderName = String(body?.senderName || "").trim();
+        const senderEmail = String(body?.senderEmail || "").trim();
+        const senderCompany = String(body?.senderCompany || "").trim();
+
     if (!prompt || selectedTypes.length === 0) {
       return NextResponse.json({ error: "Input and selected types are required." }, { status: 400 });
     }
@@ -153,7 +159,9 @@ export async function POST(req) {
       contents = await Promise.all(
         selectedTypes.map(async (typeId) => {
           try {
-            return await generateForType(apiKey, typeId, prompt, templateReference);
+            // return await generateForType(apiKey, typeId, prompt, templateReference);
+          return await generateForType(apiKey, typeId, prompt, templateReference, { senderName, senderEmail, senderCompany });
+
           } catch {
             return fallbackContent(typeId, prompt);
           }

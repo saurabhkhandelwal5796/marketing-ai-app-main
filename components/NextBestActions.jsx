@@ -41,10 +41,10 @@ export default function NextBestActions({
 
       <button
         onClick={onGenerate}
-        disabled={loading || selectedActions.length === 0}
+        disabled={!loading && selectedActions.length === 0}
         className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
-        {loading ? "Generating..." : "Generate Content"}
+        {loading ? "Stop" : "Generate Content"}
       </button>
     </div>
   );

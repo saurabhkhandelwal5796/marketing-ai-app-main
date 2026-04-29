@@ -45,7 +45,7 @@ export async function GET(_req, { params }) {
     if (milestoneTaskId) {
       const { data, error } = await supabase
         .from("milestone_tasks")
-        .select("id,title,task_type,assignee_id,status,created_at,milestones!inner(campaign_id,end_date,description)")
+        .select("id,title,task_type,assignee_id,priority,status,due_date,created_at,milestones!inner(campaign_id,end_date,description)")
         .eq("id", milestoneTaskId)
         .single();
       if (error) throw new Error(error.message);
@@ -56,10 +56,11 @@ export async function GET(_req, { params }) {
           description: data?.milestones?.description || null,
           assignee_id: data.assignee_id,
           assignee_team: null,
-          priority: "Medium",
+          priority: data?.priority || "Medium",
           status: mapMilestoneStatusToTask(data.status),
           task_type: data.task_type || "Generic Task",
-          due_date: data?.milestones?.end_date || null,
+          // due_date: data?.milestones?.end_date || null,
+          due_date: data?.due_date || data?.milestones?.end_date || null,
           channel_tags: [],
           campaign_context: "Milestone task",
           campaign_id: data?.milestones?.campaign_id || null,
@@ -148,6 +149,15 @@ export async function PATCH(req, { params }) {
   if (Object.prototype.hasOwnProperty.call(body || {}, "assignee_id")) {
     milestonePatch.assignee_id = body?.assignee_id || null;
   }
+  if (Object.prototype.hasOwnProperty.call(body || {}, "due_date")) {
+  milestonePatch.due_date = body?.due_date || null;
+}
+if (Object.prototype.hasOwnProperty.call(body || {}, "priority")) {
+  const allowed = ["Low", "Medium", "High", "Urgent"];
+  milestonePatch.priority = allowed.includes(body.priority) ? body.priority : "Medium";
+}
+
+
   if (Object.keys(milestonePatch).length === 0) {
     return NextResponse.json({ error: "No supported fields for milestone task update." }, { status: 400 });
   }
@@ -156,7 +166,7 @@ export async function PATCH(req, { params }) {
     .from("milestone_tasks")
     .update(milestonePatch)
     .eq("id", milestoneTaskId)
-    .select("id,title,task_type,assignee_id,status,created_at,milestone_id,milestones!inner(campaign_id,end_date,description)")
+    .select("id,title,task_type,assignee_id,priority,status,due_date,created_at,milestone_id,milestones!inner(campaign_id,end_date,description)")
     .single();
   if (!session.is_admin) updateQuery = updateQuery.eq("assignee_id", session.id);
   const { data, error } = await updateQuery;
@@ -212,10 +222,11 @@ export async function PATCH(req, { params }) {
       description: data?.milestones?.description || null,
       assignee_id: data.assignee_id,
       assignee_team: null,
-      priority: "Medium",
+      priority: data?.priority || "Medium",
       status: mapMilestoneStatusToTask(data.status),
       task_type: data.task_type || "Generic Task",
-      due_date: data?.milestones?.end_date || null,
+      // due_date: data?.milestones?.end_date || null,
+      due_date: data?.due_date || data?.milestones?.end_date || null,
       channel_tags: [],
       campaign_context: "Milestone task",
       campaign_id: data?.milestones?.campaign_id || null,
