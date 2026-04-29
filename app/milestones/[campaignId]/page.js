@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuditUserAndPage } from "../../../lib/useAuditPageVisit";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Pencil } from "lucide-react";
+// import { ArrowLeft, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Pencil, Plus, Trash2, X } from "lucide-react";
 import Avatar from "../../../components/Avatar";
 
 function formatDateLabel(value) {
@@ -64,6 +65,28 @@ export default function CampaignMilestonesPage() {
     status: ""
   });
   const [savingMilestone, setSavingMilestone] = useState(false);
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const [deletingMilestoneId, setDeletingMilestoneId] = useState(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({ title: "", description: "", start_date: "", end_date: "", assignee_id: "", status: "Not Started" });
+  const [createTasks, setCreateTasks] = useState([]);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({ title: "", task_type: "Generic Task", priority: "Medium", assignee_id: "" });
+  const [savingCreate, setSavingCreate] = useState(false);
+
+  const actionMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target)) {
+        setOpenActionMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
 
 
   useEffect(() => {
@@ -308,6 +331,59 @@ export default function CampaignMilestonesPage() {
     }
   };
 
+  const handleDeleteMilestone = async (milestoneId) => {
+    if (!confirm("Are you sure you want to delete this milestone?")) return;
+    setDeletingMilestoneId(milestoneId);
+    setError("");
+    try {
+      const res = await fetch(`/api/milestones/${milestoneId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete milestone.");
+      setMilestones(prev => prev.filter(m => m.id !== milestoneId));
+    } catch (err) {
+      setError(err?.message || "Failed to delete milestone.");
+    } finally {
+      setDeletingMilestoneId(null);
+    }
+  };
+
+    const handleCreateMilestone = async () => {
+    if (!createForm.title.trim()) return;
+    setSavingCreate(true);
+    setError("");
+    try {
+      const res = await fetch("/api/milestones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...createForm, campaign_id: campaignId === "general" ? null : campaignId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create milestone.");
+
+      const newMilestoneId = data.milestone.id;
+      for (const task of createTasks) {
+        await fetch(`/api/milestones/${newMilestoneId}/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // body: JSON.stringify({ title: task.title, task_type: "Generic Task", status: "Not Started" }),
+          body: JSON.stringify({ title: task.title, task_type: task.task_type || "Generic Task", assignee_id: task.assignee_id || null, priority: task.priority || "Medium", due_date: task.due_date || null, status: "Not Started" }),
+
+        });
+      }
+
+      setMilestones(prev => [...prev, { ...data.milestone, tasks: [], task_count: createTasks.length, tasks_done: 0 }]);
+      setCreateForm({ title: "", description: "", start_date: "", end_date: "", assignee_id: "", status: "Not Started" });
+      setCreateTasks([]);
+      setNewTaskTitle("");
+      setShowCreateForm(false);
+    } catch (err) {
+      setError(err?.message || "Failed to create milestone.");
+    } finally {
+      setSavingCreate(false);
+    }
+  };
+
+
 
 
   const campaignName = milestones[0]?.campaign_name && milestones[0]?.campaign_name !== "-" ? milestones[0]?.campaign_name : "General Campaign";
@@ -330,7 +406,7 @@ export default function CampaignMilestonesPage() {
               <h1 className="text-2xl font-semibold text-slate-900">{campaignName}</h1>
               <p className="mt-2 text-sm text-slate-500">Track all milestones and tasks for this campaign.</p>
             </div>
-            <div className="w-full max-w-xs">
+            {/* <div className="w-full max-w-xs">
               <div className="flex items-center justify-between text-sm font-medium text-slate-700 mb-2">
                 <span>Overall Progress</span>
                 <span>{overallProgress}%</span>
@@ -341,9 +417,203 @@ export default function CampaignMilestonesPage() {
                   style={{ width: `${overallProgress}%` }}
                 />
               </div>
+            </div> */}
+                        <div className="flex items-end gap-4">
+              <div className="w-full max-w-xs">
+                <div className="flex items-center justify-between text-sm font-medium text-slate-700 mb-2">
+                  <span>Overall Progress</span>
+                  <span>{overallProgress}%</span>
+                </div>
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                    style={{ width: `${overallProgress}%` }}
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateForm(true)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+              >
+                <Plus size={16} />
+                New Milestone
+              </button>
             </div>
+
           </div>
         </section>
+
+                {showCreateForm && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-slate-900">New Milestone</h2>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateForm(false); setCreateForm({ title: "", description: "", start_date: "", end_date: "", assignee_id: "", status: "Not Started" }); }}
+                  disabled={savingCreate}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateMilestone}
+                  disabled={savingCreate || !createForm.title.trim()}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {savingCreate ? "Creating..." : "Create Milestone"}
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Title *</label>
+                <input
+                  type="text"
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Milestone title"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Start Date</label>
+                <input
+                  type="date"
+                  value={createForm.start_date}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, start_date: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Due Date</label>
+                <input
+                  type="date"
+                  value={createForm.end_date}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, end_date: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assignee</label>
+                <select
+                  value={createForm.assignee_id}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, assignee_id: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="">Unassigned</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</label>
+                <select
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, status: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="Not Started">Not Started</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+            
+                        <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Description</label>
+                <textarea
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Optional description"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              {/* <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tasks</label>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="text"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newTaskTitle.trim()) {
+                        e.preventDefault();
+                        setCreateTasks(prev => [...prev, { id: Date.now(), title: newTaskTitle.trim() }]);
+                        setNewTaskTitle("");
+                      }
+                    }}
+                    placeholder="Task title and press Enter"
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newTaskTitle.trim()) return;
+                      setCreateTasks(prev => [...prev, { id: Date.now(), title: newTaskTitle.trim() }]);
+                      setNewTaskTitle("");
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Add
+                  </button>
+                </div>
+                {createTasks.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {createTasks.map((task) => (
+                      <li key={task.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        {task.title}
+                        <button
+                          type="button"
+                          onClick={() => setCreateTasks(prev => prev.filter(t => t.id !== task.id))}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div> */}
+
+                            <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tasks</label>
+                <button
+                  type="button"
+                  onClick={() => { setTaskForm({ title: "", task_type: "Generic Task", priority: "Medium", assignee_id: "" }); setTaskModalOpen(true); }}
+                  className="mt-1 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <Plus size={13} /> Add Task
+                </button>
+                {createTasks.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {createTasks.map((task) => (
+                      <li key={task.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        <span>
+                          {task.title}
+                          <span className="ml-2 text-xs text-slate-400">{task.task_type} · {task.priority}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCreateTasks(prev => prev.filter(t => t.id !== task.id))}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+            </div>
+          </section>
+
+        )}
+
 
         {loading ? (
           <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
@@ -609,14 +879,57 @@ export default function CampaignMilestonesPage() {
       <>
         <div className="mb-4 flex items-center justify-between">
           <h4 className="text-sm font-semibold text-slate-900">Milestone Details</h4>
-          <button
+          {/* <button
             type="button"
             onClick={() => startEditingMilestone(milestone)}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
           >
             <Pencil size={14} />
             Edit
-          </button>
+          </button> */}
+                    <div className="relative" ref={openActionMenuId === milestone.id ? actionMenuRef : null}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenActionMenuId(prev => prev === milestone.id ? null : milestone.id);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Actions
+              <ChevronDown size={12} />
+            </button>
+            {openActionMenuId === milestone.id && (
+              <div className="absolute right-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenActionMenuId(null);
+                    startEditingMilestone(milestone);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <Pencil size={13} />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingMilestoneId === milestone.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenActionMenuId(null);
+                    handleDeleteMilestone(milestone.id);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+                >
+                  <Trash2 size={13} />
+                  {deletingMilestoneId === milestone.id ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            )}
+          </div>
+
         </div>
 
           <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -767,6 +1080,104 @@ export default function CampaignMilestonesPage() {
           </>
         )}
       </div>
+   
+        {taskModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40" onClick={() => setTaskModalOpen(false)} />
+            <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                <p className="text-sm font-semibold text-slate-900">Add Task</p>
+                <button type="button" onClick={() => setTaskModalOpen(false)} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-50">
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="space-y-4 px-5 py-4">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Title *</label>
+                  <input
+                    type="text"
+                    value={taskForm.title}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Task title"
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Task Type</label>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {["Generic Task", "LinkedIn Post", "Social Media Post", "Blog Post", "Cold Email Campaign", "Company Research", "Email Newsletter", "Campaign Analysis"].map(tt => (
+                      <button
+                        key={tt}
+                        type="button"
+                        onClick={() => setTaskForm(prev => ({ ...prev, task_type: tt }))}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${taskForm.task_type === tt ? "border-blue-500 bg-blue-500 text-white" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"}`}
+                      >
+                        {tt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Priority</label>
+                  <div className="mt-1 flex gap-2">
+                    {["Low", "Medium", "High", "Urgent"].map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setTaskForm(prev => ({ ...prev, priority: p }))}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${taskForm.priority === p ? "border-blue-500 bg-blue-500 text-white" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"}`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assignee</label>
+                  <select
+                    value={taskForm.assignee_id}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, assignee_id: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Unassigned</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+              {/* </div>
+              <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                            </div> */}
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Due Date</label>
+                  <input
+                    type="date"
+                    value={taskForm.due_date || ""}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, due_date: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+
+                <button type="button" onClick={() => setTaskModalOpen(false)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!taskForm.title.trim()}
+                  onClick={() => {
+                    if (!taskForm.title.trim()) return;
+                    setCreateTasks(prev => [...prev, { id: Date.now(), ...taskForm }]);
+                    setTaskModalOpen(false);
+                  }}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Add Task
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </main>
   );
 }
+

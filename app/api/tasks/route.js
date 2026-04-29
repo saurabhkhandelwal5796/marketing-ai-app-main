@@ -34,7 +34,7 @@ export async function GET(req) {
 
     let milestoneQuery = supabase
       .from("milestone_tasks")
-      .select("id,title,task_type,assignee_id,status,created_at,milestones!inner(title,campaign_id,end_date,description)")
+      .select("id,title,task_type,assignee_id,priority,status,due_date,created_at,milestones!inner(title,campaign_id,end_date,description)")
       .order("created_at", { ascending: false });
 
     if (session.is_admin) {
@@ -57,10 +57,11 @@ export async function GET(req) {
         description: m?.description || null,
         assignee_id: row?.assignee_id || null,
         assignee_team: null,
-        priority: "Medium",
+        priority: row?.priority || "Medium",
         status,
         task_type: row?.task_type || "Generic Task",
-        due_date: m?.end_date || null,
+        // due_date: m?.end_date || null,
+        due_date: row?.due_date || m?.end_date || null,
         milestone_name: m?.title || null,
         channel_tags: [],
         campaign_context: "Milestone task",

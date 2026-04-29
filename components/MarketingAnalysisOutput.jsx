@@ -354,6 +354,19 @@ function employeeKey(employee) {
   return `${audienceNameKey(employee?.name)}::${audienceNameKey(employee?.company)}::${audienceNameKey(employee?.title)}`;
 }
 
+function abortControllerMap(ref) {
+  Object.values(ref.current || {}).forEach((controller) => controller?.abort());
+}
+
+function getMilestoneTaskRawId(taskId) {
+  return String(taskId || "").replace(/^milestone:/, "").trim();
+}
+
+function getMilestoneTaskRouteId(taskId) {
+  const raw = getMilestoneTaskRawId(taskId);
+  return raw ? `milestone:${raw}` : "";
+}
+
 function templateKey(tpl) {
   const title = String(tpl?.title || "").trim().toLowerCase();
   const type = String(tpl?.task_type || "").trim().toLowerCase();
@@ -474,6 +487,14 @@ export default function MarketingAnalysisOutput({
   const [moreAudienceLoading, setMoreAudienceLoading] = useState(false);
   const audienceAbortRef = useRef(null);
   const audienceTimerRef = useRef(null);
+  const analysisAbortRef = useRef(null);
+  const threadAbortRefs = useRef({});
+  const companyDetailAbortRef = useRef(null);
+  const companyAssistantAbortRef = useRef(null);
+  const milestoneAiAbortRef = useRef(null);
+  const milestoneChatAbortRef = useRef(null);
+  const employeeAssistantAbortRef = useRef(null);
+  const dueDateAbortRef = useRef(null);
   const prevPlanLoadingRef = useRef(planLoading);
   const didMountRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -507,6 +528,7 @@ export default function MarketingAnalysisOutput({
   const [formAssigneeId, setFormAssigneeId] = useState("");
   const [formDueDate, setFormDueDate] = useState("");
   const [formDueReason, setFormDueReason] = useState("");
+  const [dueDateSuggesting, setDueDateSuggesting] = useState(false);
   const [formCampaignId, setFormCampaignId] = useState("");
   const [formCampaignName, setFormCampaignName] = useState("");
   const [formChannelTags, setFormChannelTags] = useState([]);
@@ -730,7 +752,30 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     if (typeof initialAiMessage === "string") setAiMessage(initialAiMessage);
   }, [initialAiMessage]);
 
+  useEffect(() => {
+    return () => {
+      audienceAbortRef.current?.abort();
+      analysisAbortRef.current?.abort();
+      companyDetailAbortRef.current?.abort();
+      companyAssistantAbortRef.current?.abort();
+      milestoneAiAbortRef.current?.abort();
+      milestoneChatAbortRef.current?.abort();
+      employeeAssistantAbortRef.current?.abort();
+      dueDateAbortRef.current?.abort();
+      abortControllerMap(threadAbortRefs);
+    };
+  }, []);
+
   const generateTargetAudience = async ({ reason = "", append = false } = {}) => {
+    const isRunning = append ? moreAudienceLoading : audienceLoading;
+    if ((isRunning || audienceAbortRef.current) && audienceAbortRef.current) {
+      audienceAbortRef.current.abort();
+      audienceAbortRef.current = null;
+      setAudienceLoading(false);
+      setMoreAudienceLoading(false);
+      return;
+    }
+
     const desc = String(description || "").trim();
     if (!desc) return;
 
@@ -820,8 +865,11 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       if (e?.name === "AbortError") return;
       setError(e?.message || "Failed to generate target audience.");
     } finally {
-      if (append) setMoreAudienceLoading(false);
-      else setAudienceLoading(false);
+      if (audienceAbortRef.current === controller) {
+        audienceAbortRef.current = null;
+        if (append) setMoreAudienceLoading(false);
+        else setAudienceLoading(false);
+      }
     }
   };
 
@@ -965,6 +1013,9 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
 
   const assignMilestoneTrackerTask = async (milestone, task, assigneeIdValue) => {
     if (!milestone?.id || !task?.id) return;
+    const rawTaskId = getMilestoneTaskRawId(task.id);
+    const routeTaskId = getMilestoneTaskRouteId(task.id);
+    if (!rawTaskId || !routeTaskId) return;
     const assignee_id = assigneeIdValue || null;
     const selectedUser = assignee_id ? users.find((u) => u.id === assignee_id) : null;
 
@@ -978,7 +1029,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
           : {
               ...m,
               tasks: (m.tasks || []).map((t) =>
-                t.id !== task.id
+                getMilestoneTaskRawId(t.id) !== rawTaskId
                   ? t
                   : {
                       ...t,
@@ -991,7 +1042,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     );
 
     try {
-      const res = await fetch(`/api/tasks/${encodeURIComponent(`milestone:${task.id}`)}`, {
+      const res = await fetch(`/api/tasks/${encodeURIComponent(routeTaskId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1017,7 +1068,11 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
             ? m
             : {
                 ...m,
-                tasks: (m.tasks || []).map((t) => (t.id === task.id ? { ...t, ...data.task } : t)),
+                tasks: (m.tasks || []).map((t) =>
+                  getMilestoneTaskRawId(t.id) === rawTaskId
+                    ? { ...t, ...data.task, id: rawTaskId }
+                    : t
+                ),
               }
         )
       );
@@ -1084,6 +1139,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
   }, [campaignId]);
 
   const openCompanyModal = async (companyObj) => {
+    companyDetailAbortRef.current?.abort();
     setActiveCompany(companyObj);
     setCompanyModalOpen(true);
     setCompanyModalError("");
@@ -1094,10 +1150,13 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     setCompanyAssistantMessages([]);
     setCompanyAssistantError("");
     setCompanyAssistantLoading(false);
+    const controller = new AbortController();
+    companyDetailAbortRef.current = controller;
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           step: "company_detail",
           company,
@@ -1112,9 +1171,13 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       if (!res.ok || data?.error) throw new Error(data?.error || "Failed to generate company details.");
       setCompanyModalData(data);
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setCompanyModalError(e?.message || "Failed to generate company details.");
     } finally {
-      setCompanyModalLoading(false);
+      if (companyDetailAbortRef.current === controller) {
+        companyDetailAbortRef.current = null;
+        setCompanyModalLoading(false);
+      }
     }
   };
 
@@ -1125,10 +1188,18 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
 
   const submitCompanyAssistant = async () => {
     const question = String(companyAssistantInput || "").trim();
-    if (!question || companyAssistantLoading) return;
+    if (companyAssistantAbortRef.current) {
+      companyAssistantAbortRef.current.abort();
+      companyAssistantAbortRef.current = null;
+      setCompanyAssistantLoading(false);
+      return;
+    }
+    if (!question) return;
 
     setCompanyAssistantError("");
     setCompanyAssistantLoading(true);
+    const controller = new AbortController();
+    companyAssistantAbortRef.current = controller;
 
     // Keep prior context (not including the current question) for the prompt transcript.
     const priorThread = companyAssistantMessages;
@@ -1150,6 +1221,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           step: "company_assistant",
           companyName: safeCompanyName,
@@ -1167,13 +1239,23 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       const answer = typeof data?.answer === "string" ? data.answer : "";
       setCompanyAssistantMessages((prev) => [...prev, { role: "assistant", content: answer }]);
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setCompanyAssistantError(e?.message || "Failed to ask AI.");
     } finally {
-      setCompanyAssistantLoading(false);
+      if (companyAssistantAbortRef.current === controller) {
+        companyAssistantAbortRef.current = null;
+        setCompanyAssistantLoading(false);
+      }
     }
   };
 
   const openMilestoneModal = async () => {
+    if (milestoneAiAbortRef.current) {
+      milestoneAiAbortRef.current.abort();
+      milestoneAiAbortRef.current = null;
+      setMilestoneAiLoading(false);
+      return;
+    }
     setMilestoneModalError("");
     setMilestoneReviewMilestones([]);
     setMilestoneAiLoading(true);
@@ -1188,6 +1270,8 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     setEditingTaskId(null);
     setEditingMilestoneTmpId(null);
 
+    const controller = new AbortController();
+    milestoneAiAbortRef.current = controller;
 
     try {
       if (!campaignId) throw new Error("Campaign is required to generate milestones.");
@@ -1232,6 +1316,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           step: "milestone_plan_generate",
           company,
@@ -1267,18 +1352,30 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
         }))
       );
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setMilestoneModalError(e?.message || "Failed to generate milestone plan with AI.");
     } finally {
-      setMilestoneAiLoading(false);
+      if (milestoneAiAbortRef.current === controller) {
+        milestoneAiAbortRef.current = null;
+        setMilestoneAiLoading(false);
+      }
     }
   };
 
   const submitMilestoneChatRefine = async () => {
     const userMessage = String(milestoneChatInput || "").trim();
-    if (!userMessage || milestoneChatLoading) return;
+    if (milestoneChatAbortRef.current) {
+      milestoneChatAbortRef.current.abort();
+      milestoneChatAbortRef.current = null;
+      setMilestoneChatLoading(false);
+      return;
+    }
+    if (!userMessage) return;
 
     setMilestoneChatLoading(true);
     setMilestoneModalError("");
+    const controller = new AbortController();
+    milestoneChatAbortRef.current = controller;
 
     const priorMessages = milestoneChatMessages;
     setMilestoneChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
@@ -1307,6 +1404,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           step: "milestone_plan_refine",
           company,
@@ -1351,9 +1449,13 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       setPlanUpdatedFlash(true);
       setTimeout(() => setPlanUpdatedFlash(false), 2500);
     } catch (e) {
+      if (e?.name === "AbortError") return;
       setMilestoneChatMessages((prev) => [...prev, { role: "assistant", content: `Error: ${e?.message || "Failed to refine plan."}` }]);
     } finally {
-      setMilestoneChatLoading(false);
+      if (milestoneChatAbortRef.current === controller) {
+        milestoneChatAbortRef.current = null;
+        setMilestoneChatLoading(false);
+      }
     }
   };
 
@@ -1497,21 +1599,41 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
   };
 
   const aiSuggestDueDate = async (title, taskType, priority) => {
+    if (dueDateAbortRef.current) {
+      dueDateAbortRef.current.abort();
+      dueDateAbortRef.current = null;
+      setDueDateSuggesting(false);
+      return null;
+    }
     const today = ymd(new Date());
-    const res = await fetch("/api/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        step: "due_date_suggest",
-        today,
-        title,
-        taskType,
-        priority,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok || data?.error) throw new Error(data?.error || "Failed to suggest due date.");
-    return data;
+    const controller = new AbortController();
+    dueDateAbortRef.current = controller;
+    setDueDateSuggesting(true);
+    try {
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          step: "due_date_suggest",
+          today,
+          title,
+          taskType,
+          priority,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to suggest due date.");
+      return data;
+    } catch (e) {
+      if (e?.name === "AbortError") return null;
+      throw e;
+    } finally {
+      if (dueDateAbortRef.current === controller) {
+        dueDateAbortRef.current = null;
+        setDueDateSuggesting(false);
+      }
+    }
   };
 
   const submitTaskModal = async () => {
@@ -1747,12 +1869,21 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
   };
 
   const handleGenerate = async () => {
+    if (analysisAbortRef.current) {
+      analysisAbortRef.current.abort();
+      analysisAbortRef.current = null;
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
+    const controller = new AbortController();
+    analysisAbortRef.current = controller;
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           company,
           campaign,
@@ -1817,9 +1948,13 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
         );
       }
     } catch (err) {
+      if (err?.name === "AbortError") return;
       setError(err?.message || "Failed to generate analysis.");
     } finally {
-      setLoading(false);
+      if (analysisAbortRef.current === controller) {
+        analysisAbortRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -1861,6 +1996,12 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
 
   const sendThreadMessage = async (detail) => {
     const pointId = detail.id;
+    if (threadAbortRefs.current[pointId]) {
+      threadAbortRefs.current[pointId].abort();
+      delete threadAbortRefs.current[pointId];
+      setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: false }));
+      return;
+    }
     const draft = (threadDraftsByPointId[pointId] || "").trim();
     if (!draft) return;
 
@@ -1877,6 +2018,8 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
 
     setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: true }));
     setError("");
+    const controller = new AbortController();
+    threadAbortRefs.current[pointId] = controller;
     try {
       const context = `Title: ${detail.title}\nExplanation: ${detail.explanation}\nTags: ${(detail.tags || []).join(
         ", "
@@ -1890,6 +2033,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           company,
           campaign,
@@ -1913,21 +2057,34 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
         return next;
       });
     } catch (err) {
+      if (err?.name === "AbortError") return;
       setError(err?.message || "Follow-up failed.");
     } finally {
-      setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: false }));
+      if (threadAbortRefs.current[pointId] === controller) {
+        delete threadAbortRefs.current[pointId];
+        setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: false }));
+      }
     }
   };
 
   const regeneratePoint = async (detail) => {
     if (!detail?.id) return;
     const pointId = detail.id;
+    if (threadAbortRefs.current[pointId]) {
+      threadAbortRefs.current[pointId].abort();
+      delete threadAbortRefs.current[pointId];
+      setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: false }));
+      return;
+    }
     setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: true }));
     setError("");
+    const controller = new AbortController();
+    threadAbortRefs.current[pointId] = controller;
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           company,
           campaign,
@@ -1950,9 +2107,13 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       if (!updated?.id) throw new Error("Invalid regenerated point.");
       setMarketingDetails((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
     } catch (err) {
+      if (err?.name === "AbortError") return;
       setError(err?.message || "Regenerate failed.");
     } finally {
-      setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: false }));
+      if (threadAbortRefs.current[pointId] === controller) {
+        delete threadAbortRefs.current[pointId];
+        setThreadLoadingByPointId((prev) => ({ ...prev, [pointId]: false }));
+      }
     }
   };
 
@@ -2116,10 +2277,9 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
           {hasMarketingPlan ? (
             <button
               onClick={handleGenerate}
-              disabled={loading}
               className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {loading ? "Generating..." : marketingDetails.length ? "Regenerate" : "Generate"}
+              {loading ? "Stop" : marketingDetails.length ? "Regenerate" : "Generate"}
             </button>
           ) : null}
 
@@ -2275,7 +2435,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                         className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
                       >
                         <Wand2 size={16} />
-                        Create Milestone with AI
+                        {milestoneAiLoading ? "Stop" : "Create Milestone with AI"}
                       </button>
                     </div>
                   ) : null}
@@ -2384,14 +2544,14 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                               >
                                 {selectedCampaignMilestone.status}
                               </span>
-                              <button
+                              {/* <button
                                 type="button"
                                 onClick={() => setSelectedCampaignMilestoneId(null)}
                                 className="rounded-lg border border-slate-200 bg-white p-1 text-slate-500 hover:bg-slate-50"
                                 title="Close"
                               >
                                 <X size={14} />
-                              </button>
+                              </button> */}
                             </div>
                           </div>
 
@@ -2613,12 +2773,11 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                             <button
                               type="button"
                               onClick={() => regeneratePoint(detail)}
-                              disabled={isBusy}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                               title="Regenerate this point"
                             >
                               <Wand2 size={14} />
-                              Regenerate
+                              {isBusy ? "Stop" : "Regenerate"}
                             </button>
                             <div className="flex flex-wrap gap-1.5">
                               {normalizeTags(detail.tags)
@@ -2725,11 +2884,11 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                                   <button
                                     type="button"
                                     onClick={() => sendThreadMessage(detail)}
-                                    disabled={isBusy || !draft.trim()}
+                                    disabled={!isBusy && !draft.trim()}
                                     className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                                   >
                                     <MessageSquarePlus size={16} />
-                                    Send
+                                    {isBusy ? "Stop" : "Send"}
                                   </button>
                                 </div>
                               </div>
@@ -2812,10 +2971,10 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                   type="button"
                   onClick={() => generateTargetAudience({ reason: "regenerate" })}
                   // disabled={audienceLoading || (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0)}
-                  disabled={audienceLoading || targetAudience.length === 0 || (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0)}
+                  disabled={!audienceLoading && (targetAudience.length === 0 || (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0))}
                   className="rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
-                  {audienceLoading ? "Regenerating..." : "Regenerate"}
+                  {audienceLoading ? "Stop" : "Regenerate"}
                 </button>
               </div>
             </div>
@@ -2838,22 +2997,23 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       {audienceLoading ? "Generating target audience" : "Generate Target Audience"}
     </p>
     <div className="mt-3 flex justify-center">
-      {audienceLoading ? (
-        <ThinkingDisplay preset="marketing_analysis" className="justify-center" />
-      ) : (
         <button
           type="button"
           onClick={() => generateTargetAudience({ reason: "manual_generate" })}
           // disabled={!hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0}
-          disabled={!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0}
+          disabled={!audienceLoading && (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0)}
 
           className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           <Users size={16} />
-          Generate
+          {audienceLoading ? "Stop" : "Generate"}
         </button>
-      )}
     </div>
+    {audienceLoading ? (
+      <div className="mt-3 flex justify-center">
+        <ThinkingDisplay preset="marketing_analysis" className="justify-center" />
+      </div>
+    ) : null}
     {!audienceLoading ? (
       <p className="mt-3 text-sm text-slate-500">
         Click Generate to view the target audience. This option becomes available upon giving input in description, selecting points from either the Marketing Plans or Selected Marketing Plans sections.
@@ -3041,13 +3201,12 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                         onClick={() => generateTargetAudience({ reason: "more_audience", append: true })}
                         disabled={
                           audienceLoading ||
-                          moreAudienceLoading ||
-                          (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0)
+                          (!moreAudienceLoading && (!description?.trim() && !hasMarketingPlan && selectedStepIds.length === 0 && selectedDetailIds.size === 0))
                         }
                         className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                       >
                         <Users size={16} />
-                        {moreAudienceLoading ? "Fetching more..." : "Get more audience"}
+                        {moreAudienceLoading ? "Stop" : "Get more audience"}
                       </button>
                     </div>
                   ) : null}
@@ -3259,15 +3418,24 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                     />
                     <button
                       type="button"
-                      disabled={employeeAssistantLoading || !employeePrompt.trim() || !selectedEmployee}
+                      disabled={!employeeAssistantLoading && (!employeePrompt.trim() || !selectedEmployee)}
                       onClick={async () => {
+                        if (employeeAssistantAbortRef.current) {
+                          employeeAssistantAbortRef.current.abort();
+                          employeeAssistantAbortRef.current = null;
+                          setEmployeeAssistantLoading(false);
+                          return;
+                        }
                         if (!selectedEmployee || !employeePrompt.trim()) return;
                         setEmployeeAssistantLoading(true);
                         setError("");
+                        const controller = new AbortController();
+                        employeeAssistantAbortRef.current = controller;
                         try {
                           const res = await fetch("/api/generate", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
+                            signal: controller.signal,
                             body: JSON.stringify({
                               step: "employee_outreach",
                               company,
@@ -3300,14 +3468,18 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                             channelMessages,
                           });
                         } catch (e) {
+                          if (e?.name === "AbortError") return;
                           setError(e?.message || "Failed to generate outreach message.");
                         } finally {
-                          setEmployeeAssistantLoading(false);
+                          if (employeeAssistantAbortRef.current === controller) {
+                            employeeAssistantAbortRef.current = null;
+                            setEmployeeAssistantLoading(false);
+                          }
                         }
                       }}
                       className="mt-2 inline-flex w-full items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
                     >
-                      {employeeAssistantLoading ? "Generating..." : "Ask AI Assistant"}
+                      {employeeAssistantLoading ? "Stop" : "Ask AI Assistant"}
                     </button>
 
                     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -3657,6 +3829,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                         onClick={async () => {
                           try {
                             const suggestion = await aiSuggestDueDate(formTitle, formTaskType, formPriority);
+                            if (!suggestion) return;
                             setFormDueDate(suggestion.suggested_date || "");
                             setFormDueReason(suggestion.reason || "");
                             showToast("success", "Suggested due date added");
@@ -3666,7 +3839,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                         }}
                         className="h-[42px] shrink-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                       >
-                        AI Suggest
+                        {dueDateSuggesting ? "Stop" : "AI Suggest"}
                       </button>
                     </div>
                     {formDueReason ? <p className="mt-1 text-xs italic text-slate-500">{formDueReason}</p> : null}
@@ -3969,7 +4142,12 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                 <p className="mt-0.5 text-xs text-slate-500">Company detail (AI-generated)</p>
               </div>
               <button
-                onClick={() => setCompanyModalOpen(false)}
+                onClick={() => {
+                  companyDetailAbortRef.current?.abort();
+                  companyDetailAbortRef.current = null;
+                  setCompanyModalLoading(false);
+                  setCompanyModalOpen(false);
+                }}
                 className="rounded-lg border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
                 title="Close"
               >
@@ -4105,13 +4283,13 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                     <button
                       type="button"
                       onClick={submitCompanyAssistant}
-                      disabled={companyAssistantLoading || !String(companyAssistantInput || "").trim()}
+                      disabled={!companyAssistantLoading && !String(companyAssistantInput || "").trim()}
                       className={cx(
                         "rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800",
-                        companyAssistantLoading ? "cursor-not-allowed opacity-70" : "hover:bg-slate-800"
+                        companyAssistantLoading ? "opacity-70" : "hover:bg-slate-800"
                       )}
                     >
-                      {companyAssistantLoading ? "Asking AI..." : "Ask AI"}
+                      {companyAssistantLoading ? "Stop" : "Ask AI"}
                     </button>
                   </div>
 
@@ -4278,7 +4456,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                       // >
 
                       <div
-  key={`drawer-task-${task.id}`}
+  key={`drawer-task-${getMilestoneTaskRawId(task.id) || task.id}`}
   className={cx(
     "relative rounded-lg border border-slate-200 px-3 py-2 transition hover:shadow-md",
     idx % 2 === 0 ? "bg-slate-50" : "bg-slate-100/50"
@@ -4324,6 +4502,8 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
   type="button"
   onClick={(e) => {
     e.stopPropagation();
+    const routeTaskId = getMilestoneTaskRouteId(task.id);
+    if (!routeTaskId) return;
     const returnTo = `${
       typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : `/campaigns/${campaignId}`
     }#tracker-detail`;
@@ -4334,7 +4514,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       );
     }
     router.push(
-      `/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`
+      `/tasks/${encodeURIComponent(routeTaskId)}?returnTo=${encodeURIComponent(returnTo)}`
     );
   }}
   className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 hover:scale-110"
@@ -4363,7 +4543,15 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
               </div>
               <button
                 type="button"
-                onClick={() => setMilestoneModalOpen(false)}
+                onClick={() => {
+                  milestoneAiAbortRef.current?.abort();
+                  milestoneChatAbortRef.current?.abort();
+                  milestoneAiAbortRef.current = null;
+                  milestoneChatAbortRef.current = null;
+                  setMilestoneAiLoading(false);
+                  setMilestoneChatLoading(false);
+                  setMilestoneModalOpen(false);
+                }}
                 className="rounded-xl border border-slate-300 bg-white p-2 text-slate-700 hover:bg-slate-50"
               >
                 <X size={16} />
@@ -4383,6 +4571,15 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                   <p className="text-sm font-semibold text-slate-900 text-center">Generating milestone plan</p>
                   <div className="mt-3 flex justify-center">
                     <ThinkingDisplay preset="milestone_generate" className="justify-center" />
+                  </div>
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={openMilestoneModal}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    >
+                      Stop
+                    </button>
                   </div>
                 </div>
               ) : milestoneReviewMilestones.length ? (
@@ -4574,18 +4771,17 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                           onChange={(e) => setMilestoneChatInput(e.target.value)}
                           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitMilestoneChatRefine(); } }}
                           placeholder="Tell me what to change..."
-                          disabled={milestoneChatLoading}
                           className="flex-1 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
                         />
                         <button
                           type="button"
                           onClick={submitMilestoneChatRefine}
-                          disabled={milestoneChatLoading || !String(milestoneChatInput || "").trim()}
+                          disabled={!milestoneChatLoading && !String(milestoneChatInput || "").trim()}
                           className="inline-flex items-center gap-2 whitespace-nowrap rounded-xl bg-slate-900 px-3 py-2.5 text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                           title="Regenerate Milestone"
                         >
                           <Wand2 size={16} />
-                          <span className="text-xs font-semibold">Regenerate Milestone</span>
+                          <span className="text-xs font-semibold">{milestoneChatLoading ? "Stop" : "Regenerate Milestone"}</span>
                         </button>
                       </div>
 
@@ -4700,7 +4896,15 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
             <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
               <button
                 type="button"
-                onClick={() => setMilestoneModalOpen(false)}
+                onClick={() => {
+                  milestoneAiAbortRef.current?.abort();
+                  milestoneChatAbortRef.current?.abort();
+                  milestoneAiAbortRef.current = null;
+                  milestoneChatAbortRef.current = null;
+                  setMilestoneAiLoading(false);
+                  setMilestoneChatLoading(false);
+                  setMilestoneModalOpen(false);
+                }}
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Cancel

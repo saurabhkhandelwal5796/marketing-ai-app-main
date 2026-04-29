@@ -33,10 +33,9 @@ export default function OutputCard({ title, content, onRegenerate, onSend, regen
           </button>
           <button
             onClick={onRegenerate}
-            disabled={regenerating}
             className="rounded-lg bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800 disabled:bg-slate-400"
           >
-            {regenerating ? "Regenerating..." : "Regenerate"}
+            {regenerating ? "Stop" : "Regenerate"}
           </button>
           <button
             onClick={onSend}

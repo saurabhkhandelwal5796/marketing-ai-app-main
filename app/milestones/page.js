@@ -23,6 +23,7 @@ export default function MilestonesPage() {
           const currentUserId = await getCurrentUserId();
           fetch("/api/audit", {
             method: "POST",
+            
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               user_id: currentUserId || "anonymous",
@@ -273,7 +274,7 @@ export default function MilestonesPage() {
           ) : null}
           
           <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-slate-900">Campaigns</h2>
+            <h2 className="text-xl font-semibold text-slate-900">View Milestones by Campaign</h2>
             <div className="flex w-full flex-wrap items-center justify-end gap-2 lg:w-auto">
               <div className="relative w-full max-w-sm">
                 <Search
