@@ -1868,18 +1868,47 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     }
   };
 
-  const handleGenerate = async () => {
-    if (analysisAbortRef.current) {
-      analysisAbortRef.current.abort();
-      analysisAbortRef.current = null;
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError("");
+  // const handleGenerate = async () => {
+  //   if (analysisAbortRef.current) {
+  //     analysisAbortRef.current.abort();
+  //     analysisAbortRef.current = null;
+  //     setLoading(false);
+  //     return;
+  //   }
+  //   setLoading(true);
+  //   setError("");
+   const handleGenerate = async () => {
+  if (analysisAbortRef.current) {
+    analysisAbortRef.current.abort();
+    analysisAbortRef.current = null;
+    setLoading(false);
+    return;
+  }
+  
+  if (selectedStepIds.length === 0) {
+    setError("Please select at least one point from the Marketing Plan before generating.");
+    return;
+  }
+  
+  setLoading(true);
+  setError("");
     const controller = new AbortController();
     analysisAbortRef.current = controller;
     try {
+
+        // Prepare selected plan steps to send to API
+    const selectedPlanSteps = Array.isArray(marketingPlan)
+      ? marketingPlan
+          .filter((step) => selectedStepIds.includes(step.id))
+          .map((step) => ({
+            id: step.id,
+            title: step.title || "",
+            description: step.description || "",
+            channels: Array.isArray(step.channels) ? step.channels : [],
+          }))
+      : [];
+
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1891,6 +1920,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
           description,
           attachmentName,
           step: "analysis",
+          selectedPlanSteps,
         }),
       });
       const data = await parseJsonResponse(res, "Failed to generate analysis.");
@@ -2277,6 +2307,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
           {hasMarketingPlan ? (
             <button
               onClick={handleGenerate}
+              disabled={!loading && selectedStepIds.length === 0}
               className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               {loading ? "Stop" : marketingDetails.length ? "Regenerate" : "Generate"}
@@ -2653,11 +2684,42 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                   <ThinkingDisplay preset="marketing_analysis" />
                 </div>
               ) : null}
-              {marketingDetails.length === 0 ? (
+              {/* {marketingDetails.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
                   Click Generate to create a detailed marketing analysis (20+ points).
                 </div>
-              ) : null}
+              ) : null} */}
+
+              {marketingDetails.length === 0 ? (
+  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
+    <p className="text-base font-semibold text-slate-900">
+      {loading ? "Generating detailed marketing analysis" : "Generate Detailed Marketing Analysis"}
+    </p>
+    <div className="mt-3 flex justify-center">
+      {loading ? (
+        <ThinkingDisplay preset="marketing_analysis" className="justify-center" />
+      ) : (
+        <button
+          type="button"
+          onClick={handleGenerate}
+          // disabled={!hasMarketingPlan}
+          disabled={!hasMarketingPlan || selectedStepIds.length === 0}
+          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          <Sparkles size={16} />
+          {loading ? "Stop" : "Generate"}
+        </button>
+      )}
+    </div>
+    {!loading ? (
+      <p className="mt-3 text-sm text-slate-500">
+        Click Generate to create a detailed marketing analysis (20+ points). This option becomes available after selecting points from Marketing Plan.
+      </p>
+    ) : null}
+  </div>
+) : null}
+
+
 
               {marketingDetails.length ? (
                 <div className="sticky top-20 z-10 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

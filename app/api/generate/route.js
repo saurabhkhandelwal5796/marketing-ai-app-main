@@ -274,6 +274,16 @@ Rules:
     }
 
     if (step === "analysis") {
+
+//Added
+        // Format selected plan steps for the prompt
+  const selectedPlanStepsText = Array.isArray(selectedPlanSteps) && selectedPlanSteps.length > 0
+    ? selectedPlanSteps.map((step, idx) => 
+        `${idx + 1}. ${step.title || "Step"}: ${step.description || ""}`
+      ).join("\n")
+    : "";
+
+    //Added
       const prompt = `Return ONLY valid JSON with this shape:
 {
   "marketingDetails": [
@@ -318,10 +328,16 @@ Context:
 - Attachment: ${attachmentName}
 - Description: ${description}
 
+
+Selected Marketing Plan Steps (USER SELECTED THESE - GENERATE DETAILED ANALYSIS FOR THESE):
+${selectedPlanStepsText || "(No steps selected - generate general analysis)"}
+
 Rules:
+- CRITICAL: If Selected Marketing Plan Steps are provided, generate detailed marketing analysis points that EXPAND and ELABORATE on those specific selected steps. Each selected step should result in 2-4 detailed analysis points.
+- If no steps are selected, generate general marketing analysis covering all aspects.
 - marketingDetails: MINIMUM 20 points (aim 22-26). Each point must have a unique id, a bold-style title, and a detailed explanation paragraph.
-- Ensure coverage across: value proposition, market positioning, competitive advantage, messaging strategy, brand tone, channels, pricing perception, USP, emotional triggers, storytelling angle, SEO keywords, pain points addressed, social proof strategy, call-to-action suggestions, campaign hooks, content themes, awareness vs conversion tactics, seasonal relevance, partnership opportunities, and growth potential.
- - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
+- When selected steps are provided, ensure the analysis points directly relate to and expand upon those steps with actionable details, examples, and execution guidance.
+- Cover aspects like: value proposition, market positioning, competitive advantage, messaging strategy, brand tone, channels, pricing perception, USP, emotional triggers, storytelling angle, SEO keywords, pain points addressed, social proof strategy, call-to-action suggestions, campaign hooks, content themes, awareness vs conversion tactics, seasonal relevance, partnership opportunities, and growth potential - but prioritize aspects relevant to the selected steps. - targetAudience: Return a FLAT list of 12-16 REAL, specific companies (not grouped by segment).
 - CRITICAL: Identify the core industry/domain from the Campaign Goal and Description. Suggest companies that are BUYERS, SELLERS, or KEY PLAYERS in that exact domain.Always match the domain explicitly stated.
 - Each company must include: name, description (1 line), whyRelevant (1-2 lines tied to THIS campaign), industry (1 tag), sector (1 tag), decisionMakerRole (single role), country (1 country).
 
