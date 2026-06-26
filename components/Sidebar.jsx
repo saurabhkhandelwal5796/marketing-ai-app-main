@@ -17,6 +17,7 @@ import {
   Megaphone,
   ClipboardList,
   UsersRound,
+  Users,
   Settings,
   UserCircle2,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const navItems = [
   { href: "/learning", label: "Learning", icon: BookOpen },
   { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/target-audience", label: "Target Audience", icon: Users },
   { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
   { href: "/my-profile", label: "My Profile", icon: UserCircle2 },
 ];

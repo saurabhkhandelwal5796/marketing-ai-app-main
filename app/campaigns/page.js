@@ -46,6 +46,8 @@ export default function CampaignListPage() {
   const [isFetching, setIsFetching] = useState(false);
   const createInFlightRef = useRef(false);
   const fetchInFlightRef = useRef(false);
+ const [editingId, setEditingId] = useState(null);
+const [editingName, setEditingName] = useState("");
 
   const onSort = (key) => {
     if (sortBy === key) {
@@ -200,7 +202,39 @@ export default function CampaignListPage() {
   }
 };
 
+const handleNameSave = async (id) => {
+  const trimmed = editingName.trim();
+  const original = campaigns.find((c) => c.id === id);
+  setEditingId(null);
+  if (!trimmed || trimmed === original?.name) return;
+  setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, name: trimmed } : c)));
+  try {
+    const res = await fetch(`/api/campaigns/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: trimmed }),
+    });
+    const data = await res.json();
+    if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update name.");
+    if (data?.campaign) {
+      setCampaigns((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? { ...c, name: data.campaign.name, updated_at: data.campaign.updated_at, updated_by: data.campaign.updated_by, last_modified_by_name: c.created_by_name || data.campaign.updated_by }
+            : c
+        )
+      );
+    }
+  } catch (err) {
+    if (original) setCampaigns((prev) => prev.map((c) => (c.id === id ? { ...c, name: original.name } : c)));
+    setError(err.message || "Failed to update name.");
+  }
+};
+
+
   //Added
+
+
 
   const handleDeleteSelected = async () => {
     if (!selectedCampaignIds.length || deleting) return;
@@ -318,9 +352,37 @@ export default function CampaignListPage() {
                     {item.campaign_no || `C-${String(idx + 1).padStart(2, "0")}`}
                   </td> 
 
-                    <td className="px-4 py-3 font-medium text-blue-700 underline-offset-2 hover:underline">
+                    {/* <td className="px-4 py-3 font-medium text-blue-700 underline-offset-2 hover:underline">
                       {item.name || "Generating title..."}
+                    </td> */}
+                    <td
+                      className="px-4 py-3 font-medium"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {editingId === item.id ? (
+                        <input
+                          autoFocus
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onBlur={() => handleNameSave(item.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleNameSave(item.id);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          className="w-full rounded border border-blue-400 px-2 py-0.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                      ) : (
+                        <span
+                          onClick={() => { setEditingId(item.id); setEditingName(item.name || ""); }}
+                          className="cursor-text text-blue-700 underline-offset-2 hover:underline"
+                          title="Click to rename"
+                        >
+                          {item.name || "Generating title..."}
+                        </span>
+                      )}
                     </td>
+
+
                     {/* <td className="px-4 py-3 text-slate-600">{item.status || "Open"}</td> */}
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <select

@@ -109,6 +109,7 @@ export async function POST(req) {
       company = "",
       campaign = "",
       website = "",
+      location = "",
       description = "",
       selectedPlanSteps = [],
       selectedActions = [],
@@ -325,6 +326,7 @@ Context:
 - Company: ${company}
 - Campaign Goal / Service: ${campaign}
 - Website: ${website}
+- Location: ${location || "(not specified)"}
 - Attachment: ${attachmentName}
 - Description: ${description}
 
@@ -980,6 +982,145 @@ ${userMessage}
       return NextResponse.json(parsed);
     }
 
+    if (step === "milestone_guidance") {
+  const milestoneTitle = String(body?.milestoneTitle || "").trim();
+  const milestoneDescription = String(body?.milestoneDescription || "").trim();
+  const milestoneTasks = Array.isArray(body?.milestoneTasks) ? body.milestoneTasks : [];
+  const milestoneStatus = String(body?.milestoneStatus || "Not Started").trim();
+  const milestoneProgress = Number(body?.milestoneProgress) || 0;
+
+  if (!milestoneTitle) {
+    return NextResponse.json({ error: "Milestone title is required." }, { status: 400 });
+  }
+
+  const tasksText = milestoneTasks.length
+    ? milestoneTasks.map((t, i) => `${i + 1}. ${t.title} (${t.task_type || "Generic Task"})`).join("\n")
+    : "(no tasks yet)";
+
+  const prompt = `Return ONLY valid JSON with this shape:
+{
+  "guidance": "2-4 detailed paragraphs providing personalized guidance on how to achieve this milestone successfully and efficiently.",
+  "keyRecommendations": [
+    "Specific actionable recommendation 1",
+    "Specific actionable recommendation 2",
+    "Specific actionable recommendation 3"
+  ],
+  "actionSteps": [
+    {
+      "step": "Step title",
+      "description": "Detailed description of what to do",
+      "estimatedTime": "e.g., 2-3 days"
+    }
+  ],
+  "bestPractices": [
+    "Best practice 1 with specific examples",
+    "Best practice 2 with specific examples",
+    "Best practice 3 with specific examples"
+  ],
+  "commonPitfalls": [
+    "Pitfall to avoid 1",
+    "Pitfall to avoid 2"
+  ],
+  "successMetrics": [
+    "Metric 1 to measure success",
+    "Metric 2 to measure success"
+  ]
+}
+
+Campaign context:
+- Company: ${company}
+- Campaign Goal: ${campaign}
+- Description: ${description}
+
+Milestone context:
+- Title: ${milestoneTitle}
+- Description: ${milestoneDescription}
+- Current Status: ${milestoneStatus}
+- Progress: ${milestoneProgress}%
+- Tasks:
+${tasksText}
+
+Rules:
+- Provide ACTIONABLE, SPECIFIC guidance tailored to THIS exact milestone and campaign context.
+- guidance should be 2-4 detailed paragraphs explaining the approach, timeline, resources needed, and how to coordinate.
+- keyRecommendations: 4-6 specific, actionable recommendations (not generic advice).
+- actionSteps: 4-8 concrete steps with estimated time for each.
+- bestPractices: 4-6 industry-specific best practices with examples.
+- commonPitfalls: 3-5 specific mistakes to avoid.
+- successMetrics: 3-5 measurable KPIs or indicators.
+- Make it beginner-friendly but professional.
+- Focus on helping users execute faster and more effectively.`;
+
+  const raw = await callOpenAI({
+    apiKey,
+    prompt,
+    schema: {
+      name: "milestone_guidance_payload",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          guidance: { type: "string" },
+          keyRecommendations: {
+            type: "array",
+            minItems: 4,
+            maxItems: 6,
+            items: { type: "string" },
+          },
+          actionSteps: {
+            type: "array",
+            minItems: 4,
+            maxItems: 8,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                step: { type: "string" },
+                description: { type: "string" },
+                estimatedTime: { type: "string" },
+              },
+              required: ["step", "description", "estimatedTime"],
+            },
+          },
+          bestPractices: {
+            type: "array",
+            minItems: 4,
+            maxItems: 6,
+            items: { type: "string" },
+          },
+          commonPitfalls: {
+            type: "array",
+            minItems: 3,
+            maxItems: 5,
+            items: { type: "string" },
+          },
+          successMetrics: {
+            type: "array",
+            minItems: 3,
+            maxItems: 5,
+            items: { type: "string" },
+          },
+        },
+        required: [
+          "guidance",
+          "keyRecommendations",
+          "actionSteps",
+          "bestPractices",
+          "commonPitfalls",
+          "successMetrics",
+        ],
+      },
+    },
+  });
+
+  const parsed = extractJson(raw);
+  if (!parsed?.guidance) {
+    throw new Error("Model returned invalid milestone guidance format.");
+  }
+  return NextResponse.json(parsed);
+}
+
+
     if (step === "analysis_regenerate_point") {
       if (!point || typeof point !== "object") {
         return NextResponse.json({ error: "Point payload missing." }, { status: 400 });
@@ -1270,6 +1411,7 @@ Context:
 - Company: ${company}
 - Campaign Goal: ${campaign}
 - Website: ${website}
+- Location: ${location || "(not specified)"}
 - Attachment: ${attachmentName}
 - Description: ${description}
 

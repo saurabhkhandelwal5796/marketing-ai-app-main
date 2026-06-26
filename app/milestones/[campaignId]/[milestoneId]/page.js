@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuditUserAndPage } from "../../../../lib/useAuditPageVisit";
 import { ArrowLeft, Check, Trash2, Plus, Save, Send } from "lucide-react";
+import { Lightbulb, TrendingUp, AlertCircle, Target, ChevronDown, ChevronUp } from "lucide-react";
+
 
 function initials(name) {
   return String(name || "")
@@ -79,6 +81,12 @@ export default function MilestoneDetailPage() {
   const [endDate, setEndDate] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
   const [status, setStatus] = useState("Not Started");
+  // AI Guidance states
+const [guidanceData, setGuidanceData] = useState(null);
+const [guidanceLoading, setGuidanceLoading] = useState(false);
+const [guidanceError, setGuidanceError] = useState("");
+const [guidanceOpen, setGuidanceOpen] = useState(false);
+
 
   // New task form
   const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -241,6 +249,47 @@ export default function MilestoneDetailPage() {
       if (removed) setTasks((prev) => [...prev, removed]);
     }
   };
+
+  // Get AI Guidance
+const handleGetGuidance = async () => {
+  if (guidanceData && !guidanceOpen) {
+    setGuidanceOpen(true);
+    return;
+  }
+
+  setGuidanceLoading(true);
+  setGuidanceError("");
+  setGuidanceOpen(true);
+
+  try {
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        step: "milestone_guidance",
+        company: milestone?.campaign_name || "",
+        campaign: title,
+        description: description,
+        milestoneTitle: title,
+        milestoneDescription: description,
+        milestoneTasks: tasks,
+        milestoneStatus: status,
+        milestoneProgress: progress,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || data?.error) throw new Error(data?.error || "Failed to get guidance");
+
+    setGuidanceData(data);
+    addLog("AI guidance generated");
+  } catch (err) {
+    setGuidanceError(err?.message || "Failed to generate guidance");
+  } finally {
+    setGuidanceLoading(false);
+  }
+};
+
 
   // Add task
   const handleAddTask = async () => {
@@ -472,6 +521,171 @@ export default function MilestoneDetailPage() {
             placeholder="Add a description for this milestone..."
           />
         </section>
+
+        {/* AI Guidance */}
+<section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+  <div className="flex items-center justify-between mb-4">
+    <div className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+        <Lightbulb className="text-blue-600" size={20} />
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-wider text-slate-900">
+          AI Milestone Guidance
+        </h3>
+        <p className="text-xs text-slate-500 mt-0.5">
+          Get personalized recommendations to achieve this milestone faster
+        </p>
+      </div>
+    </div>
+
+    <button
+      onClick={handleGetGuidance}
+      disabled={guidanceLoading}
+      className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+    >
+      {guidanceLoading ? (
+        <>
+          <span className="animate-spin">⚙️</span>
+          Generating...
+        </>
+      ) : guidanceData ? (
+        <>
+          {guidanceOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          {guidanceOpen ? "Hide" : "Show"} Guidance
+        </>
+      ) : (
+        <>
+          <Lightbulb size={16} />
+          Get AI Guidance
+        </>
+      )}
+    </button>
+  </div>
+
+  {guidanceError && (
+    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      {guidanceError}
+    </div>
+  )}
+
+  {guidanceOpen && guidanceData && (
+    <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+      {/* Overview */}
+      <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4">
+        <p className="text-sm leading-6 text-slate-700 whitespace-pre-wrap">
+          {guidanceData.guidance}
+        </p>
+      </div>
+
+      {/* Key Recommendations */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Target className="text-emerald-600" size={18} />
+          <h4 className="text-sm font-semibold text-slate-900">Key Recommendations</h4>
+        </div>
+        <div className="space-y-2">
+          {guidanceData.keyRecommendations?.map((rec, idx) => (
+            <div
+              key={idx}
+              className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-3"
+            >
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
+                {idx + 1}
+              </span>
+              <p className="text-sm text-slate-700 leading-relaxed">{rec}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Action Steps */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <TrendingUp className="text-blue-600" size={18} />
+          <h4 className="text-sm font-semibold text-slate-900">Action Steps</h4>
+        </div>
+        <div className="space-y-3">
+          {guidanceData.actionSteps?.map((action, idx) => (
+            <div
+              key={idx}
+              className="rounded-lg border border-slate-200 bg-white p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-slate-900">{action.step}</p>
+                  <p className="mt-1 text-sm text-slate-600 leading-relaxed">
+                    {action.description}
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700">
+                  {action.estimatedTime}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Best Practices */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Check className="text-purple-600" size={18} />
+          <h4 className="text-sm font-semibold text-slate-900">Best Practices</h4>
+        </div>
+        <ul className="space-y-2">
+          {guidanceData.bestPractices?.map((practice, idx) => (
+            <li
+              key={idx}
+              className="flex items-start gap-2 rounded-lg border border-purple-100 bg-purple-50/50 p-3"
+            >
+              <span className="text-purple-600 mt-0.5">✓</span>
+              <p className="text-sm text-slate-700 leading-relaxed">{practice}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Common Pitfalls */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <AlertCircle className="text-amber-600" size={18} />
+          <h4 className="text-sm font-semibold text-slate-900">Common Pitfalls to Avoid</h4>
+        </div>
+        <ul className="space-y-2">
+          {guidanceData.commonPitfalls?.map((pitfall, idx) => (
+            <li
+              key={idx}
+              className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50/50 p-3"
+            >
+              <span className="text-amber-600 mt-0.5">⚠️</span>
+              <p className="text-sm text-slate-700 leading-relaxed">{pitfall}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Success Metrics */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <TrendingUp className="text-indigo-600" size={18} />
+          <h4 className="text-sm font-semibold text-slate-900">Success Metrics</h4>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {guidanceData.successMetrics?.map((metric, idx) => (
+            <div
+              key={idx}
+              className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3"
+            >
+              <p className="text-sm font-medium text-slate-700">{metric}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )}
+</section>
+
 
         {/* Tasks */}
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

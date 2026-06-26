@@ -74,6 +74,7 @@ export default function CampaignBuilder({ campaignId }) {
   const [company, setCompany] = useState("Cloud Certitude");
   const [campaign, setCampaign] = useState("Marketing Campaign");
   const [website, setWebsite] = useState("https://www.cloudcertitude.com/");
+  const [location, setLocation] = useState("");
   const [attachmentName, setAttachmentName] = useState("");
   const [description, setDescription] = useState(
     "You are a senior marketing strategist. Create a complete marketing plan based on: Campaign Name: Get new projects Company: Cloud Certitude Website: CloudCertitude.com Target Audience: New Companies of any domain for which we work and experience like, real estate, interior, manufacturing and many more, details can be fetched from our company website Goal: Need new projects Industry: IT consultancy Provide: 1. Strategy Overview 2. Channel Plan 3. Weekly Execution Plan (4 weeks) 4. Content Ideas 5. Sample LinkedIn post 6. Sample Email Campaign 7. Tools to use"
@@ -176,6 +177,7 @@ export default function CampaignBuilder({ campaignId }) {
         setCompany(record.company || "Cloud Certitude");
         setCampaign(record.goal || "Marketing Campaign");
         setWebsite(record.website || "https://www.cloudcertitude.com/");
+        setLocation(record.location || "");
         setAttachmentName(record.attachment_name || "");
         setDescription(
           record.description ||
@@ -191,6 +193,7 @@ export default function CampaignBuilder({ campaignId }) {
           company: record.company || "Cloud Certitude",
           goal: record.goal || "Marketing Campaign",
           website: record.website || "https://www.cloudcertitude.com/",
+          location: record.location || "",
           attachment_name: record.attachment_name || "",
           description:
             record.description ||
@@ -254,8 +257,10 @@ export default function CampaignBuilder({ campaignId }) {
       company,
       goal: campaign,
       website,
+      location,
       attachment_name: attachmentName,
       description,
+
       chat_messages: chatMessages,
       marketing_plan: marketingPlan,
       selected_step_ids: selectedStepIds,
@@ -275,6 +280,7 @@ export default function CampaignBuilder({ campaignId }) {
       selectedActions,
       selectedStepIds,
       website,
+      location,
     ]
   );
 
@@ -335,6 +341,7 @@ export default function CampaignBuilder({ campaignId }) {
           company,
           campaign,
           website,
+          location,
           description: text,
           attachmentName,
           step: "suggestions",
@@ -442,6 +449,7 @@ export default function CampaignBuilder({ campaignId }) {
           company,
           campaign,
           website,
+          location,
           description: latestUserMessage,
           selectedPlanSteps,
           selectedActions: actionsToGenerate,
@@ -634,6 +642,30 @@ export default function CampaignBuilder({ campaignId }) {
                           }}
                         />
                       </label>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.5px] text-slate-500">
+                        <span className="inline-flex items-center">
+                          Location
+                          <HelpIcon text="Enter the target city, region, or country for this campaign." />
+                        </span>
+                        <input
+                          value={location}
+                          onChange={(e) => setLocation(e.target.value)}
+                          placeholder="e.g. Mumbai, India"
+                          onFocus={(e) => { e.target.style.borderColor = "#2563eb"; }}
+                          onBlur={(e) => { e.target.style.borderColor = "#e5e7eb"; }}
+                          className="mt-1 w-full outline-none"
+                          style={{
+                            border: "1.5px solid #e5e7eb",
+                            borderRadius: "10px",
+                            padding: "8px 12px",
+                            fontSize: "13px",
+                            color: "#111111",
+                            background: "#ffffff",
+                            width: "100%",
+                          }}
+                        />
+                      </label>
+
                     </div>
 
                     <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">

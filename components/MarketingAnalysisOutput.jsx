@@ -483,6 +483,7 @@ export default function MarketingAnalysisOutput({
   const [targetAudience, setTargetAudience] = useState([]);
   const [employees, setEmployees] = useState([]);
   const [audienceView, setAudienceView] = useState("companies"); // companies | employees
+  const [companyFilter, setCompanyFilter] = useState("");
   const [audienceLoading, setAudienceLoading] = useState(false);
   const [moreAudienceLoading, setMoreAudienceLoading] = useState(false);
   const audienceAbortRef = useRef(null);
@@ -501,6 +502,7 @@ export default function MarketingAnalysisOutput({
   const menuRef = useRef(null);
   const [tabOverflowOpen, setTabOverflowOpen] = useState(false);
   const tabOverflowRef = useRef(null);
+  
 
   const [selectedDetailIds, setSelectedDetailIds] = useState(() => new Set());
   const [persistedSelectedContentByPointId, setPersistedSelectedContentByPointId] = useState({});
@@ -638,6 +640,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
     left: 0,
   });
   const [contactCopied, setContactCopied] = useState(false);
+  const [emailClientOpen, setEmailClientOpen] = useState(false);
   const contactPopupRef = useRef(null);
   const [employeeAssistantLoading, setEmployeeAssistantLoading] = useState(false);
   const [employeeAssistantData, setEmployeeAssistantData] = useState({
@@ -947,6 +950,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
       if (contactPopupRef.current?.contains(e.target)) return;
       setContactPopup((prev) => ({ ...prev, open: false }));
       setContactCopied(false);
+      setEmailClientOpen(false);
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -3273,15 +3277,32 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                     </div>
                   ) : null}
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                  <div className="space-y-3 xl:col-span-2">
-                    {employees.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-500">
-                        Generate analysis to see employee contacts.
-                      </div>
-                    ) : null}
-                    {employees.map((emp, idx) => {
+             ) : (
+  <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+    <div className="space-y-3 xl:col-span-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={companyFilter}
+          onChange={(e) => setCompanyFilter(e.target.value)}
+          placeholder="Filter by company name..."
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+        />
+        {companyFilter && (
+          <button
+            type="button"
+            onClick={() => setCompanyFilter("")}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {employees.filter(emp => !companyFilter || (emp.company || "").toLowerCase().includes(companyFilter.toLowerCase())).length === 0 ? (
+        <p className="text-sm text-slate-500">{companyFilter ? `No employees found for "${companyFilter}"` : "No employee data available."}</p>
+      ) : null}
+      {employees.filter(emp => !companyFilter || (emp.company || "").toLowerCase().includes(companyFilter.toLowerCase())).map((emp, idx) => {
+
                       const isActive = selectedEmployee?.name === emp.name && selectedEmployee?.company === emp.company;
                       const companyKey = String(emp?.company || "")
                         .trim()
@@ -4127,6 +4148,7 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
                 onClick={() => {
                   setContactPopup((prev) => ({ ...prev, open: false }));
                   setContactCopied(false);
+                  setEmailClientOpen(false);
                 }}
                 className="rounded-md border border-slate-300 bg-white p-1 text-slate-600 hover:bg-slate-50"
                 title="Close"
@@ -4141,40 +4163,74 @@ const [editingMilestoneTitleDraft, setEditingMilestoneTitleDraft] = useState("")
               onFocus={(e) => e.target.select()}
             />
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(contactPopup.value || "").catch(() => {});
-                  setContactCopied(true);
-                  setTimeout(() => setContactCopied(false), 2000);
-                }}
-                className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <span className={contactCopied ? "text-emerald-600" : ""}>{contactCopied ? "✓" : "📋"}</span>
-                Copy
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (contactPopup.type === "email") {
-                    window.open(`mailto:${contactPopup.value}`, "_blank", "noopener,noreferrer");
-                    return;
-                  }
-                  if (contactPopup.type === "linkedin") {
-                    window.open(contactPopup.value, "_blank", "noopener,noreferrer");
-                    return;
-                  }
-                  window.open(`tel:${contactPopup.value}`, "_self");
-                }}
-                className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
-              >
-                {contactPopup.type === "email"
-                  ? "Open Gmail"
-                  : contactPopup.type === "call"
-                  ? "Call Now"
-                  : "Open LinkedIn"}
-              </button>
-            </div>
+  <button
+    type="button"
+    onClick={() => {
+      navigator.clipboard.writeText(contactPopup.value || "").catch(() => {});
+      setContactCopied(true);
+      setTimeout(() => setContactCopied(false), 2000);
+    }}
+    className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+  >
+    <span className={contactCopied ? "text-emerald-600" : ""}>{contactCopied ? "✓" : "📋"}</span>
+    Copy
+  </button>
+  {contactPopup.type === "email" ? (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setEmailClientOpen((v) => !v)}
+        className="inline-flex w-full items-center justify-center gap-1 rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+      >
+        Open Gmail/Outlook
+        <ChevronDown size={12} />
+      </button>
+      {emailClientOpen ? (
+        <div className="absolute bottom-full left-0 z-10 mb-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+          <button
+            type="button"
+            onClick={() => {
+              const to = contactPopup.value || "";
+              window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}`, "_blank", "noopener,noreferrer");
+              setEmailClientOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Mail size={12} className="text-red-500" />
+            Gmail
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const to = contactPopup.value || "";
+              window.open(`https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(to)}&subject=&body=`, "_blank", "noopener,noreferrer");
+              setEmailClientOpen(false);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Mail size={12} className="text-blue-600" />
+            Outlook
+          </button>
+        </div>
+      ) : null}
+    </div>
+  ) : (
+    <button
+      type="button"
+      onClick={() => {
+        if (contactPopup.type === "linkedin") {
+          window.open(contactPopup.value, "_blank", "noopener,noreferrer");
+          return;
+        }
+        window.open(`tel:${contactPopup.value}`, "_self");
+      }}
+      className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+    >
+      {contactPopup.type === "call" ? "Call Now" : "Open LinkedIn"}
+    </button>
+  )}
+</div>
+
           </div>
         </div>
       ) : null}

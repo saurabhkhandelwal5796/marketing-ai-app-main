@@ -26,6 +26,7 @@ create table if not exists public.campaigns (
 alter table public.campaigns add column if not exists created_by text;
 alter table public.campaigns add column if not exists updated_by text;
 alter table public.campaigns add column if not exists campaign_no bigint;
+alter table public.campaigns add column if not exists location text not null default '';
 alter table public.campaigns add column if not exists status text not null default 'Open';
 do $$
 begin
