@@ -1,0 +1,1183 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useAuditUserAndPage } from "../../../lib/useAuditPageVisit";
+// import { ArrowLeft, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronRight, Pencil, Plus, Trash2, X } from "lucide-react";
+import Avatar from "../../../components/Avatar";
+
+function formatDateLabel(value) {
+  if (!value) return "-";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function trackerNodeStyles(status) {
+  if (status === "Completed") return "border-emerald-200 bg-emerald-500 text-white";
+  if (status === "In Progress") return "border-blue-200 bg-blue-500 text-white";
+  if (status === "Overdue") return "border-red-200 bg-red-500 text-white";
+  return "border-slate-300 bg-white text-slate-500";
+}
+
+function trackerLineStyles(status) {
+  if (status === "Completed") return "bg-emerald-400";
+  if (status === "In Progress") return "bg-blue-400";
+  if (status === "Overdue") return "bg-red-400";
+  return "bg-slate-300";
+}
+
+function statusBadgeStyles(status) {
+  if (status === "Completed") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "In Progress") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (status === "Overdue") return "border-red-200 bg-red-50 text-red-700";
+
+  return "border-slate-300 bg-white text-slate-700";
+}
+
+function progressBarStyles(status) {
+  if (status === "Completed") return "bg-emerald-500";
+  if (status === "In Progress") return "bg-blue-500";
+  if (status === "Overdue") return "bg-red-500";
+  return "bg-slate-400";
+}
+
+export default function CampaignMilestonesPage() {
+  useAuditUserAndPage("Milestones");
+  const { campaignId } = useParams();
+  const router = useRouter();
+  
+  const [milestones, setMilestones] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [expandedMilestones, setExpandedMilestones] = useState(new Set());
+  const [assigningTaskId, setAssigningTaskId] = useState("");
+  const [assignmentNoticeByTaskId, setAssignmentNoticeByTaskId] = useState({});
+  const [editingMilestoneId, setEditingMilestoneId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    start_date: "",
+    end_date: "",
+    assignee_id: "",
+    status: ""
+  });
+  const [savingMilestone, setSavingMilestone] = useState(false);
+  const [openActionMenuId, setOpenActionMenuId] = useState(null);
+  const [deletingMilestoneId, setDeletingMilestoneId] = useState(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createForm, setCreateForm] = useState({ title: "", description: "", start_date: "", end_date: "", assignee_id: "", status: "Not Started" });
+  const [createTasks, setCreateTasks] = useState([]);
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+  const [taskForm, setTaskForm] = useState({ title: "", task_type: "Generic Task", priority: "Medium", assignee_id: "" });
+  const [savingCreate, setSavingCreate] = useState(false);
+
+  const actionMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target)) {
+        setOpenActionMenuId(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const [milestoneRes, userRes] = await Promise.all([fetch("/api/milestones"), fetch("/api/users")]);
+        const [milestoneData, userData] = await Promise.all([milestoneRes.json(), userRes.json()]);
+        if (!milestoneRes.ok || milestoneData?.error) {
+          throw new Error(milestoneData?.error || "Failed to load milestones.");
+        }
+        if (userRes.ok && !userData?.error) {
+          setUsers(Array.isArray(userData?.users) ? userData.users : []);
+        }
+        
+        let allMilestones = Array.isArray(milestoneData?.milestones) ? milestoneData.milestones : [];
+        if (campaignId === "general") {
+          allMilestones = allMilestones.filter(m => !m.campaign_id);
+        } else {
+          allMilestones = allMilestones.filter(m => m.campaign_id === campaignId);
+        }
+        
+        // Sort by start date or created at
+        allMilestones.sort((a, b) => {
+          if (a.start_date && b.start_date) return new Date(a.start_date) - new Date(b.start_date);
+          return new Date(a.created_at) - new Date(b.created_at);
+        });
+        
+        setMilestones(allMilestones);
+        
+        // Auto-expand the first milestone if any
+        if (allMilestones.length > 0) {
+          setExpandedMilestones(new Set([allMilestones[0].id]));
+        }
+      } catch (err) {
+        setError(err?.message || "Failed to load campaign milestones.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [campaignId]);
+
+  const toggleExpand = (id) => {
+    setExpandedMilestones(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleTaskToggle = async (milestoneId, taskId, currentStatus) => {
+    const newStatus = currentStatus === "Completed" ? "Not Started" : "Completed";
+    
+    // Optimistic update
+    setMilestones(prev => prev.map(m => {
+      if (m.id !== milestoneId) return m;
+      
+      const newTasks = m.tasks.map(t => {
+        if (t.id !== taskId) return t;
+        return { ...t, status: newStatus };
+      });
+      
+      const completedCount = newTasks.filter(t => t.status === "Completed").length;
+      const progress = newTasks.length > 0 ? Math.round((completedCount / newTasks.length) * 100) : 0;
+      
+      let status = "Not Started";
+      if (completedCount === newTasks.length && newTasks.length > 0) status = "Completed";
+      else if (completedCount > 0) status = "In Progress";
+      // Simplified status logic for optimistic update
+      
+      return {
+        ...m,
+        tasks: newTasks,
+        tasks_done: completedCount,
+        progress,
+        status
+      };
+    }));
+
+    try {
+      const res = await fetch(`/api/milestones/${milestoneId}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update task");
+      
+      // Update with exact server values
+      setMilestones(prev => prev.map(m => {
+        if (m.id !== milestoneId) return m;
+        return {
+          ...m,
+          progress: data.progress,
+          status: data.status,
+          tasks: m.tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t)
+        };
+      }));
+    } catch (err) {
+      console.error(err);
+      // Revert optimism if needed (ignoring for brevity, can re-fetch)
+    }
+  };
+
+  const handleTaskAssign = async (milestone, taskId, assigneeId) => {
+    const selectedId = assigneeId || null;
+    const selectedUser = selectedId ? users.find((u) => u.id === selectedId) : null;
+
+    setAssigningTaskId(taskId);
+    setAssignmentNoticeByTaskId((prev) => ({ ...prev, [taskId]: "" }));
+
+    // Optimistic update for immediate feedback.
+    setMilestones((prev) =>
+      prev.map((m) =>
+        m.id !== milestone.id
+          ? m
+          : {
+              ...m,
+              tasks: (m.tasks || []).map((t) =>
+                t.id === taskId
+                  ? {
+                      ...t,
+                      assignee_id: selectedId,
+                      assignee_name: selectedUser?.name || "-",
+                      campaign_id: m.campaign_id || null,
+                      milestone_id: m.id,
+                    }
+                  : t
+              ),
+            }
+      )
+    );
+
+    try {
+      const res = await fetch(`/api/milestones/${milestone.id}/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assignee_id: selectedId,
+          milestone_id: milestone.id,
+          campaign_id: milestone.campaign_id || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to assign task.");
+
+      setMilestones((prev) =>
+        prev.map((m) =>
+          m.id !== milestone.id
+            ? m
+            : {
+                ...m,
+                tasks: (m.tasks || []).map((t) =>
+                  t.id === taskId
+                    ? {
+                        ...t,
+                        ...data.task,
+                        campaign_id: m.campaign_id || null,
+                        milestone_id: m.id,
+                      }
+                    : t
+                ),
+              }
+        )
+      );
+      setAssignmentNoticeByTaskId((prev) => ({ ...prev, [taskId]: "Assigned" }));
+      setTimeout(() => {
+        setAssignmentNoticeByTaskId((prev) => ({ ...prev, [taskId]: "" }));
+      }, 1200);
+    } catch (err) {
+      setError(err?.message || "Failed to assign task.");
+    } finally {
+      setAssigningTaskId("");
+    }
+  };
+
+    const handleMilestoneStatusChange = async (milestoneId, newStatus) => {
+    setMilestones(prev => prev.map(m => m.id === milestoneId ? { ...m, status: newStatus } : m));
+    try {
+      const res = await fetch(`/api/milestones/${milestoneId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to update status");
+    } catch (err) {
+      setError(err?.message || "Failed to update milestone status.");
+    }
+  };
+
+
+  const startEditingMilestone = (milestone) => {
+    setEditingMilestoneId(milestone.id);
+    setEditForm({
+      title: milestone.title || "",
+      description: milestone.description || "",
+      start_date: milestone.start_date || "",
+      end_date: milestone.end_date || "",
+      assignee_id: milestone.assignee_id || "",
+      status: milestone.status || "Not Started"
+    });
+  };
+
+  const cancelEditingMilestone = () => {
+    setEditingMilestoneId(null);
+    setEditForm({
+      title: "",
+      description: "",
+      start_date: "",
+      end_date: "",
+      assignee_id: "",
+      status: ""
+    });
+  };
+
+  const saveMilestoneChanges = async (milestoneId) => {
+    setSavingMilestone(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/milestones/${milestoneId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to update milestone.");
+      
+      // Update local state
+      setMilestones(prev => prev.map(m => 
+        m.id === milestoneId ? { ...m, ...editForm } : m
+      ));
+      
+      cancelEditingMilestone();
+    } catch (err) {
+      setError(err?.message || "Failed to update milestone.");
+    } finally {
+      setSavingMilestone(false);
+    }
+  };
+
+  const handleDeleteMilestone = async (milestoneId) => {
+    if (!confirm("Are you sure you want to delete this milestone?")) return;
+    setDeletingMilestoneId(milestoneId);
+    setError("");
+    try {
+      const res = await fetch(`/api/milestones/${milestoneId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to delete milestone.");
+      setMilestones(prev => prev.filter(m => m.id !== milestoneId));
+    } catch (err) {
+      setError(err?.message || "Failed to delete milestone.");
+    } finally {
+      setDeletingMilestoneId(null);
+    }
+  };
+
+    const handleCreateMilestone = async () => {
+    if (!createForm.title.trim()) return;
+    setSavingCreate(true);
+    setError("");
+    try {
+      const res = await fetch("/api/milestones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...createForm, campaign_id: campaignId === "general" ? null : campaignId }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || "Failed to create milestone.");
+
+      const newMilestoneId = data.milestone.id;
+      for (const task of createTasks) {
+        await fetch(`/api/milestones/${newMilestoneId}/tasks`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // body: JSON.stringify({ title: task.title, task_type: "Generic Task", status: "Not Started" }),
+          body: JSON.stringify({ title: task.title, task_type: task.task_type || "Generic Task", assignee_id: task.assignee_id || null, priority: task.priority || "Medium", due_date: task.due_date || null, status: "Not Started" }),
+
+        });
+      }
+
+      setMilestones(prev => [...prev, { ...data.milestone, tasks: [], task_count: createTasks.length, tasks_done: 0 }]);
+      setCreateForm({ title: "", description: "", start_date: "", end_date: "", assignee_id: "", status: "Not Started" });
+      setCreateTasks([]);
+      setNewTaskTitle("");
+      setShowCreateForm(false);
+    } catch (err) {
+      setError(err?.message || "Failed to create milestone.");
+    } finally {
+      setSavingCreate(false);
+    }
+  };
+
+
+
+
+  const campaignName = milestones[0]?.campaign_name && milestones[0]?.campaign_name !== "-" ? milestones[0]?.campaign_name : "General Campaign";
+  const overallProgress = milestones.length > 0 ? Math.round(milestones.reduce((acc, m) => acc + (m.progress || 0), 0) / milestones.length) : 0;
+
+  return (
+    <main className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <button
+          onClick={() => router.push('/milestones')}
+          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+        >
+          <ArrowLeft size={16} />
+          Back to Milestones
+        </button>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900">{campaignName}</h1>
+              <p className="mt-2 text-sm text-slate-500">Track all milestones and tasks for this campaign.</p>
+            </div>
+            {/* <div className="w-full max-w-xs">
+              <div className="flex items-center justify-between text-sm font-medium text-slate-700 mb-2">
+                <span>Overall Progress</span>
+                <span>{overallProgress}%</span>
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                  style={{ width: `${overallProgress}%` }}
+                />
+              </div>
+            </div> */}
+                        <div className="flex items-end gap-4">
+              <div className="w-full max-w-xs">
+                <div className="flex items-center justify-between text-sm font-medium text-slate-700 mb-2">
+                  <span>Overall Progress</span>
+                  <span>{overallProgress}%</span>
+                </div>
+                <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-blue-500 transition-all duration-500"
+                    style={{ width: `${overallProgress}%` }}
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateForm(true)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800"
+              >
+                <Plus size={16} />
+                New Milestone
+              </button>
+            </div>
+
+          </div>
+        </section>
+
+                {showCreateForm && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-semibold text-slate-900">New Milestone</h2>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateForm(false); setCreateForm({ title: "", description: "", start_date: "", end_date: "", assignee_id: "", status: "Not Started" }); }}
+                  disabled={savingCreate}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateMilestone}
+                  disabled={savingCreate || !createForm.title.trim()}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {savingCreate ? "Creating..." : "Create Milestone"}
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Title *</label>
+                <input
+                  type="text"
+                  value={createForm.title}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="Milestone title"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Start Date</label>
+                <input
+                  type="date"
+                  value={createForm.start_date}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, start_date: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Due Date</label>
+                <input
+                  type="date"
+                  value={createForm.end_date}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, end_date: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assignee</label>
+                <select
+                  value={createForm.assignee_id}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, assignee_id: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="">Unassigned</option>
+                  {users.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</label>
+                <select
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, status: e.target.value }))}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                >
+                  <option value="Not Started">Not Started</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+            
+                        <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Description</label>
+                <textarea
+                  value={createForm.description}
+                  onChange={(e) => setCreateForm(prev => ({ ...prev, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Optional description"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              {/* <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tasks</label>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    type="text"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newTaskTitle.trim()) {
+                        e.preventDefault();
+                        setCreateTasks(prev => [...prev, { id: Date.now(), title: newTaskTitle.trim() }]);
+                        setNewTaskTitle("");
+                      }
+                    }}
+                    placeholder="Task title and press Enter"
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!newTaskTitle.trim()) return;
+                      setCreateTasks(prev => [...prev, { id: Date.now(), title: newTaskTitle.trim() }]);
+                      setNewTaskTitle("");
+                    }}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Add
+                  </button>
+                </div>
+                {createTasks.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {createTasks.map((task) => (
+                      <li key={task.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        {task.title}
+                        <button
+                          type="button"
+                          onClick={() => setCreateTasks(prev => prev.filter(t => t.id !== task.id))}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div> */}
+
+                            <div className="md:col-span-2">
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tasks</label>
+                <button
+                  type="button"
+                  onClick={() => { setTaskForm({ title: "", task_type: "Generic Task", priority: "Medium", assignee_id: "" }); setTaskModalOpen(true); }}
+                  className="mt-1 inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  <Plus size={13} /> Add Task
+                </button>
+                {createTasks.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {createTasks.map((task) => (
+                      <li key={task.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                        <span>
+                          {task.title}
+                          <span className="ml-2 text-xs text-slate-400">{task.task_type} · {task.priority}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCreateTasks(prev => prev.filter(t => t.id !== task.id))}
+                          className="text-xs text-red-500 hover:text-red-700"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+            </div>
+          </section>
+
+        )}
+
+
+        {loading ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
+            Loading campaign details...
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-sm font-semibold text-red-700 shadow-sm">
+            {error}
+          </div>
+        ) : milestones.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
+            No milestones found for this campaign.
+          </div>
+        ) : (
+          <>
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm overflow-x-auto">
+              <div className="flex min-w-max items-start justify-between gap-0">
+                {milestones.map((milestone, idx) => (
+                  <div key={milestone.id} className="flex flex-1 items-center">
+                    <div className="flex flex-col items-center">
+                      <div
+                        onClick={() => router.push(`/milestones/${campaignId}/${milestone.id}`)}
+                        className={`flex h-12 w-12 items-center justify-center rounded-full border text-sm font-semibold shadow-sm transition-colors duration-500 cursor-pointer hover:scale-110 hover:shadow-md ${trackerNodeStyles(
+                          milestone.status
+                        )}`}
+                      >
+                        {String(idx + 1).padStart(2, "0")}
+                      </div>
+                      <p className="mt-3 w-24 text-center text-xs font-semibold uppercase tracking-wider text-slate-500 truncate" title={milestone.title}>
+                        {milestone.title || "Milestone"}
+                      </p>
+                    </div>
+                    {idx < milestones.length - 1 ? (
+                      <div className={`mx-4 mt-0 h-1 w-24 rounded-full transition-colors duration-500 ${trackerLineStyles(milestone.status)}`} />
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              {milestones.map((milestone, idx) => {
+                const isExpanded = expandedMilestones.has(milestone.id);
+                return (
+                  <div key={milestone.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all">
+                    {/* <button
+                      onClick={() => toggleExpand(milestone.id)}
+                      className="flex w-full items-center justify-between gap-4 p-5 text-left hover:bg-slate-50"
+                    > */}
+                        <div
+                            onClick={() => toggleExpand(milestone.id)}
+                            className="flex w-full cursor-pointer items-center justify-between gap-4 p-5 text-left hover:bg-slate-50"
+                          >
+
+                      <div className="flex items-center gap-4">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">
+                          {String(idx + 1).padStart(2, "0")}
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{milestone.title}</h3>
+                          <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
+                            <span>{formatDateLabel(milestone.start_date)} - {formatDateLabel(milestone.end_date)}</span>
+                            <span>•</span>
+                            <span className="flex items-center gap-1.5">
+                              <Avatar name={milestone.assignee_name || "Unassigned"} imageUrl={milestone.assignee_avatar} size="sm" />
+                              {milestone.assignee_name || "Unassigned"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-6">
+                        <div className="hidden sm:block w-32">
+                          <div className="flex items-center justify-between text-xs font-medium text-slate-600 mb-1.5">
+                            <span>{milestone.progress}%</span>
+                            <span>{milestone.tasks_done}/{milestone.task_count} tasks</span>
+                          </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={`h-full rounded-full transition-all duration-500 ${progressBarStyles(milestone.status)}`}
+                              style={{ width: `${milestone.progress}%` }}
+                            />
+                          </div>
+                        </div>
+                        {/* <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${statusBadgeStyles(milestone.status)}`}>
+                          {milestone.status}
+                        </span> */}
+<select
+  value={milestone.status}
+  onClick={(e) => e.stopPropagation()}
+  onChange={(e) => {
+    e.stopPropagation();
+    handleMilestoneStatusChange(milestone.id, e.target.value);
+  }}
+  className={`shrink-0 cursor-pointer rounded-full border px-3 py-1 text-xs font-semibold outline-none ${statusBadgeStyles(milestone.status)}`}
+>
+  <option value="Not Started">Not Started</option>
+  <option value="In Progress">In Progress</option>
+  <option value="Completed">Completed</option>
+</select>
+
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleExpand(milestone.id);
+                          }}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          {isExpanded ? "Hide Detail" : "View in Detail"}
+                        </button>
+                        <div className="text-slate-400">
+                          {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                        </div>
+                      </div>
+                    {/* </button> */}
+                   </div>
+
+
+                    {/* {isExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/50 p-5">
+                        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Title</p>
+                            <p className="mt-1 text-sm font-semibold text-slate-900">{milestone.title || "-"}</p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assignee</p>
+                            <p className="mt-1 text-sm text-slate-700">{milestone.assignee_name || "Unassigned"}</p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Start Date</p>
+                            <p className="mt-1 text-sm text-slate-700">{formatDateLabel(milestone.start_date)}</p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Due Date</p>
+                            <p className="mt-1 text-sm text-slate-700">{formatDateLabel(milestone.end_date)}</p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</p>
+                            <p className="mt-1 text-sm text-slate-700">{milestone.status || "Not Started"}</p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white p-3 md:col-span-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Description</p>
+                            <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{milestone.description || "-"}</p>
+                          </div>
+                        </div>
+
+                        {(!milestone.tasks || milestone.tasks.length === 0) ? ( */}
+                         {isExpanded && (
+  <div className="border-t border-slate-100 bg-slate-50/50 p-5">
+    {editingMilestoneId === milestone.id ? (
+      // EDIT MODE
+      <div className="mb-4 space-y-3">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-semibold text-slate-900">Edit Milestone</h4>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={cancelEditingMilestone}
+              disabled={savingMilestone}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => saveMilestoneChanges(milestone.id)}
+              disabled={savingMilestone}
+              className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {savingMilestone ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Title
+            </label>
+            <input
+              type="text"
+              value={editForm.title}
+              onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Start Date
+            </label>
+            <input
+              type="date"
+              value={editForm.start_date}
+              onChange={(e) => setEditForm(prev => ({ ...prev, start_date: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Due Date
+            </label>
+            <input
+              type="date"
+              value={editForm.end_date}
+              onChange={(e) => setEditForm(prev => ({ ...prev, end_date: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Assignee
+            </label>
+            <select
+              value={editForm.assignee_id}
+              onChange={(e) => setEditForm(prev => ({ ...prev, assignee_id: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="">Unassigned</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Status
+            </label>
+            <select
+              value={editForm.status}
+              onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="Not Started">Not Started</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Completed">Completed</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              Description
+            </label>
+            <textarea
+              value={editForm.description}
+              onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
+              rows={4}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+        </div>
+      </div>
+    ) : (
+      // VIEW MODE
+      <>
+        <div className="mb-4 flex items-center justify-between">
+          <h4 className="text-sm font-semibold text-slate-900">Milestone Details</h4>
+          {/* <button
+            type="button"
+            onClick={() => startEditingMilestone(milestone)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Pencil size={14} />
+            Edit
+          </button> */}
+                    <div className="relative" ref={openActionMenuId === milestone.id ? actionMenuRef : null}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpenActionMenuId(prev => prev === milestone.id ? null : milestone.id);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Actions
+              <ChevronDown size={12} />
+            </button>
+            {openActionMenuId === milestone.id && (
+              <div className="absolute right-0 top-full z-10 mt-1 w-36 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenActionMenuId(null);
+                    startEditingMilestone(milestone);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <Pencil size={13} />
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingMilestoneId === milestone.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenActionMenuId(null);
+                    handleDeleteMilestone(milestone.id);
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-60"
+                >
+                  <Trash2 size={13} />
+                  {deletingMilestoneId === milestone.id ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Title</p>
+              <p className="mt-1 text-sm font-semibold text-slate-900">{milestone.title || "-"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assignee</p>
+              <p className="mt-1 text-sm text-slate-700">{milestone.assignee_name || "Unassigned"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Start Date</p>
+              <p className="mt-1 text-sm text-slate-700">{formatDateLabel(milestone.start_date)}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Due Date</p>
+              <p className="mt-1 text-sm text-slate-700">{formatDateLabel(milestone.end_date)}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</p>
+              <p className="mt-1 text-sm text-slate-700">{milestone.status || "Not Started"}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-3 md:col-span-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Description</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-700">{milestone.description || "-"}</p>
+            </div>
+          </div>
+        </>
+      )}
+
+      {(!milestone.tasks || milestone.tasks.length === 0) ? (
+
+
+                          <p className="text-sm text-slate-500 text-center py-4">No tasks in this milestone.</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {milestone.tasks.map(task => {
+                              const isCompleted = task.status === "Completed";
+                              return (
+                                // <div
+                                //   key={task.id}
+                                //   className={`flex items-center gap-4 rounded-xl border p-4 transition-colors ${
+                                //     isCompleted ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 bg-white hover:border-blue-300"
+                                //   }`}
+                                // >
+                                  
+                                //   <div className="flex-1 min-w-0">
+                                //     <p className={`text-sm font-medium truncate transition-colors ${isCompleted ? "text-slate-500 line-through" : "text-slate-900"}`}>
+                                //       {task.title}
+                                //     </p>
+                                //     <div className="mt-1 flex items-center gap-2">
+                                //       <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                //         {task.task_type}
+                                //       </span>
+                                //       <span className="text-[11px] text-slate-500">
+                                //         {task.assignee_name !== "-" ? task.assignee_name : "Unassigned"}
+                                //       </span>
+                                //     </div>
+                                //     <div className="mt-2 flex items-center gap-2">
+                                //       <select
+                                //         value={task.assignee_id || ""}
+                                //         onChange={(e) => handleTaskAssign(milestone, task.id, e.target.value)}
+                                //         disabled={assigningTaskId === task.id}
+                                //         className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+                                //       >
+                                //         <option value="">Unassigned</option>
+                                //         {users.map((u) => (
+                                //           <option key={u.id} value={u.id}>
+                                //             {u.name}
+                                //           </option>
+                                //         ))}
+                                //       </select>
+                                //       {assignmentNoticeByTaskId[task.id] ? (
+                                //         <span className="text-[11px] font-semibold text-emerald-600">
+                                //           {assignmentNoticeByTaskId[task.id]}
+                                //         </span>
+                                //       ) : null}
+                                //     </div>
+                                //   </div>
+                                // </div>
+                                <div
+  key={task.id}
+  className={`relative flex items-center gap-4 rounded-xl border p-4 transition-colors ${
+    isCompleted ? "border-emerald-200 bg-emerald-50/30" : "border-slate-200 bg-white hover:border-blue-300"
+  }`}
+>
+  
+  <div className="flex-1 min-w-0">
+    <p className={`text-sm font-medium truncate transition-colors ${isCompleted ? "text-slate-500 line-through" : "text-slate-900"}`}>
+      {task.title}
+    </p>
+    <div className="mt-1 flex items-center gap-2">
+      <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+        {task.task_type}
+      </span>
+      <span className="text-[11px] text-slate-500">
+        {task.assignee_name !== "-" ? task.assignee_name : "Unassigned"}
+      </span>
+    </div>
+    <div className="mt-2 flex items-center gap-2">
+      <select
+        value={task.assignee_id || ""}
+        onChange={(e) => handleTaskAssign(milestone, task.id, e.target.value)}
+        disabled={assigningTaskId === task.id}
+        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+      >
+        <option value="">Unassigned</option>
+        {users.map((u) => (
+          <option key={u.id} value={u.id}>
+            {u.name}
+          </option>
+        ))}
+      </select>
+      {assignmentNoticeByTaskId[task.id] ? (
+        <span className="text-[11px] font-semibold text-emerald-600">
+          {assignmentNoticeByTaskId[task.id]}
+        </span>
+      ) : null}
+    </div>
+  </div>
+
+  {/* Navigation arrow button */}
+  <button
+    type="button"
+    onClick={(e) => {
+      e.stopPropagation();
+      const returnTo = `/milestones/${campaignId}`;
+      router.push(`/tasks/milestone:${task.id}?returnTo=${encodeURIComponent(returnTo)}`);
+    }}
+    className="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white transition hover:bg-blue-700 hover:scale-110"
+    title="View task details"
+  >
+    <ChevronRight size={14} />
+  </button>
+</div>
+
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </section>
+          </>
+        )}
+      </div>
+   
+        {taskModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40" onClick={() => setTaskModalOpen(false)} />
+            <div className="relative w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+              <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+                <p className="text-sm font-semibold text-slate-900">Add Task</p>
+                <button type="button" onClick={() => setTaskModalOpen(false)} className="rounded-lg border border-slate-300 bg-white p-1.5 text-slate-700 hover:bg-slate-50">
+                  <X size={15} />
+                </button>
+              </div>
+              <div className="space-y-4 px-5 py-4">
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Title *</label>
+                  <input
+                    type="text"
+                    value={taskForm.title}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="Task title"
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Task Type</label>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {["Generic Task", "LinkedIn Post", "Social Media Post", "Blog Post", "Cold Email Campaign", "Company Research", "Email Newsletter", "Campaign Analysis"].map(tt => (
+                      <button
+                        key={tt}
+                        type="button"
+                        onClick={() => setTaskForm(prev => ({ ...prev, task_type: tt }))}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${taskForm.task_type === tt ? "border-blue-500 bg-blue-500 text-white" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"}`}
+                      >
+                        {tt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Priority</label>
+                  <div className="mt-1 flex gap-2">
+                    {["Low", "Medium", "High", "Urgent"].map(p => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setTaskForm(prev => ({ ...prev, priority: p }))}
+                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${taskForm.priority === p ? "border-blue-500 bg-blue-500 text-white" : "border-slate-300 bg-white text-slate-700 hover:border-slate-400"}`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Assignee</label>
+                  <select
+                    value={taskForm.assignee_id}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, assignee_id: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Unassigned</option>
+                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </select>
+                </div>
+              {/* </div>
+              <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                            </div> */}
+                <div>
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Due Date</label>
+                  <input
+                    type="date"
+                    value={taskForm.due_date || ""}
+                    onChange={(e) => setTaskForm(prev => ({ ...prev, due_date: e.target.value }))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+
+                <button type="button" onClick={() => setTaskModalOpen(false)} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!taskForm.title.trim()}
+                  onClick={() => {
+                    if (!taskForm.title.trim()) return;
+                    setCreateTasks(prev => [...prev, { id: Date.now(), ...taskForm }]);
+                    setTaskModalOpen(false);
+                  }}
+                  className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Add Task
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+    </main>
+  );
+}
+

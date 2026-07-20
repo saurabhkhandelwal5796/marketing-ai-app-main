@@ -1,0 +1,25 @@
+<svg width="1600" height="1200" viewBox="0 0 1600 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="200" y1="80" x2="1400" y2="1120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0EAFF"/>
+      <stop offset="1" stop-color="#F7FAFF"/>
+    </linearGradient>
+    <linearGradient id="card" x1="360" y1="300" x2="1240" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1E293B"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="1200" fill="url(#bg)"/>
+  <circle cx="1310" cy="250" r="180" fill="#C7D7FF" fill-opacity="0.7"/>
+  <circle cx="310" cy="980" r="230" fill="#DBE8FF" fill-opacity="0.8"/>
+  <rect x="250" y="220" width="1100" height="760" rx="42" fill="white" fill-opacity="0.92"/>
+  <rect x="350" y="330" width="900" height="540" rx="26" fill="url(#card)"/>
+  <rect x="420" y="420" width="420" height="24" rx="12" fill="#7DD3FC"/>
+  <rect x="420" y="470" width="760" height="18" rx="9" fill="#93C5FD" fill-opacity="0.8"/>
+  <rect x="420" y="520" width="700" height="18" rx="9" fill="#93C5FD" fill-opacity="0.65"/>
+  <rect x="420" y="570" width="730" height="18" rx="9" fill="#93C5FD" fill-opacity="0.5"/>
+  <rect x="420" y="640" width="260" height="80" rx="18" fill="#38BDF8"/>
+  <rect x="700" y="640" width="260" height="80" rx="18" fill="#2563EB"/>
+  <rect x="980" y="640" width="200" height="80" rx="18" fill="#1D4ED8"/>
+  <rect x="420" y="760" width="760" height="26" rx="13" fill="#7DD3FC" fill-opacity="0.6"/>
+</svg>
