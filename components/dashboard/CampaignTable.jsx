@@ -18,17 +18,17 @@ function SortableHeader({ label, sortKey, currentSort, sortDir, onSort, align = 
 
   return (
     <th 
-      className={`sticky top-0 z-10 bg-slate-50 px-5 py-3 text-[12px] font-bold uppercase tracking-wider text-slate-500 cursor-pointer group hover:bg-slate-100 transition-colors select-none border-b border-slate-200 ${align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"}`}
+      className={`sticky top-0 z-10 bg-slate-50 px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 cursor-pointer group hover:bg-slate-100 transition-colors select-none border-b border-slate-200 dark:bg-slate-800 dark:border-slate-700 ${align === "center" ? "text-center" : align === "right" ? "text-right" : "text-left"}`}
       onClick={() => onSort(sortKey)}
     >
       <div className={`flex items-center gap-1.5 ${align === "center" ? "justify-center" : align === "right" ? "justify-end" : "justify-start"}`}>
-        <span className={isActive ? "text-indigo-600 drop-shadow-sm" : ""}>{label}</span>
+        <span className={isActive ? "text-blue-600 dark:text-blue-400 font-bold" : ""}>{label}</span>
         {isAsc ? (
-          <ArrowUp size={14} className="text-indigo-600" />
+          <ArrowUp size={12} className="text-blue-600 dark:text-blue-400" />
         ) : isDesc ? (
-          <ArrowDown size={14} className="text-indigo-600" />
+          <ArrowDown size={12} className="text-blue-600 dark:text-blue-400" />
         ) : (
-          <ArrowUpDown size={14} className="text-slate-400 opacity-0 transition-opacity group-hover:opacity-100" />
+          <ArrowUpDown size={12} className="text-slate-400 opacity-0 transition-opacity group-hover:opacity-100" />
         )}
       </div>
     </th>
@@ -94,14 +94,13 @@ export default function CampaignTable({ rows, campaigns = [], loading }) {
   };
 
   return (
-    <div className="flex w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-100 p-5">
+    <div className="flex w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:bg-slate-800 dark:border-slate-700">
+      <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 p-5">
         <div>
-          <h3 className="text-base font-semibold text-slate-900">Recent Campaigns</h3>
-          <p className="mt-0.5 text-xs text-slate-500">Track your latest campaign performance metrics.</p>
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent Campaigns</h3>
         </div>
         {tableRows.length > 0 && (
-          <Link href="/campaigns" className="text-sm font-semibold text-indigo-600 hover:text-indigo-700 hover:underline">
+          <Link href="/campaigns" className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">
             View All
           </Link>
         )}
@@ -111,48 +110,48 @@ export default function CampaignTable({ rows, campaigns = [], loading }) {
         {loading ? (
           <div className="p-5 space-y-4">
             {Array.from({ length: 4 }).map((_, idx) => (
-              <div key={idx} className="h-10 animate-pulse rounded-lg bg-slate-100 w-full" />
+              <div key={idx} className="h-10 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-700 w-full" />
             ))}
           </div>
         ) : sortedRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-12 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-50 text-slate-400 mb-4 border border-slate-100">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-50 dark:bg-slate-700 text-slate-400 mb-4 border border-slate-100 dark:border-slate-700">
               <FileWarning size={28} />
             </div>
-            <h4 className="text-sm font-semibold text-slate-900">No campaigns found</h4>
+            <h4 className="text-sm font-semibold text-slate-900 dark:text-white">No campaigns found</h4>
             <p className="mt-1 text-xs text-slate-500 max-w-[250px]">You haven&apos;t created any campaigns in this period.</p>
             <Link 
               href="/create-post" 
-              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 hover:scale-[0.98] transition-all"
+              className="btn-primary mt-5 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold shadow-sm"
             >
-              <Plus size={16} />
+              <Plus size={14} />
               Create Campaign
             </Link>
           </div>
         ) : (
-          <table className="w-full text-left text-sm border-collapse min-w-[700px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[700px]">
             <thead>
-              <tr>
+              <tr className="border-b border-slate-100 dark:border-slate-700">
                 <SortableHeader label="Campaign Name" sortKey="campaign_name" currentSort={sortBy} sortDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Recipients / Target" sortKey="recipients" currentSort={sortBy} sortDir={sortDir} onSort={onSort} />
                 <SortableHeader label="Open Rate" sortKey="opens" currentSort={sortBy} sortDir={sortDir} onSort={onSort} align="right" />
                 <SortableHeader label="Click Rate" sortKey="clicks" currentSort={sortBy} sortDir={sortDir} onSort={onSort} align="right" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
               {sortedRows.slice(0, 10).map((row) => (
-                <tr key={row.id} className="group transition-colors hover:bg-slate-50">
-                  <td className="px-5 py-4 max-w-[200px] truncate font-medium text-slate-800" title={row.campaign_name}>
+                <tr key={row.id} className="group transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                  <td className="px-5 py-4 max-w-[200px] truncate font-semibold text-slate-800 dark:text-slate-200" title={row.campaign_name}>
                     {row.campaign_name}
                   </td>
-                  <td className="px-5 py-4 max-w-[200px] truncate text-slate-500" title={row.recipients}>
+                  <td className="px-5 py-4 max-w-[200px] truncate text-slate-500 dark:text-slate-400" title={row.recipients}>
                     {row.recipients}
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <span className="font-semibold text-slate-700">{row.opens.toFixed(1)}%</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-350">{row.opens.toFixed(1)}%</span>
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <span className="font-semibold text-slate-700">{row.clicks.toFixed(1)}%</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-350">{row.clicks.toFixed(1)}%</span>
                   </td>
                 </tr>
               ))}

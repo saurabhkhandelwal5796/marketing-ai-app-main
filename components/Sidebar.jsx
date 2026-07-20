@@ -64,36 +64,35 @@ export default function Sidebar({
   return (
     <aside
       onMouseEnter={onHoverExpand}
-      className={`fixed left-0 top-0 z-40 h-screen border-r border-[#1B1B2A] bg-gradient-to-b from-[#0B0F1A] to-[#121826] backdrop-blur transition-all duration-300 ease-in-out print:hidden ${
+      className={`fixed left-0 top-0 z-40 h-screen border-r border-slate-200 bg-white dark:bg-slate-900 dark:border-slate-800 transition-all duration-200 ease-in-out print:hidden ${
         collapsed ? "w-[78px]" : "w-64"
       }`}
     >
       <div className="flex h-full min-h-0 flex-col">
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-white/[0.05] bg-white/[0.02] px-4 shadow-[0_4px_24px_-8px_rgba(0,0,0,0.5)] backdrop-blur-xl">
-          <div className={`transition ${collapsed ? "hidden" : "block"}`}>
-            {/* Replaced PNG with a code-based logo for precise control over size, font weight, and spacing */}
-            <div className="flex items-center gap-3.5">
-              <div className="flex h-[36px] w-[36px] items-center justify-center rounded-[10px] bg-gradient-to-br from-[#6366f1] to-[#818cf8] shadow-[0_0_15px_rgba(99,102,241,0.5)]">
-                <Sparkles size={20} className="text-white drop-shadow-md" />
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 dark:border-slate-800 px-4 shadow-sm">
+          <div className={`transition-all duration-200 ${collapsed ? "hidden" : "block"}`}>
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#2563eb] to-[#4f46e5] shadow-md shadow-blue-500/20">
+                <Sparkles size={18} className="text-white" />
               </div>
-              <span className="text-[20px] font-extrabold tracking-wide text-white drop-shadow-sm">
-                Marketing<span className="font-medium text-[#818cf8]">Tool</span>
+              <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-white">
+                Marketing<span className="font-medium text-blue-600 dark:text-blue-400">AI</span>
               </span>
             </div>
           </div>
 
           <button
             onClick={onToggleCollapsed}
-            className="rounded-lg border border-[#2A2A3A] p-1.5 text-[#A9A9BA] transition-all duration-200 ease-in-out hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1]/50"
+            className="rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 focus:outline-none"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             style={{ outline: "none" }}
           >
-            {collapsed ? <ChevronRight size={16} strokeWidth={1.5} /> : <ChevronLeft size={16} strokeWidth={1.5} />}
+            {collapsed ? <ChevronRight size={14} strokeWidth={2} /> : <ChevronLeft size={14} strokeWidth={2} />}
           </button>
         </div>
 
-        <nav className="mt-2 flex-1 space-y-1 overflow-hidden px-2 pb-2">
+        <nav className="mt-4 flex-1 space-y-1.5 overflow-hidden px-3 pb-2">
           {navItems
             .filter((item) => !item.adminOnly || isAdmin)
             .map((item) => {
@@ -104,57 +103,57 @@ export default function Sidebar({
                   key={item.href}
                   href={item.href}
                   title={collapsed ? item.label : undefined}
-                  className={`group relative flex items-center gap-3 rounded-[10px] px-3 py-2 transition-all duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1]/50 ${
+                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ease-in-out focus:outline-none ${
                     active
-                      ? "bg-[#6366f1]/15 font-bold text-white"
-                      : "text-[#A9A9BA] hover:translate-x-1 hover:bg-white/5 hover:text-white"
+                      ? "bg-blue-50 dark:bg-blue-900/20 font-bold text-blue-600 dark:text-blue-400"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
                   }`}
                   style={{ outline: "none" }}
                 >
                   <div
-                    className={`absolute left-0 top-1/2 h-[60%] w-[3px] -translate-y-1/2 rounded-r-full transition-all duration-200 ${
-                      active ? "bg-[#6366f1] shadow-[0_0_8px_rgba(99,102,241,0.8)]" : "bg-transparent opacity-0"
+                    className={`absolute left-0 top-1/2 h-[50%] w-[3px] -translate-y-1/2 rounded-r-full transition-all duration-200 ${
+                      active ? "bg-blue-600 dark:bg-blue-400" : "bg-transparent opacity-0"
                     }`}
                     aria-hidden="true"
                   />
                   <Icon 
-                    size={18} 
-                    strokeWidth={active ? 2 : 1.5} 
+                    size={16} 
+                    strokeWidth={active ? 2.5 : 1.8} 
                     className={`transition-all duration-200 ${
-                      active ? "text-[#818cf8] drop-shadow-[0_0_6px_rgba(99,102,241,0.6)]" : "text-[#A9A9BA] group-hover:text-white"
+                      active ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white"
                     }`}
                   />
-                  <span className={collapsed ? "hidden" : "inline text-[13px] tracking-wide"}>{item.label}</span>
+                  <span className={collapsed ? "hidden" : "inline text-xs font-semibold tracking-wide"}>{item.label}</span>
                 </Link>
               );
             })}
         </nav>
 
-        <div className="mt-auto p-2">
+        <div className="mt-auto p-3 border-t border-slate-100 dark:border-slate-800">
           <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => setIsUserMenuOpen((p) => !p)}
-              className="flex w-full items-center gap-3 rounded-[10px] border border-[#2A2A3A] bg-transparent px-3 py-2.5 text-[#A9A9BA] transition-all duration-200 ease-in-out hover:bg-white/5 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6366f1]/50"
+              className="flex w-full items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-transparent px-3 py-2.5 text-slate-700 dark:text-slate-300 transition-all duration-200 ease-in-out hover:bg-slate-50 dark:hover:bg-slate-800 focus:outline-none"
               aria-label="Open profile menu"
               style={{ outline: "none" }}
             >
-              <UserCircle2 size={16} strokeWidth={1.5} />
+              <UserCircle2 size={16} strokeWidth={1.8} />
               {!collapsed ? (
-                <span className="min-w-0 truncate text-[12px] font-medium">
+                <span className="min-w-0 truncate text-xs font-semibold">
                   {currentUser?.name || "User"}
                 </span>
               ) : null}
             </button>
 
             {isUserMenuOpen ? (
-              <div className="absolute bottom-full right-0 z-20 w-44 rounded-lg border border-[#2A2A3A] bg-[#121826] p-1 shadow-lg">
+              <div className="absolute bottom-full left-0 mb-2 z-20 w-48 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-1.5 shadow-xl">
                 <button
                   onClick={() => {
                     setIsUserMenuOpen(false);
                     if (onEditProfileNavigate) onEditProfileNavigate();
                     else onOpenProfileModal?.();
                   }}
-                  className="block w-full rounded-md px-3 py-2 text-left text-[12px] font-medium text-[#EDEBFF] transition-all duration-200 hover:bg-white/5 focus:outline-none"
+                  className="block w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all duration-200 hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none"
                 >
                   Edit Profile
                 </button>
@@ -163,7 +162,7 @@ export default function Sidebar({
                     setIsUserMenuOpen(false);
                     onLogout?.();
                   }}
-                  className="block w-full rounded-md px-3 py-2 text-left text-[12px] font-medium text-[#FF5C7A] transition-all duration-200 hover:bg-white/5 focus:outline-none"
+                  className="block w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-red-600 dark:text-red-400 transition-all duration-200 hover:bg-red-50 dark:hover:bg-red-950/20 focus:outline-none"
                 >
                   Logout
                 </button>

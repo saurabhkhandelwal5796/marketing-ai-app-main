@@ -4,21 +4,21 @@ import { Target, CheckSquare, Flag, Share2 } from "lucide-react";
 
 function MetricGroup({ title, icon: Icon, metrics, loading }) {
   return (
-    <div className="rounded-[16px] border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md">
-      <div className="mb-4 flex items-center justify-between border-b border-slate-100 pb-3">
-        <h4 className="text-[14px] font-bold tracking-tight text-slate-800">{title}</h4>
-        <Icon size={16} className="text-slate-400" />
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md dark:bg-slate-800 dark:border-slate-700">
+      <div className="mb-4 flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{title}</h4>
+        <Icon size={14} className="text-slate-400 dark:text-slate-500" />
       </div>
       <div className="flex flex-col gap-3">
         {loading ? (
           Array.from({ length: metrics.length }).map((_, i) => (
-            <div key={i} className="flex justify-between h-4 w-full bg-slate-100 animate-pulse rounded"></div>
+            <div key={i} className="flex justify-between h-4 w-full bg-slate-100 dark:bg-slate-700 animate-pulse rounded"></div>
           ))
         ) : (
           metrics.map((m, i) => (
-            <div key={i} className="flex items-center justify-between text-[13px]">
-              <span className="font-medium text-slate-500">{m.label}</span>
-              <span className="font-bold text-slate-900">{m.value}</span>
+            <div key={i} className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-slate-500 dark:text-slate-400">{m.label}</span>
+              <span className="font-bold text-slate-900 dark:text-white">{m.value}</span>
             </div>
           ))
         )}

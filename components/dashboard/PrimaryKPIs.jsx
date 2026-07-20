@@ -5,34 +5,35 @@ import { Megaphone, Mail, Globe, MessageCircle, TrendingUp, TrendingDown, Clipbo
 function KPICard({ title, value, growth, subText, icon: Icon, loading }) {
   const isPositive = growth >= 0;
   return (
-    <div className="group relative flex flex-col justify-between overflow-hidden rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md">
+    <div className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md dark:bg-slate-800 dark:border-slate-700">
+      <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-blue-500 to-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity" />
       {loading ? (
         <div className="animate-pulse space-y-3">
-          <div className="flex justify-between"><div className="h-4 w-24 bg-slate-100 rounded"></div><div className="h-8 w-8 bg-slate-100 rounded-full"></div></div>
-          <div className="h-8 w-16 bg-slate-100 rounded"></div>
-          <div className="h-3 w-24 bg-slate-100 rounded"></div>
+          <div className="flex justify-between"><div className="h-4 w-24 bg-slate-100 dark:bg-slate-700 rounded"></div><div className="h-8 w-8 bg-slate-100 dark:bg-slate-700 rounded-full"></div></div>
+          <div className="h-8 w-16 bg-slate-100 dark:bg-slate-700 rounded"></div>
+          <div className="h-3 w-24 bg-slate-100 dark:bg-slate-700 rounded"></div>
         </div>
       ) : (
         <>
           <div className="flex items-start justify-between">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</h3>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-50 text-slate-600 transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-600">
-              <Icon size={18} strokeWidth={2} />
+            <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{title}</h3>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors group-hover:bg-blue-50 dark:group-hover:bg-blue-950/30 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+              <Icon size={16} strokeWidth={2} />
             </div>
           </div>
           
-          <div className="mt-2">
-            <div className="flex items-baseline gap-3">
-              <span className="text-3xl font-extrabold text-slate-900 tracking-tight">{value}</span>
+          <div className="mt-4">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">{value}</span>
               {growth !== undefined && (
-                <div className={`flex items-center gap-1 text-[11px] font-bold ${isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
-                  {isPositive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                <div className={`flex items-center gap-0.5 text-[10px] font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-500'}`}>
+                  {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
                   {Math.abs(growth)}%
                 </div>
               )}
             </div>
             {subText && (
-              <p className="mt-1 text-xs font-medium text-slate-400">{subText}</p>
+              <p className="mt-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500">{subText}</p>
             )}
           </div>
         </>

@@ -1,66 +1,162 @@
 @import "tailwindcss";
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Geist:wght@300;400;500;600;700;800&display=swap');
+
 :root {
   --background: #f8fafc;
-  --foreground: #0f172a;
+  --foreground: #111827;
+  --card-bg: #ffffff;
+  --card-border: rgba(226, 232, 240, 0.8);
+  --primary-gradient: linear-gradient(135deg, #2563eb, #4f46e5);
+  --primary: #2563eb;
+  --secondary: #4f46e5;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --error: #ef4444;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(226, 232, 240, 0.4);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.08);
+  --shadow-premium: 0 2px 8px rgba(0,0,0,.05), 0 12px 24px rgba(0,0,0,.08);
+}
+
+.dark {
+  --background: #090d16;
+  --foreground: #f3f4f6;
+  --card-bg: #111827;
+  --card-border: rgba(31, 41, 55, 0.8);
+  --primary-gradient: linear-gradient(135deg, #3b82f6, #6366f1);
+  --primary: #3b82f6;
+  --secondary: #6366f1;
+  --glass-bg: rgba(17, 24, 39, 0.7);
+  --glass-border: rgba(31, 41, 55, 0.4);
+  --shadow-premium: 0 4px 12px rgba(0,0,0,.3), 0 16px 32px rgba(0,0,0,.4);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: 'Inter', 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
   max-width: 100%;
   overflow-x: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-html {
-  max-width: 100%;
-  overflow-x: hidden;
+/* Typography Scale */
+h1 {
+  font-size: 32px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.25 !important;
 }
 
-/* Prevent common laptop-width overflow without changing behavior */
-main,
-section,
-article {
-  max-width: 100%;
-  min-width: 0;
+h2 {
+  font-size: 24px !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.3 !important;
 }
 
-/* Tables, pre blocks, and cards should never force page-level horizontal scroll */
-table,
-pre {
-  max-width: 100%;
+h3 {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.015em !important;
 }
 
-/* Global clickable affordance */
-:is(
-    button,
-    a,
-    [role="button"],
-    [role="tab"],
-    [role="menuitem"],
-    input[type="checkbox"],
-    .cursor-pointer
-  ) {
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+label, .label-text {
+  font-size: 13px !important;
+  font-weight: 600 !important;
 }
 
-/* Premium hover system: reusable + global interactive targets */
+/* Premium Glassmorphic Navigation & Headers */
+.glass-header {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--glass-border);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+/* Rounded corners and spacing utility classes */
+.rounded-premium {
+  border-radius: 16px !important;
+}
+
+.shadow-premium {
+  box-shadow: var(--shadow-premium) !important;
+}
+
+/* Apollo & Stripe style Card styling */
+.premium-card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
+}
+
+.premium-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-premium);
+  border-color: rgba(37, 99, 235, 0.3);
+}
+
+/* Premium Button Styling */
+.btn-primary {
+  background: var(--primary-gradient) !important;
+  color: #ffffff !important;
+  border: none !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  padding: 8px 16px !important;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1.5px) !important;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35) !important;
+  filter: brightness(1.05) !important;
+}
+
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0) !important;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.btn-secondary {
+  background: var(--card-bg) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--card-border) !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  padding: 8px 16px !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  transform: translateY(-1.5px) !important;
+  background-color: var(--background) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+}
+
+/* Reset aggressive global button scale modifications */
 .hover-lift,
 :is(
     button,
@@ -70,17 +166,11 @@ pre {
     [role="menuitem"],
     .cursor-pointer
   ):not(.no-hover-lift) {
-  transition:
-    transform 250ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 250ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 250ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: transform;
-  transform: translateY(0) scale(1);
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transform: none;
+  box-shadow: none;
 }
 
-.hover-lift:hover,
-.hover-lift:focus-visible,
 :is(
     button,
     a[href],
@@ -88,79 +178,72 @@ pre {
     [role="tab"],
     [role="menuitem"],
     .cursor-pointer
-  ):not(.no-hover-lift):hover,
-:is(
-    button,
-    a[href],
-    [role="button"],
-    [role="tab"],
-    [role="menuitem"],
-    .cursor-pointer
-  ):not(.no-hover-lift):focus-visible {
-  transform: translateY(-2px) scale(1.03);
-  background-color: rgba(105, 115, 130, 0.08);
-  border-color: rgba(105, 115, 130, 0.18);
-  box-shadow: 0 10px 25px rgba(105, 115, 130, 0.18);
-  filter: brightness(1.01);
-  text-shadow: 0 0.35px 0 rgba(15, 23, 42, 0.3);
+  ):not(.no-hover-lift):hover {
+  transform: translateY(-1.5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
 }
 
-.hover-lift:focus-visible,
-:is(
-    button,
-    a[href],
-    [role="button"],
-    [role="tab"],
-    [role="menuitem"],
-    .cursor-pointer
-  ):not(.no-hover-lift):focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
+/* Salesforce List View inspired Tables */
+.salesforce-table-container {
+  overflow-x: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  background-color: var(--card-bg);
 }
 
-/* Keep black action buttons neutral on hover/focus */
-:is(button, a[href])[class*="bg-slate-900"]:not(.no-hover-lift):is(:hover, :focus-visible) {
-  background-color: #1f2937;
-  border-color: transparent;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-  filter: none;
+.salesforce-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13px;
 }
 
-/* Standardize colored buttons to black theme */
-:is(button, a[href]):is([class*="bg-blue-600"], [class*="bg-blue-500"], [class*="bg-indigo-600"], [class*="bg-indigo-500"]) {
-  background-color: #0f172a !important;
-  color: #ffffff !important;
-  border-color: transparent !important;
+.salesforce-table th {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 12px 16px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 2px solid var(--card-border);
 }
 
-/* Keep blue action buttons with blue glow on hover/focus */
-:is(button, a[href]):is([class*="bg-blue-600"], [class*="bg-blue-500"], [class*="bg-indigo-600"], [class*="bg-indigo-500"]):not(.no-hover-lift):is(:hover, :focus-visible) {
-  background-color: #1f2937;
-  border-color: transparent;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
-  filter: none;
+.salesforce-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--foreground);
+  transition: background-color 0.15s ease;
 }
 
-/* Keep list/table rows stable while preserving hover color */
-table tr.cursor-pointer,
-table tr.cursor-pointer:hover,
-table tr.cursor-pointer:focus-visible {
-  transform: none !important;
-  filter: none !important;
-  text-shadow: none !important;
+.salesforce-table tbody tr {
+  background-color: var(--card-bg);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .hover-lift,
-  :is(
-      button,
-      a[href],
-      [role="button"],
-      [role="tab"],
-      [role="menuitem"],
-      .cursor-pointer
-    ):not(.no-hover-lift) {
-    transition: none;
-    transform: none;
+.salesforce-table tbody tr:nth-child(even) {
+  background-color: rgba(248, 250, 252, 0.4);
+}
+
+.salesforce-table tbody tr:hover {
+  background-color: rgba(37, 99, 235, 0.04) !important;
+}
+
+/* Shimmer Loading / Skeleton effect */
+.shimmer-bg {
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.5) 25%, rgba(203, 213, 225, 0.6) 50%, rgba(226, 232, 240, 0.5) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite linear;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
   }
 }

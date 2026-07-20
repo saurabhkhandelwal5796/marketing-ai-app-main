@@ -1903,174 +1903,164 @@ export default function TargetAudiencePage() {
               </h1>
             </section>
 
-            {/* Prompt Input */}
-            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <p className="text-sm font-medium text-slate-700 mb-2">Describe your target audience</p>
-              <textarea
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                rows={4}
-                placeholder="e.g. We are an IT consultancy targeting real estate and manufacturing companies in India. We offer cloud services and IT infrastructure solutions."
-                className="mt-1 w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-              <div className="mt-3 flex items-center justify-between gap-2">
-                {(loading || chatLoading) && (
-                  <div className="flex items-center gap-3 text-xs font-medium text-slate-600">
-                    <span className="animate-pulse">Searching Batch {batchesCount}/5</span>
-                    <span className="text-slate-400">⏱ {formatElapsed(elapsedSeconds)} / 02:00</span>
-                    <span className="text-slate-400">📋 {targetAudience.length} records</span>
+            {/* Apollo-Style 2-Column Workspace Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column: AI Assistant (Span 5) */}
+              <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-[24px]">
+                {/* Prompt Input */}
+                <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Describe Target Audience</h2>
+                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+                  </div>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={3}
+                    placeholder="e.g. We are an IT consultancy targeting real estate and manufacturing companies in India."
+                    className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-3 text-sm text-slate-900 outline-none transition focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                  />
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    {(loading || chatLoading) && (
+                      <div className="flex flex-col gap-0.5 text-[10.5px] font-semibold text-slate-500">
+                        <span className="animate-pulse text-blue-600">Batch {batchesCount}/5</span>
+                        <span>⏱ {formatElapsed(elapsedSeconds)} / 02:00</span>
+                      </div>
+                    )}
+                    {!(loading || chatLoading) && <div />}
+                    <div className="flex items-center gap-2">
+                      {(loading || chatLoading) && (
+                        <button
+                          type="button"
+                          onClick={handleStopSearch}
+                          className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition"
+                        >
+                          ■ Stop
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={generate}
+                        disabled={!loading && !prompt.trim()}
+                        className="btn-primary flex items-center gap-1.5 text-xs font-bold"
+                      >
+                        <Users size={14} />
+                        {loading ? "Generating…" : hasResults ? "Regenerate" : "Generate"}
+                      </button>
+                    </div>
+                  </div>
+                  {error && (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">
+                      {error}
+                    </div>
+                  )}
+                  {loading && (
+                    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                      <ThinkingDisplay preset="marketing_analysis" />
+                    </div>
+                  )}
+                </section>
+
+                {/* Conversational Chat Panel */}
+                {chatMessages.length > 0 && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        💬 Target Audience Assistant
+                      </h2>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={clearConversationMessages}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          type="button"
+                          onClick={exportConversationTranscript}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition"
+                        >
+                          Export
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Chat Messages */}
+                    <div className="max-h-[220px] overflow-y-auto space-y-3 pr-1 flex flex-col">
+                      {chatMessages.map((msg, index) => (
+                        <div
+                          key={index}
+                          className={cx(
+                            "flex flex-col max-w-[85%] rounded-2xl px-3.5 py-2 text-xs",
+                            msg.role === "user"
+                              ? "bg-blue-600 text-white self-end ml-auto rounded-tr-none"
+                              : "bg-slate-50 text-slate-800 mr-auto rounded-tl-none border border-slate-100"
+                          )}
+                        >
+                          <span className="text-[9px] font-bold uppercase tracking-wider opacity-60 mb-0.5">
+                            {msg.role === "user" ? "You" : "Assistant"}
+                          </span>
+                          <p className="leading-relaxed whitespace-pre-line">{msg.content}</p>
+                        </div>
+                      ))}
+                      {chatLoading && (
+                        <div className="bg-slate-50 border border-slate-200 text-slate-700 mr-auto rounded-2xl rounded-tl-none px-3.5 py-2.5 text-xs max-w-[85%] flex flex-col gap-2">
+                          <div className="flex items-center justify-between gap-4">
+                            <span className="font-semibold text-[10px] text-slate-500 animate-pulse">
+                              Searching Batch {batchesCount} of 5...
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleStopSearch}
+                              className="rounded-lg bg-red-50 hover:bg-red-100 text-red-600 px-2 py-0.5 text-[10px] font-bold border border-red-200 transition"
+                            >
+                              Stop
+                            </button>
+                          </div>
+                          <ThinkingDisplay preset="marketing_analysis" />
+                        </div>
+                      )}
+                      <div ref={chatBottomRef} />
+                    </div>
+
+                    {/* Chat Input */}
+                    <form onSubmit={submitFollowUp} className="flex gap-1.5 border-t border-slate-100 pt-3">
+                      <input
+                        type="text"
+                        value={chatInput}
+                        onChange={(e) => setChatInput(e.target.value)}
+                        placeholder="Refine list (e.g. 'only from Maharashtra')..."
+                        className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 outline-none transition focus:bg-white focus:border-blue-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={chatLoading || !chatInput.trim()}
+                        className="btn-primary text-xs font-bold px-3"
+                      >
+                        Send
+                      </button>
+                    </form>
+                  </section>
+                )}
+              </div>
+
+              {/* Right Column: Results & Filters (Span 7) */}
+              <div className="lg:col-span-7 space-y-6">
+                {!hasResults && (
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm min-h-[400px]">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-4">
+                      <Users size={28} />
+                    </div>
+                    <h3 className="text-base font-bold text-slate-900">No Audience Generated Yet</h3>
+                    <p className="mt-1 text-sm text-slate-500 max-w-xs mx-auto">
+                      Describe your ideal client on the left, then click Generate to build your list.
+                    </p>
                   </div>
                 )}
-                {!(loading || chatLoading) && <div />}
-                <div className="flex items-center gap-2">
-                  {(loading || chatLoading) && (
-                    <button
-                      type="button"
-                      onClick={handleStopSearch}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition"
-                    >
-                      ■ Stop Search
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={generate}
-                    disabled={!loading && !prompt.trim()}
-                    className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    <Users size={16} />
-                    {loading ? "Generating…" : hasResults ? "Regenerate" : "Generate"}
-                  </button>
-                </div>
-              </div>
-              {error ? (
-                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {error}
-                </div>
-              ) : null}
-              {loading ? (
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <ThinkingDisplay preset="marketing_analysis" />
-                </div>
-              ) : null}
-            </section>
 
-
-            {/* Top of Page Overview Stats */}
-            {chatMessages.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-center">
-            <div className="p-2 border-r border-slate-100 last:border-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Conversation</p>
-              <p className="mt-1 text-base font-bold text-slate-950">{chatMessages.length} Messages</p>
-            </div>
-            <div className="p-2 border-r border-slate-100 last:border-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Companies Generated</p>
-              <p className="mt-1 text-base font-bold text-slate-950">{targetAudience.length}</p>
-            </div>
-            <div className="p-2 border-r border-slate-100 last:border-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Unique Companies</p>
-              <p className="mt-1 text-base font-bold text-slate-950">{targetAudience.length}</p>
-            </div>
-            <div className="p-2 last:border-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Load More Available</p>
-              <p className="mt-1 text-base font-bold text-emerald-600">YES</p>
-            </div>
-          </div>
-        )}
-
-        {/* Conversational Chat Panel */}
-        {chatMessages.length > 0 && (
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-            <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-3 gap-2">
-              <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
-                💬 Target Audience Assistant
-              </h2>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={startNewConversation}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-                >
-                  New Conversation
-                </button>
-                <button
-                  type="button"
-                  onClick={clearConversationMessages}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-                >
-                  Clear Chat
-                </button>
-                <button
-                  type="button"
-                  onClick={exportConversationTranscript}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-                >
-                  Export Chat
-                </button>
-              </div>
-            </div>
-
-            {/* Chat History Messages */}
-            <div className="max-h-[300px] overflow-y-auto space-y-3 pr-2 scrollbar-thin flex flex-col">
-              {chatMessages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={cx(
-                    "flex flex-col max-w-[85%] rounded-2xl px-4 py-2 text-sm",
-                    msg.role === "user"
-                      ? "bg-blue-600 text-white self-end ml-auto rounded-tr-none"
-                      : "bg-slate-100 text-slate-800 mr-auto rounded-tl-none border border-slate-200"
-                  )}
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-60 mb-0.5">
-                    {msg.role === "user" ? "You" : "Assistant"}
-                  </span>
-                  <p className="leading-relaxed whitespace-pre-line">{msg.content}</p>
-                </div>
-              ))}
-              {chatLoading && (
-                <div className="bg-slate-50 border border-slate-200 text-slate-700 mr-auto rounded-2xl rounded-tl-none px-4 py-3 text-sm max-w-[85%] flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-semibold text-xs text-slate-500 animate-pulse">
-                      Searching Batch {batchesCount} of 5...
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleStopSearch}
-                      className="rounded-lg bg-red-50 hover:bg-red-100 text-red-600 px-2 py-1 text-[11px] font-bold border border-red-200 transition"
-                    >
-                      Stop Search
-                    </button>
-                  </div>
-                  <ThinkingDisplay preset="marketing_analysis" />
-                </div>
-              )}
-              <div ref={chatBottomRef} />
-            </div>
-
-            {/* Chat Input Bar */}
-            <form onSubmit={submitFollowUp} className="flex gap-2 border-t border-slate-100 pt-3">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask follow-up questions (e.g. 'only from Maharashtra', 'exclude automotive')..."
-                className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-              <button
-                type="submit"
-                disabled={chatLoading || !chatInput.trim()}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:bg-slate-300 disabled:cursor-not-allowed"
-              >
-                Send
-              </button>
-            </form>
-          </section>
-        )}
-
-        {/* Results */}
-        {hasResults ? (
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                {hasResults && (
+                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
                 <button
@@ -2775,7 +2765,10 @@ export default function TargetAudiencePage() {
               </div>
             )}
           </section>
-        ) : null}
+        )}
+      </div>
+    </div>
+
 
       {/* Contact Popup */}
       {contactPopup.open ? (
