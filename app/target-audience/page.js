@@ -1521,6 +1521,17 @@ export default function TargetAudiencePage() {
     </th>
   );
 
+  const activeSession = currentSessionId ? historyList.find(s => s.id === currentSessionId) : null;
+  const autoIdx = activeSession ? historyList.findIndex(s => s.id === activeSession.id) : -1;
+  const autoNum = autoIdx !== -1 ? "TA-" + String(autoIdx + 1).padStart(5, "0") : "TA-NEW";
+  const currentStatus = activeSession ? getSessionStatus(activeSession) : { label: "New", cls: "bg-slate-100 text-slate-600" };
+  const currentMeta = extractMeta(prompt);
+  const avgConfScore = targetAudience.length
+    ? Math.round(targetAudience.reduce((s, c) => s + getConfidenceScore(c, false, {}), 0) / targetAudience.length)
+    : 0;
+  const currentCreatedDate = activeSession?.createdAt ? formatFullDate(activeSession.createdAt) : "—";
+  const currentCreatedBy = activeSession?.createdBy || "You";
+
   return (
     <main className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-5xl space-y-6">
@@ -1889,178 +1900,112 @@ export default function TargetAudiencePage() {
             ══════════════════════════════════════════════ */}
         {pageMode === "session" && (
           <>
-            {/* Back breadcrumb + Session header */}
-            <section className="flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={startNewConversation}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm"
-              >
-                ← Back to Sessions
-              </button>
-              <h1 className="text-base font-semibold text-slate-900 truncate max-w-sm hidden sm:block">
-                {prompt ? `"${prompt.slice(0, 50)}${prompt.length > 50 ? "…" : ""}"` : "New Generation"}
-              </h1>
-            </section>
-
-            {/* Apollo-Style 2-Column Workspace Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Column: AI Assistant (Span 5) */}
-              <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-[24px]">
-                {/* Prompt Input */}
-                <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Describe Target Audience</h2>
-                    <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+            {/* Salesforce-style Highlights Panel */}
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 dark:bg-slate-800 dark:border-slate-700 space-y-4">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Target Audience &gt; <span className="text-slate-600 dark:text-slate-350">{autoNum}</span>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-100 dark:border-blue-900">
+                    <Users size={20} />
                   </div>
-                  <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    rows={3}
-                    placeholder="e.g. We are an IT consultancy targeting real estate and manufacturing companies in India."
-                    className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-3 text-sm text-slate-900 outline-none transition focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                  />
-                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                    {(loading || chatLoading) && (
-                      <div className="flex flex-col gap-0.5 text-[10.5px] font-semibold text-slate-500">
-                        <span className="animate-pulse text-blue-600">Batch {batchesCount}/5</span>
-                        <span>⏱ {formatElapsed(elapsedSeconds)} / 02:00</span>
-                      </div>
-                    )}
-                    {!(loading || chatLoading) && <div />}
-                    <div className="flex items-center gap-2">
-                      {(loading || chatLoading) && (
-                        <button
-                          type="button"
-                          onClick={handleStopSearch}
-                          className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition"
-                        >
-                          ■ Stop
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={generate}
-                        disabled={!loading && !prompt.trim()}
-                        className="btn-primary flex items-center gap-1.5 text-xs font-bold"
-                      >
-                        <Users size={14} />
-                        {loading ? "Generating…" : hasResults ? "Regenerate" : "Generate"}
-                      </button>
+                  <div>
+                    <h1 className="text-base font-bold text-slate-900 dark:text-white leading-snug">
+                      {prompt ? prompt.slice(0, 50) + (prompt.length > 50 ? "…" : "") : "New Generation"}
+                    </h1>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="font-mono text-xs font-bold text-slate-500">{autoNum}</span>
+                      <span className={cx("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", currentStatus.cls)}>
+                        {currentStatus.label}
+                      </span>
                     </div>
                   </div>
-                  {error && (
-                    <div className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs text-red-700">
-                      {error}
-                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={startNewConversation}
+                    className="btn-secondary text-xs font-bold"
+                  >
+                    Back to Sessions
+                  </button>
+                  {hasResults && (
+                    <button
+                      type="button"
+                      onClick={downloadCsv}
+                      className="btn-secondary text-xs font-bold"
+                    >
+                      Download CSV
+                    </button>
                   )}
-                  {loading && (
-                    <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3">
-                      <ThinkingDisplay preset="marketing_analysis" />
-                    </div>
+                  {(loading || chatLoading) ? (
+                    <button
+                      type="button"
+                      onClick={handleStopSearch}
+                      className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 px-4 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-100 transition"
+                    >
+                      Stop Search
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={generate}
+                      disabled={!prompt.trim()}
+                      className="btn-primary text-xs font-bold"
+                    >
+                      {hasResults ? "Regenerate" : "Generate"}
+                    </button>
                   )}
-                </section>
-
-                {/* Conversational Chat Panel */}
-                {chatMessages.length > 0 && (
-                  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                        💬 Target Audience Assistant
-                      </h2>
-                      <div className="flex gap-1.5">
-                        <button
-                          type="button"
-                          onClick={clearConversationMessages}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition"
-                        >
-                          Clear
-                        </button>
-                        <button
-                          type="button"
-                          onClick={exportConversationTranscript}
-                          className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition"
-                        >
-                          Export
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Chat Messages */}
-                    <div className="max-h-[220px] overflow-y-auto space-y-3 pr-1 flex flex-col">
-                      {chatMessages.map((msg, index) => (
-                        <div
-                          key={index}
-                          className={cx(
-                            "flex flex-col max-w-[85%] rounded-2xl px-3.5 py-2 text-xs",
-                            msg.role === "user"
-                              ? "bg-blue-600 text-white self-end ml-auto rounded-tr-none"
-                              : "bg-slate-50 text-slate-800 mr-auto rounded-tl-none border border-slate-100"
-                          )}
-                        >
-                          <span className="text-[9px] font-bold uppercase tracking-wider opacity-60 mb-0.5">
-                            {msg.role === "user" ? "You" : "Assistant"}
-                          </span>
-                          <p className="leading-relaxed whitespace-pre-line">{msg.content}</p>
-                        </div>
-                      ))}
-                      {chatLoading && (
-                        <div className="bg-slate-50 border border-slate-200 text-slate-700 mr-auto rounded-2xl rounded-tl-none px-3.5 py-2.5 text-xs max-w-[85%] flex flex-col gap-2">
-                          <div className="flex items-center justify-between gap-4">
-                            <span className="font-semibold text-[10px] text-slate-500 animate-pulse">
-                              Searching Batch {batchesCount} of 5...
-                            </span>
-                            <button
-                              type="button"
-                              onClick={handleStopSearch}
-                              className="rounded-lg bg-red-50 hover:bg-red-100 text-red-600 px-2 py-0.5 text-[10px] font-bold border border-red-200 transition"
-                            >
-                              Stop
-                            </button>
-                          </div>
-                          <ThinkingDisplay preset="marketing_analysis" />
-                        </div>
-                      )}
-                      <div ref={chatBottomRef} />
-                    </div>
-
-                    {/* Chat Input */}
-                    <form onSubmit={submitFollowUp} className="flex gap-1.5 border-t border-slate-100 pt-3">
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        placeholder="Refine list (e.g. 'only from Maharashtra')..."
-                        className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 outline-none transition focus:bg-white focus:border-blue-500"
-                      />
-                      <button
-                        type="submit"
-                        disabled={chatLoading || !chatInput.trim()}
-                        className="btn-primary text-xs font-bold px-3"
-                      >
-                        Send
-                      </button>
-                    </form>
-                  </section>
-                )}
+                </div>
               </div>
 
-              {/* Right Column: Results & Filters (Span 7) */}
-              <div className="lg:col-span-7 space-y-6">
+              {/* Salesforce Metadata Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 pt-2 text-xs">
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Industry</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentMeta.industry}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentMeta.location}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Avg Confidence</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{avgConfScore > 0 ? `${avgConfScore}%` : "—"}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Created By</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentCreatedBy}</p>
+                </div>
+                <div className="space-y-0.5 col-span-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Created</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentCreatedDate}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Salesforce Record Detail Layout Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              
+              {/* Left Column: Main Results Panel (Span 8) */}
+              <div className="lg:col-span-8 space-y-6">
                 {!hasResults && (
-                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm min-h-[400px]">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-4">
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm min-h-[350px] dark:bg-slate-800 dark:border-slate-700">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 mb-4">
                       <Users size={28} />
                     </div>
-                    <h3 className="text-base font-bold text-slate-900">No Audience Generated Yet</h3>
-                    <p className="mt-1 text-sm text-slate-500 max-w-xs mx-auto">
-                      Describe your ideal client on the left, then click Generate to build your list.
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">No Audience Generated Yet</h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-450 max-w-xs mx-auto">
+                      Describe your ideal target audience in the Copilot sidebar on the right to begin.
                     </p>
                   </div>
                 )}
 
                 {hasResults && (
-                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
                 <button
@@ -2764,6 +2709,110 @@ export default function TargetAudiencePage() {
                 </button>
               </div>
             )}
+          </section>
+        )}
+      </div>
+
+      {/* Right Column: AI Refinement Copilot & Target Details (Span 4) */}
+      <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-[24px]">
+        {/* Target Description Box */}
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-4 dark:bg-slate-800 dark:border-slate-700">
+          <div className="flex items-center justify-between">
+            <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Target Description</h2>
+            <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
+          </div>
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            rows={3}
+            placeholder="e.g. We are an IT consultancy targeting real estate and manufacturing companies in India."
+            className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-3 text-sm text-slate-900 dark:text-white dark:bg-slate-900 outline-none transition focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+          />
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={generate}
+              disabled={loading || !prompt.trim()}
+              className="btn-primary text-xs font-bold w-full"
+            >
+              {loading ? "Generating…" : "Update Target"}
+            </button>
+          </div>
+        </section>
+
+        {/* AI Refinement Copilot Chat */}
+        {chatMessages.length > 0 && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col space-y-4 dark:bg-slate-800 dark:border-slate-700">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
+              <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                💬 AI Refinement Copilot
+              </h2>
+              <div className="flex gap-1.5">
+                <button
+                  type="button"
+                  onClick={clearConversationMessages}
+                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 dark:text-slate-400 dark:bg-slate-900 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 transition"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Chat Messages */}
+            <div className="max-h-[260px] overflow-y-auto space-y-3 pr-1 flex flex-col scrollbar-thin">
+              {chatMessages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={cx(
+                    "flex flex-col max-w-[85%] rounded-2xl px-3.5 py-2 text-xs",
+                    msg.role === "user"
+                      ? "bg-blue-600 text-white self-end ml-auto rounded-tr-none"
+                      : "bg-slate-50 text-slate-800 mr-auto rounded-tl-none border border-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-750"
+                  )}
+                >
+                  <span className="text-[9px] font-bold uppercase tracking-wider opacity-60 mb-0.5">
+                    {msg.role === "user" ? "You" : "AI Assistant"}
+                  </span>
+                  <p className="leading-relaxed whitespace-pre-line">{msg.content}</p>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="bg-slate-50 border border-slate-200 text-slate-700 mr-auto rounded-2xl rounded-tl-none px-3.5 py-2.5 text-xs max-w-[85%] flex flex-col gap-2 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-750">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="font-semibold text-[10px] text-slate-500 animate-pulse">
+                      Searching Batch {batchesCount} of 5...
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleStopSearch}
+                      className="rounded-lg bg-red-50 dark:bg-red-950/40 hover:bg-red-100 text-red-600 dark:text-red-400 px-2 py-0.5 text-[10px] font-bold border border-red-200 dark:border-red-900 transition"
+                    >
+                      Stop
+                    </button>
+                  </div>
+                  <ThinkingDisplay preset="marketing_analysis" />
+                </div>
+              )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            {/* Chat Input */}
+            <form onSubmit={submitFollowUp} className="flex gap-1.5 border-t border-slate-100 dark:border-slate-700 pt-3">
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Refine (e.g. 'only from Rajasthan')..."
+                className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 dark:text-white dark:bg-slate-900 dark:border-slate-700 outline-none transition focus:bg-white focus:border-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={chatLoading || !chatInput.trim()}
+                className="btn-primary text-xs font-bold px-3"
+              >
+                Refine
+              </button>
+            </form>
           </section>
         )}
       </div>
