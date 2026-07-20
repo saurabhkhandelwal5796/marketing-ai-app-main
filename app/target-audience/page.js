@@ -366,6 +366,19 @@ export default function TargetAudiencePage() {
     const sessionParam = searchParams.get("session");
     if (!sessionParam) {
       setPageMode("list");
+      setChatMessages([]);
+      setTargetAudience([]);
+      setEmployees([]);
+      setPrompt("");
+      setChatInput("");
+      setBatchesCount(1);
+      setCurrentPage(1);
+      setSearchQuery("");
+      setCurrentSessionId(null);
+      setDuplicateModal({ open: false, similarSession: null, currentPrompt: "" });
+      setLoading(false);
+      setChatLoading(false);
+      setError("");
     }
   }, [searchParams]);
 
@@ -1155,7 +1168,7 @@ export default function TargetAudiencePage() {
     setSearchQuery("");
     setCurrentSessionId(null);
     localStorage.removeItem("target_audience_current_session_id");
-    window.history.replaceState(null, '', window.location.pathname);
+    window.history.replaceState(null, '', '?session=new');
     setPageMode("session");
   };
 
