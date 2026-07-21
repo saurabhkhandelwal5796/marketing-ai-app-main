@@ -7,5 +7,9 @@ create table if not exists public.connected_accounts (
   connected_at timestamptz not null default now(),
   email_address text,
   display_name text,
+  access_token text,
+  refresh_token text,
+  expires_at timestamptz,
+  provider_user_id text,
   unique (user_id, provider)
 );

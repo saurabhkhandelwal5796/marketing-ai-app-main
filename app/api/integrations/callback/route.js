@@ -195,6 +195,7 @@ export async function GET(req) {
         connected_at: new Date().toISOString(),
         email_address: emailAddress || null,
         display_name: displayName || null,
+        access_token: accessToken,
       }, { onConflict: "user_id,provider" });
 
     if (dbError) {

@@ -2,6 +2,31 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "../../../../lib/authSession";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
 
+async function getLinkedInUrn(accessToken) {
+  // Try userInfo sub first
+  try {
+    const userInfoRes = await fetch("https://api.linkedin.com/v2/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const data = await userInfoRes.json();
+    if (userInfoRes.ok && data?.sub) {
+      return `urn:li:person:${data.sub}`;
+    }
+  } catch (e) {
+    console.warn("LinkedIn userInfo call failed, trying /v2/me", e);
+  }
+
+  // Fallback to /v2/me
+  const resMe = await fetch("https://api.linkedin.com/v2/me", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  const dataMe = await resMe.json();
+  if (!resMe.ok || !dataMe?.id) {
+    throw new Error(dataMe?.error_message || "Failed to fetch LinkedIn profile ID.");
+  }
+  return `urn:li:person:${dataMe.id}`;
+}
+
 async function publishToLinkedIn({ accessToken, authorUrn, text }) {
   const payload = {
     author: authorUrn,
@@ -28,8 +53,9 @@ async function publishToLinkedIn({ accessToken, authorUrn, text }) {
     },
     body: JSON.stringify(payload),
   });
-  const textBody = await res.text();
+  
   if (!res.ok) {
+    const textBody = await res.text();
     throw new Error(`LinkedIn post failed (${res.status}): ${textBody || "unknown error"}`);
   }
 }
@@ -42,28 +68,39 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const mode = String(body?.mode || "post_now");
     const selectedTypes = Array.isArray(body?.selectedTypes) ? body.selectedTypes.filter(Boolean) : [];
-    if (selectedTypes.length === 0) {
-      return NextResponse.json({ error: "No content types selected." }, { status: 400 });
-    }
+    
+    const supabase = getSupabaseServerClient();
 
     if (mode === "post_linkedin") {
-      const supabase = getSupabaseServerClient();
-      const { data: userData, error: userErr } = await supabase
-        .from("users")
-        .select("linkedin_access_token,linkedin_member_urn,linkedin_token_expires_at")
-        .eq("id", session.id)
+      // Find connected LinkedIn account
+      const { data: conn } = await supabase
+        .from("connected_accounts")
+        .select("access_token")
+        .eq("user_id", session.id)
+        .eq("provider", "linkedin")
+        .eq("connected", true)
         .maybeSingle();
-      if (userErr) throw new Error(userErr.message);
 
-      const connected = !!(userData?.linkedin_access_token && userData?.linkedin_member_urn);
-      const expiresAt = userData?.linkedin_token_expires_at ? new Date(userData.linkedin_token_expires_at).getTime() : 0;
-      const expired = !!(expiresAt && Date.now() >= expiresAt);
-      if (!connected || expired) {
+      let accessToken = conn?.access_token;
+      let authorUrn = null;
+
+      // Compatibility fallback to legacy users table
+      if (!accessToken) {
+        const { data: userData } = await supabase
+          .from("users")
+          .select("linkedin_access_token,linkedin_member_urn")
+          .eq("id", session.id)
+          .maybeSingle();
+        accessToken = userData?.linkedin_access_token;
+        authorUrn = userData?.linkedin_member_urn;
+      }
+
+      if (!accessToken) {
         return NextResponse.json(
           {
             error: "LinkedIn account is not connected.",
             connectRequired: true,
-            connectUrl: "/api/linkedin/connect",
+            connectUrl: "/api/integrations/connect?provider=linkedin",
           },
           { status: 428 }
         );
@@ -72,9 +109,14 @@ export async function POST(req) {
       const postText = String(body?.contentByType?.linkedin_post?.content || "").trim();
       if (!postText) return NextResponse.json({ error: "LinkedIn content is empty." }, { status: 400 });
 
+      // Fetch URN dynamically if missing
+      if (!authorUrn) {
+        authorUrn = await getLinkedInUrn(accessToken);
+      }
+
       await publishToLinkedIn({
-        accessToken: userData.linkedin_access_token,
-        authorUrn: userData.linkedin_member_urn,
+        accessToken,
+        authorUrn,
         text: postText,
       });
 
@@ -85,18 +127,133 @@ export async function POST(req) {
       });
     }
 
+    if (mode === "post_facebook") {
+      const { data: conn } = await supabase
+        .from("connected_accounts")
+        .select("access_token")
+        .eq("user_id", session.id)
+        .eq("provider", "facebook")
+        .eq("connected", true)
+        .maybeSingle();
+
+      const accessToken = conn?.access_token;
+      if (!accessToken) {
+        return NextResponse.json(
+          {
+            error: "Facebook account is not connected.",
+            connectRequired: true,
+            connectUrl: "/api/integrations/connect?provider=facebook",
+          },
+          { status: 428 }
+        );
+      }
+
+      const postText = String(body?.contentByType?.facebook_post?.content || "").trim();
+      if (!postText) return NextResponse.json({ error: "Facebook content is empty." }, { status: 400 });
+
+      const res = await fetch(`https://graph.facebook.com/v12.0/me/feed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: postText,
+          access_token: accessToken
+        })
+      });
+      const resData = await res.json();
+      if (!res.ok) {
+        throw new Error(resData?.error?.message || "Facebook API call failed.");
+      }
+
+      return NextResponse.json({
+        ok: true,
+        message: "Posted on Facebook successfully.",
+        meta: { by: session.email, types: selectedTypes },
+      });
+    }
+
+    if (mode === "post_instagram") {
+      const { data: conn } = await supabase
+        .from("connected_accounts")
+        .select("access_token")
+        .eq("user_id", session.id)
+        .eq("provider", "instagram")
+        .eq("connected", true)
+        .maybeSingle();
+
+      const accessToken = conn?.access_token;
+      if (!accessToken) {
+        return NextResponse.json(
+          {
+            error: "Instagram account is not connected.",
+            connectRequired: true,
+            connectUrl: "/api/integrations/connect?provider=instagram",
+          },
+          { status: 428 }
+        );
+      }
+
+      const postText = String(body?.contentByType?.instagram_post?.content || "").trim();
+      if (!postText) return NextResponse.json({ error: "Instagram content is empty." }, { status: 400 });
+      const imageUrl = String(body?.contentByType?.instagram_post?.imageUrl || "").trim();
+
+      const meRes = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
+      const meData = await meRes.json();
+      if (!meRes.ok) {
+        throw new Error(meData?.error?.message || meData?.error_message || "Instagram API identity check failed.");
+      }
+
+      const userId = meData.id;
+
+      if (!imageUrl) {
+        throw new Error("Instagram posts require a media image URL to publish via API.");
+      }
+
+      // 1. Create media container
+      const containerRes = await fetch(`https://graph.facebook.com/v12.0/${userId}/media`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_url: imageUrl,
+          caption: postText,
+          access_token: accessToken
+        })
+      });
+      const containerData = await containerRes.json();
+      if (!containerRes.ok) {
+        throw new Error(containerData?.error?.message || "Failed to create Instagram media container.");
+      }
+
+      const creationId = containerData.id;
+
+      // 2. Publish container
+      const publishRes = await fetch(`https://graph.facebook.com/v12.0/${userId}/media_publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creation_id: creationId,
+          access_token: accessToken
+        })
+      });
+      const publishData = await publishRes.json();
+      if (!publishRes.ok) {
+        throw new Error(publishData?.error?.message || "Failed to publish Instagram media container.");
+      }
+
+      return NextResponse.json({
+        ok: true,
+        message: "Posted on Instagram successfully.",
+        meta: { by: session.email, types: selectedTypes },
+      });
+    }
+
     const actionLabel =
       mode === "send_all"
         ? "Emails sent successfully."
-        : mode === "post_linkedin"
-          ? "LinkedIn post sent to queue."
-          : mode === "post_instagram"
-            ? "Instagram post sent to queue."
-            : mode === "schedule"
-              ? "Scheduled successfully."
-              : mode === "save_draft"
-                ? "Saved as draft."
-                : "Posted successfully.";
+        : mode === "schedule"
+          ? "Scheduled successfully."
+          : mode === "save_draft"
+            ? "Saved as draft."
+            : "Posted successfully.";
 
     return NextResponse.json({
       ok: true,

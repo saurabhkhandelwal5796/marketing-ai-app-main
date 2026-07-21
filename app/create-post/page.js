@@ -1078,11 +1078,11 @@ if (useTemplate && emailSelected && selectedTemplateId) {
       };
     });
   };
-
   const submitPostAction = async (mode) => {
     setSubmittingPost(true);
     setMessage("");
-    const typeId = mode === "post_linkedin" ? "linkedin_post" : mode === "post_instagram" ? "instagram_post" : "";
+    const typeId = mode === "post_linkedin" ? "linkedin_post" : mode === "post_instagram" ? "instagram_post" : mode === "post_facebook" ? "facebook_post" : "";
+    const provider = mode === "post_linkedin" ? "LinkedIn" : mode === "post_instagram" ? "Instagram" : mode === "post_facebook" ? "Facebook" : "";
     try {
       const res = await fetch("/api/create-post/publish", {
         method: "POST",
@@ -1098,16 +1098,14 @@ if (useTemplate && emailSelected && selectedTemplateId) {
       const data = await res.json();
       if (!res.ok || data?.error) {
         if (data?.connectRequired && data?.connectUrl) {
-          setMessage("Please connect your LinkedIn account first.");
+          setMessage(`Please connect your ${provider} account first.`);
           window.location.href = data.connectUrl;
           return;
         }
         throw new Error(data?.error || "Action failed.");
       }
-      if (mode === "post_linkedin") {
-        setLinkedinConnected(true);
-        updateWorkflowStatus("linkedin_post", "Published");
-      } else if (typeId) {
+      
+      if (typeId) {
         updateWorkflowStatus(typeId, "Published");
       }
       setMessage(data.message || "Done.");
@@ -1120,7 +1118,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
       setSubmittingPost(false);
     }
   };
-
   const handleLinkedinConnect = () => {
     handleConnectProvider("linkedin");
   };
@@ -2120,18 +2117,18 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             {((contentObj.workflowStatus || "Draft") === "Approved" || (contentObj.workflowStatus || "Draft") === "Draft") && (
                               <button
                                 onClick={() => {
-                                  if (typeId === "linkedin_post") {
-                                    if (!linkedinConnected) {
-                                      setMessage("Please connect your LinkedIn account first.");
+                                  const provider = typeId === "linkedin_post" ? "linkedin" : typeId === "instagram_post" ? "instagram" : typeId === "facebook_post" ? "facebook" : "";
+                                  if (provider) {
+                                    if (!configuredProviders[provider]) {
+                                      setMessage("Publishing API not configured.");
                                       return;
                                     }
-                                    submitPostAction("post_linkedin");
-                                  } else if (typeId === "instagram_post") {
-                                    if (!instagramConnected) {
-                                      setMessage("Please connect your Instagram account first.");
+                                    const isConnected = provider === "linkedin" ? linkedinConnected : provider === "instagram" ? instagramConnected : provider === "facebook" ? facebookConnected : false;
+                                    if (!isConnected) {
+                                      setMessage(`Please connect your ${PLATFORM_META[typeId]?.label || provider} account first.`);
                                       return;
                                     }
-                                    setMessage("Instagram API Integration: Coming Soon.");
+                                    submitPostAction(`post_${provider}`);
                                   } else if (typeId === "email_campaign" || typeId === "newsletter") {
                                     handleSendEmail(contentObj);
                                   } else {
@@ -2394,18 +2391,18 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             {((contentObj.workflowStatus || "Draft") === "Approved" || (contentObj.workflowStatus || "Draft") === "Draft") && (
                               <button
                                 onClick={() => {
-                                  if (typeId === "linkedin_post") {
-                                    if (!linkedinConnected) {
-                                      setMessage("Please connect your LinkedIn account first.");
+                                  const provider = typeId === "linkedin_post" ? "linkedin" : typeId === "instagram_post" ? "instagram" : typeId === "facebook_post" ? "facebook" : "";
+                                  if (provider) {
+                                    if (!configuredProviders[provider]) {
+                                      setMessage("Publishing API not configured.");
                                       return;
                                     }
-                                    submitPostAction("post_linkedin");
-                                  } else if (typeId === "instagram_post") {
-                                    if (!instagramConnected) {
-                                      setMessage("Please connect your Instagram account first.");
+                                    const isConnected = provider === "linkedin" ? linkedinConnected : provider === "instagram" ? instagramConnected : provider === "facebook" ? facebookConnected : false;
+                                    if (!isConnected) {
+                                      setMessage(`Please connect your ${PLATFORM_META[typeId]?.label || provider} account first.`);
                                       return;
                                     }
-                                    setMessage("Instagram API Integration: Coming Soon.");
+                                    submitPostAction(`post_${provider}`);
                                   } else if (typeId === "email_campaign" || typeId === "newsletter") {
                                     handleSendEmail(contentObj);
                                   } else {
