@@ -18,8 +18,9 @@ import {
   CheckCircle2,
   PlayCircle,
   TrendingUp,
-  ThumbsUp,
-  RotateCcw
+  RotateCcw,
+  User,
+  Users
 } from "lucide-react";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
@@ -308,6 +309,16 @@ const TRENDING_CONTENT = [
   }
 ];
 
+// Calendar days difference utility
+const getCalendarDaysDiff = (d1, d2) => {
+  const date1 = new Date(d1.toDateString ? d1.toDateString() : d1);
+  const date2 = new Date(d2.toDateString ? d2.toDateString() : d2);
+  date1.setHours(0, 0, 0, 0);
+  date2.setHours(0, 0, 0, 0);
+  const diffTime = date2.getTime() - date1.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+};
+
 function getYouTubeId(url) {
   try {
     const parsed = new URL(url);
@@ -364,14 +375,106 @@ export default function LearningPage() {
   const [miniPlayerVideo, setMiniPlayerVideo] = useState(null);
   const [completedModules, setCompletedModules] = useState(() => new Set());
 
-  // Modern Portal States
+  // Navigation state (portal | dashboard | team)
+  const [activeTab, setActiveTab] = useState("portal");
+
+  // Portal lists & filters
   const [selectedVideoTab, setSelectedVideoTab] = useState("All");
   const [bookmarks, setBookmarks] = useState([]);
   const [historyList, setHistoryList] = useState([]);
   const [continueItem, setContinueItem] = useState(null);
+
+  // Daily goals states
   const [timeSpentToday, setTimeSpentToday] = useState(0); // in seconds
   const [articlesReadToday, setArticlesReadToday] = useState(0);
   const [videosWatchedToday, setVideosWatchedToday] = useState(0);
+
+  // Cumulative Analytics Stats
+  const [totalTime, setTotalTime] = useState(0);
+  const [totalArticles, setTotalArticles] = useState(0);
+  const [totalVideos, setTotalVideos] = useState(0);
+  const [streakDays, setStreakDays] = useState(0);
+  const [dailyLogs, setDailyLogs] = useState([]);
+
+  // Load cumulative stats
+  const loadCumulativeStats = () => {
+    try {
+      setTotalTime(parseInt(localStorage.getItem("learning_stats_total_time") || "0", 10));
+      setTotalArticles(parseInt(localStorage.getItem("learning_stats_total_articles") || "0", 10));
+      setTotalVideos(parseInt(localStorage.getItem("learning_stats_total_videos") || "0", 10));
+      setStreakDays(parseInt(localStorage.getItem("learning_stats_streak") || "0", 10));
+      setDailyLogs(JSON.parse(localStorage.getItem("learning_stats_daily_log") || "[]"));
+    } catch {}
+  };
+
+  // Verify and update streak
+  const checkStreak = () => {
+    try {
+      const today = new Date();
+      const lastActiveStr = localStorage.getItem("learning_stats_last_active");
+      let streak = parseInt(localStorage.getItem("learning_stats_streak") || "0", 10);
+      
+      if (!lastActiveStr) {
+        streak = 1;
+      } else {
+        const lastActive = new Date(lastActiveStr);
+        const diff = getCalendarDaysDiff(lastActive, today);
+        if (diff === 1) {
+          streak += 1;
+        } else if (diff > 1) {
+          streak = 1; // streak broken
+        }
+      }
+      
+      localStorage.setItem("learning_stats_streak", String(streak));
+      localStorage.setItem("learning_stats_last_active", today.toDateString());
+      return streak;
+    } catch {
+      return 1;
+    }
+  };
+
+  // Log activity helper
+  const logActivity = (timeToAdd = 0, articlesToAdd = 0, videosToAdd = 0) => {
+    try {
+      const todayStr = new Date().toDateString();
+      
+      // Update cumulative totals
+      if (timeToAdd > 0) {
+        const total = parseInt(localStorage.getItem("learning_stats_total_time") || "0", 10) + timeToAdd;
+        localStorage.setItem("learning_stats_total_time", String(total));
+      }
+      if (articlesToAdd > 0) {
+        const total = parseInt(localStorage.getItem("learning_stats_total_articles") || "0", 10) + articlesToAdd;
+        localStorage.setItem("learning_stats_total_articles", String(total));
+      }
+      if (videosToAdd > 0) {
+        const total = parseInt(localStorage.getItem("learning_stats_total_videos") || "0", 10) + videosToAdd;
+        localStorage.setItem("learning_stats_total_videos", String(total));
+      }
+      
+      // Update streak and active date
+      checkStreak();
+      
+      // Update daily logs list
+      const logStr = localStorage.getItem("learning_stats_daily_log") || "[]";
+      let logs = JSON.parse(logStr);
+      let todayLog = logs.find(l => l.date === todayStr);
+      if (todayLog) {
+        todayLog.time += timeToAdd;
+        todayLog.articles += articlesToAdd;
+        todayLog.videos += videosToAdd;
+      } else {
+        todayLog = { date: todayStr, time: timeToAdd, articles: articlesToAdd, videos: videosToAdd };
+        logs.unshift(todayLog);
+      }
+      
+      if (logs.length > 30) logs = logs.slice(0, 30);
+      localStorage.setItem("learning_stats_daily_log", JSON.stringify(logs));
+    } catch (e) {
+      console.error("Failed to log activity:", e);
+    }
+  };
 
   // Initialize and load local storage states
   useEffect(() => {
@@ -385,7 +488,7 @@ export default function LearningPage() {
       const storedContinue = localStorage.getItem("learning_continue");
       if (storedContinue) setContinueItem(JSON.parse(storedContinue));
 
-      // Daily goals date-bound loaders
+      // Daily goals loaders
       const todayStr = new Date().toDateString();
       const lastActiveDate = localStorage.getItem("learning_last_active_date");
       if (lastActiveDate === todayStr) {
@@ -398,6 +501,8 @@ export default function LearningPage() {
         localStorage.setItem("learning_articles_today", "0");
         localStorage.setItem("learning_videos_today", "0");
       }
+      
+      loadCumulativeStats();
     } catch (e) {
       console.error("Failed to load local storage state:", e);
     }
@@ -409,8 +514,8 @@ export default function LearningPage() {
       const todayStr = new Date().toDateString();
       let currentLog = 0;
       try {
-        const lastDate = localStorage.getItem("learning_last_active_date");
-        if (lastDate === todayStr) {
+        const lastActive = localStorage.getItem("learning_last_active_date");
+        if (lastActive === todayStr) {
           currentLog = parseInt(localStorage.getItem("learning_time_today") || "0", 10);
         } else {
           localStorage.setItem("learning_last_active_date", todayStr);
@@ -427,6 +532,10 @@ export default function LearningPage() {
       try {
         localStorage.setItem("learning_time_today", String(newTime));
       } catch {}
+
+      // Accumulate to cumulative and log stats
+      logActivity(10, 0, 0);
+      loadCumulativeStats();
     }, 10000);
 
     return () => clearInterval(timer);
@@ -479,7 +588,6 @@ export default function LearningPage() {
 
   // Log article visit trigger
   const handleArticleClick = (item) => {
-    // Add to continue learning & history
     saveResumeAndHistory(item, "article");
 
     // Increment articles read today (up to max 3)
@@ -496,6 +604,10 @@ export default function LearningPage() {
     try {
       localStorage.setItem("learning_articles_today", String(newCount));
     } catch {}
+
+    // Accumulate to cumulative stats
+    logActivity(0, 1, 0);
+    loadCumulativeStats();
 
     // Audit log
     (async () => {
@@ -514,13 +626,11 @@ export default function LearningPage() {
       }).catch(() => {});
     })();
 
-    // Open article
     window.open(item.url, "_blank");
   };
 
   // Log video play trigger
   const handlePlayVideo = (video) => {
-    // Add to continue learning & history
     saveResumeAndHistory(video, "video");
 
     // Set videos watched today to 1
@@ -529,6 +639,10 @@ export default function LearningPage() {
     try {
       localStorage.setItem("learning_videos_today", "1");
     } catch {}
+
+    // Accumulate to cumulative stats
+    logActivity(0, 0, 1);
+    loadCumulativeStats();
 
     // Audit log
     (async () => {
@@ -624,7 +738,7 @@ export default function LearningPage() {
     type: "video"
   };
 
-  // Quick reset goals tool
+  // Reset progress tools
   const resetDailyGoals = () => {
     setTimeSpentToday(0);
     setArticlesReadToday(0);
@@ -636,9 +750,101 @@ export default function LearningPage() {
     } catch {}
   };
 
+  const resetAllTrackingStats = () => {
+    const conf = window.confirm("Are you sure you want to reset all your learning statistics and dashboard logs?");
+    if (!conf) return;
+    try {
+      localStorage.removeItem("learning_stats_total_time");
+      localStorage.removeItem("learning_stats_total_videos");
+      localStorage.removeItem("learning_stats_total_articles");
+      localStorage.removeItem("learning_stats_streak");
+      localStorage.removeItem("learning_stats_last_active");
+      localStorage.removeItem("learning_stats_daily_log");
+      loadCumulativeStats();
+    } catch {}
+  };
+
+  // Weekly report dates breakdown
+  const getWeeklyReportData = () => {
+    const days = [];
+    const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toDateString();
+      const matchLog = dailyLogs.find(l => l.date === dateStr) || { time: 0, articles: 0, videos: 0 };
+      days.push({
+        label: weekdays[d.getDay()],
+        dateLabel: d.toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+        minutes: Math.round(matchLog.time / 60),
+        articles: matchLog.articles,
+        videos: matchLog.videos
+      });
+    }
+    return days;
+  };
+
+  const weeklyData = getWeeklyReportData();
+
+  // Monthly report weeks breakdown
+  const getMonthlyReportData = () => {
+    const weeks = [
+      { label: "Week 1 (1-7 days ago)", minutes: 0, articles: 0, videos: 0 },
+      { label: "Week 2 (8-14 days ago)", minutes: 0, articles: 0, videos: 0 },
+      { label: "Week 3 (15-21 days ago)", minutes: 0, articles: 0, videos: 0 },
+      { label: "Week 4 (22-28 days ago)", minutes: 0, articles: 0, videos: 0 }
+    ];
+
+    dailyLogs.forEach(log => {
+      const logDate = new Date(log.date);
+      const today = new Date();
+      const diffDays = getCalendarDaysDiff(logDate, today);
+      
+      if (diffDays >= 0 && diffDays < 7) {
+        weeks[0].minutes += Math.round(log.time / 60);
+        weeks[0].articles += log.articles;
+        weeks[0].videos += log.videos;
+      } else if (diffDays >= 7 && diffDays < 14) {
+        weeks[1].minutes += Math.round(log.time / 60);
+        weeks[1].articles += log.articles;
+        weeks[1].videos += log.videos;
+      } else if (diffDays >= 14 && diffDays < 21) {
+        weeks[2].minutes += Math.round(log.time / 60);
+        weeks[2].articles += log.articles;
+        weeks[2].videos += log.videos;
+      } else if (diffDays >= 21 && diffDays < 28) {
+        weeks[3].minutes += Math.round(log.time / 60);
+        weeks[3].articles += log.articles;
+        weeks[3].videos += log.videos;
+      }
+    });
+
+    return weeks;
+  };
+
+  const monthlyData = getMonthlyReportData();
+
+  // Completion percentage (average of goal achievements)
+  const averageCompletion = Math.round((timeProgress + articlesProgress + videosProgress) / 3);
+
+  // Leaderboard data (dynamically incorporates user's live values)
+  const teamMembers = [
+    { name: "Sarah Connor", videos: 15, articles: 18, hours: 12.0, streak: 10, avatar: "SC", isUser: false },
+    { name: "John Doe (You)", videos: totalVideos, articles: totalArticles, hours: parseFloat((totalTime / 3600).toFixed(1)), streak: streakDays, avatar: "JD", isUser: true },
+    { name: "Bharti Sharma", videos: 10, articles: 7, hours: 6.5, streak: 5, avatar: "BS", isUser: false },
+    { name: "Akshay Verma", videos: 8, articles: 4, hours: 5.0, streak: 3, avatar: "AV", isUser: false },
+    { name: "Emily Watson", videos: 3, articles: 2, hours: 2.0, streak: 1, avatar: "EW", isUser: false },
+  ].sort((a, b) => b.hours - a.hours);
+
+  // Manager metrics calcs
+  const totalTeamHours = teamMembers.reduce((acc, m) => acc + m.hours, 0).toFixed(1);
+  const avgTeamStreak = Math.round(teamMembers.reduce((acc, m) => acc + m.streak, 0) / teamMembers.length);
+  const topLearner = teamMembers[0];
+  const leastActive = teamMembers[teamMembers.length - 1];
+
   return (
     <main className="min-h-screen space-y-6 bg-slate-950 p-6 text-white custom-sidebar-scroll overflow-y-auto">
-      {/* Top Banner section */}
+      {/* Top Header Banner */}
       <section className="relative overflow-hidden rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 p-6 shadow-2xl">
         <div className="flex flex-wrap items-start justify-between gap-4 relative z-10">
           <div className="max-w-3xl">
@@ -648,7 +854,7 @@ export default function LearningPage() {
             </p>
             <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">Enterprise Hub</h1>
             <p className="mt-2 text-sm text-slate-300 leading-relaxed">
-              Curate knowledge, build your pipeline skills, and check off daily development challenges. Fresh topic suggestions refresh automatically.
+              Curate knowledge, build B2B pipeline skills, track daily achievements, and compare progress with the marketing team.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -658,605 +864,908 @@ export default function LearningPage() {
               className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
             >
               <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-              {loading ? "Refreshing..." : "Sync Content"}
+              Sync Content
             </button>
           </div>
         </div>
-        {/* Subtle decorative glowing background bubbles */}
         <div className="absolute right-0 top-0 -mr-16 -mt-16 h-64 w-64 rounded-full bg-blue-600/10 blur-[100px] pointer-events-none" />
         <div className="absolute left-1/3 bottom-0 -mb-20 h-64 w-64 rounded-full bg-indigo-600/10 blur-[100px] pointer-events-none" />
       </section>
+
+      {/* Sub Navigation menu */}
+      <div className="border-b border-slate-800 flex gap-6 text-sm font-semibold tracking-tight pb-3.5">
+        <button
+          onClick={() => setActiveTab("portal")}
+          className={`pb-1 border-b-2 transition-all ${
+            activeTab === "portal" ? "border-blue-500 text-white font-bold" : "border-transparent text-slate-400 hover:text-white"
+          }`}
+        >
+          Learning Hub
+        </button>
+        <button
+          onClick={() => setActiveTab("dashboard")}
+          className={`pb-1 border-b-2 transition-all ${
+            activeTab === "dashboard" ? "border-blue-500 text-white font-bold" : "border-transparent text-slate-400 hover:text-white"
+          }`}
+        >
+          My Analytics
+        </button>
+        <button
+          onClick={() => setActiveTab("team")}
+          className={`pb-1 border-b-2 transition-all ${
+            activeTab === "team" ? "border-blue-500 text-white font-bold" : "border-transparent text-slate-400 hover:text-white"
+          }`}
+        >
+          Team & Leaderboard
+        </button>
+      </div>
 
       {error ? (
         <section className="rounded-2xl border border-red-900/50 bg-red-950/20 p-4 text-xs font-semibold text-red-400">{error}</section>
       ) : null}
 
-      {/* Main Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
-        {/* Left Column (Core Learning Content) */}
-        <div className="lg:col-span-8 space-y-6">
-          
-          {/* Daily focus widget (from API) */}
-          {content ? (
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 shadow-lg backdrop-blur-md relative overflow-hidden">
-              <div className="flex items-center gap-2 text-blue-400">
-                <GraduationCap size={16} />
-                <p className="text-xs font-bold uppercase tracking-wider">Focus of the Day</p>
-              </div>
-              <h2 className="mt-2.5 text-lg font-bold text-white leading-snug">{content.topic}</h2>
-              <p className="mt-2 text-sm text-slate-300 leading-relaxed font-normal">{content.summary}</p>
-              {generatedAt && (
-                <p className="mt-4 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Synced: {new Date(generatedAt).toLocaleDateString()}</p>
-              )}
-              <div className="absolute right-0 bottom-0 h-24 w-24 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
-            </section>
-          ) : loading ? (
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 shadow-lg flex items-center gap-3">
-              <RefreshCw className="animate-spin text-blue-500" size={16} />
-              <p className="text-xs font-bold text-slate-400">Generating daily focus recommendations...</p>
-            </section>
-          ) : null}
-
-          {/* Continue Learning */}
-          <section className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-5 shadow-lg relative overflow-hidden">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-indigo-500/10 p-2 text-indigo-400">
-                  <Clock size={16} />
+      {/* TAB 1: Learning Hub (Existing Portal Widgets) */}
+      {activeTab === "portal" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-fadeIn">
+          {/* Left Core Area */}
+          <div className="lg:col-span-8 space-y-6">
+            
+            {/* Daily focus widget */}
+            {content ? (
+              <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 shadow-lg backdrop-blur-md relative overflow-hidden">
+                <div className="flex items-center gap-2 text-blue-400">
+                  <GraduationCap size={16} />
+                  <p className="text-xs font-bold uppercase tracking-wider">Focus of the Day</p>
                 </div>
-                <h3 className="text-sm font-bold text-white">Continue Learning</h3>
-              </div>
-              <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                Last Activity
-              </span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 items-center">
-              <div className="w-full sm:w-48 h-28 rounded-xl overflow-hidden bg-slate-800 border border-slate-700 shrink-0 relative group">
-                {activeContinue.type === "video" ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={getCardImage(activeContinue, "video")} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
-                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-80 group-hover:opacity-100 transition">
-                      <PlayCircle size={32} className="text-white" />
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={getCardImage(activeContinue, "article")} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
-                    <div className="absolute inset-0 bg-black/30" />
-                  </>
+                <h2 className="mt-2.5 text-lg font-bold text-white leading-snug">{content.topic}</h2>
+                <p className="mt-2 text-sm text-slate-300 leading-relaxed font-normal">{content.summary}</p>
+                {generatedAt && (
+                  <p className="mt-4 text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Synced: {new Date(generatedAt).toLocaleDateString()}</p>
                 )}
-              </div>
-              
-              <div className="flex-1 min-w-0 self-start sm:self-center">
-                <span className="inline-flex rounded-full bg-indigo-500/10 px-2 py-0.5 text-[9px] font-bold text-indigo-400 uppercase tracking-wider">
-                  {activeContinue.category || "General"}
+                <div className="absolute right-0 bottom-0 h-24 w-24 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
+              </section>
+            ) : loading ? (
+              <section className="rounded-2xl border border-slate-800 bg-slate-900/40 p-5 shadow-lg flex items-center gap-3">
+                <RefreshCw className="animate-spin text-blue-500" size={16} />
+                <p className="text-xs font-bold text-slate-400">Generating daily focus recommendations...</p>
+              </section>
+            ) : null}
+
+            {/* Continue Learning */}
+            <section className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 p-5 shadow-lg relative overflow-hidden">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-indigo-500/10 p-2 text-indigo-400">
+                    <Clock size={16} />
+                  </div>
+                  <h3 className="text-sm font-bold text-white">Continue Learning</h3>
+                </div>
+                <span className="rounded-full bg-slate-800 px-2.5 py-0.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  Last Activity
                 </span>
-                <h4 className="mt-1 text-sm font-bold text-white truncate leading-snug">{activeContinue.title}</h4>
-                <p className="mt-1.5 text-xs text-slate-400 line-clamp-2 leading-relaxed">{activeContinue.takeaway}</p>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => {
-                      if (activeContinue.type === "video") {
-                        handlePlayVideo(activeContinue);
-                      } else {
-                        handleArticleClick(activeContinue);
-                      }
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-blue-500 shadow-md transition-all active:scale-95"
-                  >
-                    Resume Learning
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-4 items-center">
+                <div className="w-full sm:w-48 h-28 rounded-xl overflow-hidden bg-slate-800 border border-slate-700 shrink-0 relative group">
+                  {activeContinue.type === "video" ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={getCardImage(activeContinue, "video")} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-80 group-hover:opacity-100 transition">
+                        <PlayCircle size={32} className="text-white" />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={getCardImage(activeContinue, "article")} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                      <div className="absolute inset-0 bg-black/30" />
+                    </>
+                  )}
+                </div>
+                
+                <div className="flex-1 min-w-0 self-start sm:self-center">
+                  <span className="inline-flex rounded-full bg-indigo-500/10 px-2 py-0.5 text-[9px] font-bold text-indigo-400 uppercase tracking-wider">
+                    {activeContinue.category || "General"}
+                  </span>
+                  <h4 className="mt-1 text-sm font-bold text-white truncate leading-snug">{activeContinue.title}</h4>
+                  <p className="mt-1.5 text-xs text-slate-400 line-clamp-2 leading-relaxed">{activeContinue.takeaway}</p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => {
+                        if (activeContinue.type === "video") {
+                          handlePlayVideo(activeContinue);
+                        } else {
+                          handleArticleClick(activeContinue);
+                        }
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-blue-500 shadow-md transition-all active:scale-95"
+                    >
+                      Resume Learning
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Recommended Videos (YouTube Gallery) */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+              <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-blue-500/10 p-2 text-blue-400">
+                    <Video size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Recommended Videos</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Explore structured video lectures and live tutorials.</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 self-end md:self-center">
+                  <button onClick={() => scrollVideoRail("left")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800">
+                    <ChevronLeft size={14} />
+                  </button>
+                  <button onClick={() => scrollVideoRail("right")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800">
+                    <ChevronRight size={14} />
                   </button>
                 </div>
               </div>
-            </div>
-          </section>
 
-          {/* Recommended Videos (YouTube Gallery) */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
-            <div className="mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-blue-500/10 p-2 text-blue-400">
-                  <Video size={16} />
+              {/* Video Category Filter Tabs */}
+              <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {["All", "Marketing", "Sales", "LinkedIn", "Cold Calling", "Lead Generation", "AI Tools"].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setSelectedVideoTab(tab)}
+                    className={`rounded-full px-3.5 py-1 text-xs font-semibold whitespace-nowrap transition-all ${
+                      selectedVideoTab === tab
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "bg-slate-900/80 text-slate-400 border border-slate-800 hover:bg-slate-800"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
+
+              <div ref={videoRailRef} className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {filteredVideos.map((video, index) => {
+                  const cardImage = getCardImage(video, "video");
+                  const isBookmarked = bookmarks.some(b => b.url === video.url);
+                  return (
+                    <div
+                      key={`${video.url}-${index}`}
+                      className="min-w-[280px] max-w-[280px] rounded-xl overflow-hidden border border-slate-850 bg-slate-900/40 hover:bg-slate-900/80 transition duration-200 hover:-translate-y-1 hover:border-slate-700/60 flex flex-col justify-between cursor-pointer group shadow-md"
+                      onClick={() => handlePlayVideo(video)}
+                    >
+                      <div className="relative h-36 w-full bg-slate-800 overflow-hidden shrink-0">
+                        {cardImage && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={cardImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                        )}
+                        <div className="absolute inset-0 bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
+                          <PlayCircle size={28} className="text-white drop-shadow-lg" />
+                        </div>
+                        <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                          YouTube
+                        </span>
+                        <button
+                          onClick={(e) => toggleBookmark(e, video, "video")}
+                          className="absolute top-2 right-2 rounded-lg bg-black/60 p-1.5 text-slate-300 hover:text-amber-400 hover:bg-black transition-colors"
+                          title="Bookmark"
+                        >
+                          <Bookmark size={13} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
+                        </button>
+                      </div>
+
+                      <div className="p-3.5 flex-1 flex flex-col justify-between">
+                        <div>
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                            {video.category}
+                          </span>
+                          <h4 className="mt-2 text-xs font-bold text-white line-clamp-2 leading-snug tracking-tight group-hover:text-blue-300 transition-colors">
+                            {video.title}
+                          </h4>
+                          <p className="mt-1.5 text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                            {video.takeaway}
+                          </p>
+                        </div>
+                        <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500 font-semibold uppercase">
+                          <span>{video.views}</span>
+                          <span>{video.likes}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Recommended Articles Section */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="rounded-lg bg-purple-500/10 p-2 text-purple-400">
+                  <BookOpen size={16} />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-white">Recommended Videos</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Explore structured video lectures and live tutorials.</p>
+                  <h3 className="text-sm font-bold text-white">Recommended Articles</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Handpicked resources that rotate daily (10 fresh updates every morning).</p>
                 </div>
               </div>
-              
-              <div className="flex items-center gap-2 self-end md:self-center">
-                <button onClick={() => scrollVideoRail("left")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800">
-                  <ChevronLeft size={14} />
-                </button>
-                <button onClick={() => scrollVideoRail("right")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800">
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            </div>
 
-            {/* Video Category Filter Tabs */}
-            <div className="mb-4 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {["All", "Marketing", "Sales", "LinkedIn", "Cold Calling", "Lead Generation", "AI Tools"].map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setSelectedVideoTab(tab)}
-                  className={`rounded-full px-3.5 py-1 text-xs font-semibold whitespace-nowrap transition-all ${
-                    selectedVideoTab === tab
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "bg-slate-900/80 text-slate-400 border border-slate-800 hover:bg-slate-800"
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-
-            <div ref={videoRailRef} className="flex gap-4 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {filteredVideos.map((video, index) => {
-                const cardImage = getCardImage(video, "video");
-                const isBookmarked = bookmarks.some(b => b.url === video.url);
-                return (
-                  <div
-                    key={`${video.url}-${index}`}
-                    className="min-w-[280px] max-w-[280px] rounded-xl overflow-hidden border border-slate-850 bg-slate-900/40 hover:bg-slate-900/80 transition duration-200 hover:-translate-y-1 hover:border-slate-700/60 flex flex-col justify-between cursor-pointer group shadow-md"
-                    onClick={() => handlePlayVideo(video)}
-                  >
-                    <div className="relative h-36 w-full bg-slate-800 overflow-hidden shrink-0">
-                      {cardImage ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={cardImage} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
-                      ) : null}
-                      <div className="absolute inset-0 bg-black/25 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
-                        <PlayCircle size={28} className="text-white drop-shadow-lg" />
-                      </div>
-                      <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                        YouTube
-                      </span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {dailyArticlesList.map((article, index) => {
+                  const isBookmarked = bookmarks.some(b => b.url === article.url);
+                  return (
+                    <div
+                      key={`${article.url}-${index}`}
+                      onClick={() => handleArticleClick(article)}
+                      className="p-4 rounded-xl border border-slate-850 bg-slate-900/30 hover:bg-slate-900/70 hover:border-slate-700/60 transition cursor-pointer flex flex-col justify-between relative group"
+                    >
                       <button
-                        onClick={(e) => toggleBookmark(e, video, "video")}
-                        className="absolute top-2 right-2 rounded-lg bg-black/60 p-1.5 text-slate-300 hover:text-amber-400 hover:bg-black transition-colors"
+                        onClick={(e) => toggleBookmark(e, article, "article")}
+                        className="absolute top-3 right-3 rounded-lg bg-slate-900/80 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
                         title="Bookmark"
                       >
                         <Bookmark size={13} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
                       </button>
-                    </div>
 
-                    <div className="p-3.5 flex-1 flex flex-col justify-between">
                       <div>
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
-                          {video.category}
-                        </span>
-                        <h4 className="mt-2 text-xs font-bold text-white line-clamp-2 leading-snug tracking-tight group-hover:text-blue-300 transition-colors">
-                          {video.title}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                            {article.category}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-semibold">{article.readTime}</span>
+                        </div>
+                        <h4 className="mt-2 text-xs font-bold text-white group-hover:text-purple-300 transition-colors leading-snug max-w-[90%]">
+                          {article.title}
                         </h4>
-                        <p className="mt-1.5 text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
-                          {video.takeaway}
+                        <p className="mt-1 text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                          {article.takeaway}
                         </p>
                       </div>
-                      <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500 font-semibold uppercase">
-                        <span>{video.views}</span>
-                        <span>{video.likes}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
 
-          {/* Recommended Articles Section */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="rounded-lg bg-purple-500/10 p-2 text-purple-400">
-                <BookOpen size={16} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Recommended Articles</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Handpicked resources that rotate daily (10 fresh updates every morning).</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {dailyArticlesList.map((article, index) => {
-                const isBookmarked = bookmarks.some(b => b.url === article.url);
-                return (
-                  <div
-                    key={`${article.url}-${index}`}
-                    onClick={() => handleArticleClick(article)}
-                    className="p-4 rounded-xl border border-slate-850 bg-slate-900/30 hover:bg-slate-900/70 hover:border-slate-700/60 transition cursor-pointer flex flex-col justify-between relative group"
-                  >
-                    <button
-                      onClick={(e) => toggleBookmark(e, article, "article")}
-                      className="absolute top-3 right-3 rounded-lg bg-slate-900/80 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
-                      title="Bookmark"
-                    >
-                      <Bookmark size={13} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
-                    </button>
-
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
-                          {article.category}
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-semibold">{article.readTime}</span>
-                      </div>
-                      <h4 className="mt-2 text-xs font-bold text-white group-hover:text-purple-300 transition-colors leading-snug max-w-[90%]">
-                        {article.title}
-                      </h4>
-                      <p className="mt-1 text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
-                        {article.takeaway}
-                      </p>
-                    </div>
-
-                    <div className="mt-3.5 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-500">
-                      <span>{getDomain(article.url)}</span>
-                      <span className="font-semibold uppercase tracking-wider">{article.views}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Trending Section */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="rounded-lg bg-amber-500/10 p-2 text-amber-400">
-                <TrendingUp size={16} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Trending Content</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Top trending assets inside the growth marketing network.</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {TRENDING_CONTENT.map((item, idx) => {
-                const isBookmarked = bookmarks.some(b => b.url === item.url);
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => {
-                      if (item.type === "video") {
-                        handlePlayVideo(item);
-                      } else {
-                        handleArticleClick(item);
-                      }
-                    }}
-                    className="p-3.5 rounded-xl border border-slate-850 bg-slate-900/40 hover:bg-slate-900/80 hover:border-slate-700/60 transition cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 group"
-                  >
-                    <div className="flex gap-3 items-center min-w-0">
-                      <div className="h-7 w-7 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0 border border-slate-700">
-                        #{idx + 1}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-xs font-bold text-white truncate group-hover:text-amber-300 transition-colors leading-snug">
-                          {item.title}
-                        </h4>
-                        <p className="text-[11px] text-slate-400 truncate mt-0.5 leading-normal">
-                          {item.takeaway}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
-                      <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                        {item.category}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => toggleBookmark(e, item, item.type)}
-                          className="rounded-lg border border-slate-800 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
-                        >
-                          <Bookmark size={12} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-        </div>
-
-        {/* Right Column (Sidebar, Status, Saved Resources, Progress Goals) */}
-        <div className="lg:col-span-4 space-y-6">
-          
-          {/* Daily Goal Dashboard Card */}
-          <section className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 p-5 shadow-lg relative overflow-hidden">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="rounded-lg bg-orange-500/10 p-2 text-orange-400">
-                  <Flame size={16} className="animate-bounce" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Daily Learning Goal</h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5 uppercase tracking-wider font-bold">Goal stats persist daily</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={resetDailyGoals}
-                className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
-                title="Reset progress metrics"
-              >
-                <RotateCcw size={12} />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              
-              {/* Goal 1: Time spent */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-                  <span className="text-slate-300">Time Spent (30 Min Goal)</span>
-                  <span className="text-slate-400">{Math.floor(timeSpentToday / 60)} min / 30 min</span>
-                </div>
-                <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden">
-                  <div
-                    style={{ width: `${timeProgress}%` }}
-                    className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full transition-all duration-500"
-                  />
-                </div>
-              </div>
-
-              {/* Goal 2: Articles read */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-                  <span className="text-slate-300">Articles Read (3 Goal)</span>
-                  <span className="text-slate-400">{articlesReadToday} / 3 read</span>
-                </div>
-                <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden">
-                  <div
-                    style={{ width: `${articlesProgress}%` }}
-                    className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
-                  />
-                </div>
-                <div className="mt-1 flex items-center justify-end gap-1.5">
-                  <button
-                    onClick={() => {
-                      const todayStr = new Date().toDateString();
-                      const val = Math.min(3, articlesReadToday + 1);
-                      setArticlesReadToday(val);
-                      try { localStorage.setItem("learning_articles_today", String(val)); } catch {}
-                    }}
-                    className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 tracking-wider uppercase"
-                    disabled={articlesReadToday >= 3}
-                  >
-                    + Log Article
-                  </button>
-                </div>
-              </div>
-
-              {/* Goal 3: Videos watched */}
-              <div>
-                <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-                  <span className="text-slate-300">Videos Watched (1 Goal)</span>
-                  <span className="text-slate-400">{videosWatchedToday} / 1 video</span>
-                </div>
-                <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden">
-                  <div
-                    style={{ width: `${videosProgress}%` }}
-                    className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500"
-                  />
-                </div>
-                <div className="mt-1 flex items-center justify-end gap-1.5">
-                  <button
-                    onClick={() => {
-                      setVideosWatchedToday(1);
-                      try { localStorage.setItem("learning_videos_today", "1"); } catch {}
-                    }}
-                    className="text-[9px] font-bold text-blue-400 hover:text-blue-300 tracking-wider uppercase"
-                    disabled={videosWatchedToday >= 1}
-                  >
-                    + Log Video
-                  </button>
-                </div>
-              </div>
-
-              {/* Medal / Goal completion indicator */}
-              {(timeProgress >= 100 && articlesProgress >= 100 && videosProgress >= 100) ? (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 flex items-center gap-3">
-                  <Award size={32} className="text-amber-500 animate-pulse shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-bold text-amber-400">All Goals Completed!</h4>
-                    <p className="text-[10px] text-slate-400 leading-normal">
-                      Excellent job. You have completed all of your daily B2B learning objectives!
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3.5 flex items-center gap-3">
-                  <Award size={32} className="text-slate-600 shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-300">In Progress</h4>
-                    <p className="text-[10px] text-slate-400 leading-normal">
-                      Continue reading and learning to achieve your daily skills target.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          </section>
-
-          {/* Saved Resources Widget */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="rounded-lg bg-amber-500/10 p-2 text-amber-400">
-                <Bookmark size={16} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Saved Resources</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">Toggle bookmarks on any content to save.</p>
-              </div>
-            </div>
-
-            {bookmarks.length === 0 ? (
-              <div className="py-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                <p className="text-xs font-semibold">No saved bookmarks yet</p>
-                <p className="text-[10px] mt-0.5 text-slate-600">Bookmark articles or videos to read/watch later.</p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[280px] overflow-y-auto custom-sidebar-scroll pr-1">
-                {bookmarks.map((bookmark) => (
-                  <div
-                    key={bookmark.url}
-                    onClick={() => {
-                      if (bookmark.type === "video") {
-                        handlePlayVideo(bookmark);
-                      } else {
-                        handleArticleClick(bookmark);
-                      }
-                    }}
-                    className="p-3 rounded-xl border border-slate-855 bg-slate-900/60 hover:bg-slate-905 transition flex items-start gap-2.5 cursor-pointer relative group"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[8px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
-                          {bookmark.type}
-                        </span>
-                        <span className="text-[10px] text-slate-500 truncate">{getDomain(bookmark.url)}</span>
-                      </div>
-                      <h4 className="mt-1 text-[11px] font-bold text-white line-clamp-1 leading-snug group-hover:text-amber-300 transition-colors">
-                        {bookmark.title}
-                      </h4>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => toggleBookmark(e, bookmark, bookmark.type)}
-                      className="text-slate-500 hover:text-red-400 p-0.5 shrink-0"
-                      title="Remove bookmark"
-                    >
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Recently Viewed */}
-          <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="rounded-lg bg-teal-500/10 p-2 text-teal-400">
-                <Clock size={16} />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">Recently Viewed</h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">History of content you recently read or played.</p>
-              </div>
-            </div>
-
-            {historyList.length === 0 ? (
-              <div className="py-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
-                <p className="text-xs font-semibold">No recent activity</p>
-                <p className="text-[10px] mt-0.5 text-slate-600">Items will list here as you browse.</p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {historyList.map((hist) => {
-                  const elapsedMs = Date.now() - new Date(hist.viewedAt).getTime();
-                  const elapsedMins = Math.max(1, Math.floor(elapsedMs / 60000));
-                  return (
-                    <div
-                      key={hist.url}
-                      onClick={() => {
-                        if (hist.type === "video") {
-                          handlePlayVideo(hist);
-                        } else {
-                          handleArticleClick(hist);
-                        }
-                      }}
-                      className="p-3 rounded-xl border border-slate-855 bg-slate-900/50 hover:bg-slate-905/80 transition cursor-pointer flex items-center justify-between gap-2 group"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-[11px] font-bold text-white truncate leading-snug group-hover:text-blue-400 transition-colors">
-                          {hist.title}
-                        </h4>
-                        <span className="text-[9px] text-slate-500 font-semibold">{elapsedMins}m ago</span>
-                      </div>
-                      <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-slate-400 uppercase tracking-widest shrink-0">
-                        {hist.type}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* Action Plan (preserved) */}
-          {content && content.actionPlan && content.actionPlan.length > 0 && (
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
-              <div className="mb-4 flex items-center gap-2">
-                <div className="rounded-lg bg-indigo-500/10 p-2 text-indigo-400">
-                  <CheckCircle2 size={16} />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">Daily Action Plan</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">B2B skills execution guidelines from the AI Coach.</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {content.actionPlan.map((step, index) => {
-                  const moduleName = String(step || `Module ${index + 1}`);
-                  const key = `${index}-${moduleName}`;
-                  const isCompleted = completedModules.has(key);
-                  return (
-                    <div
-                      key={key}
-                      className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-855 bg-slate-900/40 text-xs text-slate-200"
-                    >
-                      <span className={`mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
-                        isCompleted ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-400"
-                      }`}>
-                        {index + 1}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className={`leading-relaxed font-semibold ${isCompleted ? "line-through text-slate-500" : ""}`}>{step}</p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (isCompleted) return;
-                            setCompletedModules((prev) => new Set([...prev, key]));
-                            (async () => {
-                              const currentUserId = await getCurrentUserId();
-                              fetch("/api/audit", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({
-                                  user_id: currentUserId || "anonymous",
-                                  event_type: "action",
-                                  page_name: "Learning",
-                                  action_name: "Completed Learning Module",
-                                  details: `Completed: ${moduleName}`,
-                                  session_id: getCurrentSessionId(),
-                                }),
-                              }).catch(() => {});
-                            })();
-                          }}
-                          className="mt-2 rounded bg-slate-800 hover:bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-300 disabled:opacity-50"
-                          disabled={isCompleted}
-                        >
-                          {isCompleted ? "Completed" : "Mark Done"}
-                        </button>
+                      <div className="mt-3.5 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-500">
+                        <span>{getDomain(article.url)}</span>
+                        <span className="font-semibold uppercase tracking-wider">{article.views}</span>
                       </div>
                     </div>
                   );
                 })}
               </div>
             </section>
-          )}
 
+            {/* Trending Section */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="rounded-lg bg-amber-500/10 p-2 text-amber-400">
+                  <TrendingUp size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Trending Content</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Top trending assets inside the growth marketing network.</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {TRENDING_CONTENT.map((item, idx) => {
+                  const isBookmarked = bookmarks.some(b => b.url === item.url);
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => {
+                        if (item.type === "video") {
+                          handlePlayVideo(item);
+                        } else {
+                          handleArticleClick(item);
+                        }
+                      }}
+                      className="p-3.5 rounded-xl border border-slate-855 bg-slate-900/40 hover:bg-slate-900/80 hover:border-slate-700/60 transition cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 group"
+                    >
+                      <div className="flex gap-3 items-center min-w-0">
+                        <div className="h-7 w-7 rounded-lg bg-slate-800 flex items-center justify-center text-[10px] font-bold text-amber-400 uppercase tracking-wider shrink-0 border border-slate-700">
+                          #{idx + 1}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="text-xs font-bold text-white truncate group-hover:text-amber-300 transition-colors leading-snug">
+                            {item.title}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 truncate mt-0.5 leading-normal">
+                            {item.takeaway}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
+                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                          {item.category}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={(e) => toggleBookmark(e, item, item.type)}
+                            className="rounded-lg border border-slate-800 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                          >
+                            <Bookmark size={12} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+          </div>
+
+          {/* Right Sidebar Area */}
+          <div className="lg:col-span-4 space-y-6">
+            
+            {/* Daily Goal Dashboard Card */}
+            <section className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900 to-slate-950 p-5 shadow-lg relative overflow-hidden">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="rounded-lg bg-orange-500/10 p-2 text-orange-400">
+                    <Flame size={16} className="animate-bounce" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Daily Learning Goal</h3>
+                    <p className="text-[10px] text-slate-500 mt-0.5 uppercase tracking-wider font-bold">Goal stats persist daily</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={resetDailyGoals}
+                  className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                  title="Reset progress metrics"
+                >
+                  <RotateCcw size={12} />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                
+                {/* Goal 1: Time spent */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                    <span className="text-slate-300">Time Spent (30 Min Goal)</span>
+                    <span className="text-slate-400">{Math.floor(timeSpentToday / 60)} min / 30 min</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden">
+                    <div
+                      style={{ width: `${timeProgress}%` }}
+                      className="h-full bg-gradient-to-r from-orange-500 to-amber-500 rounded-full transition-all duration-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Goal 2: Articles read */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                    <span className="text-slate-300">Articles Read (3 Goal)</span>
+                    <span className="text-slate-400">{articlesReadToday} / 3 read</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden">
+                    <div
+                      style={{ width: `${articlesProgress}%` }}
+                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
+                    />
+                  </div>
+                  <div className="mt-1 flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => {
+                        const todayStr = new Date().toDateString();
+                        const val = Math.min(3, articlesReadToday + 1);
+                        setArticlesReadToday(val);
+                        try { localStorage.setItem("learning_articles_today", String(val)); } catch {}
+                        logActivity(0, 1, 0);
+                        loadCumulativeStats();
+                      }}
+                      className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 tracking-wider uppercase bg-transparent border-0 cursor-pointer"
+                      disabled={articlesReadToday >= 3}
+                    >
+                      + Log Article
+                    </button>
+                  </div>
+                </div>
+
+                {/* Goal 3: Videos watched */}
+                <div>
+                  <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                    <span className="text-slate-300">Videos Watched (1 Goal)</span>
+                    <span className="text-slate-400">{videosWatchedToday} / 1 video</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden">
+                    <div
+                      style={{ width: `${videosProgress}%` }}
+                      className="h-full bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full transition-all duration-500"
+                    />
+                  </div>
+                  <div className="mt-1 flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => {
+                        setVideosWatchedToday(1);
+                        try { localStorage.setItem("learning_videos_today", "1"); } catch {}
+                        logActivity(0, 0, 1);
+                        loadCumulativeStats();
+                      }}
+                      className="text-[9px] font-bold text-blue-400 hover:text-blue-300 tracking-wider uppercase bg-transparent border-0 cursor-pointer"
+                      disabled={videosWatchedToday >= 1}
+                    >
+                      + Log Video
+                    </button>
+                  </div>
+                </div>
+
+                {/* Completion indicator */}
+                {(timeProgress >= 100 && articlesProgress >= 100 && videosProgress >= 100) ? (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5 flex items-center gap-3">
+                    <Award size={32} className="text-amber-500 animate-pulse shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-amber-400">All Goals Completed!</h4>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Excellent job. You have completed all of your daily B2B learning objectives!
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-3.5 flex items-center gap-3">
+                    <Award size={32} className="text-slate-600 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-300">In Progress</h4>
+                      <p className="text-[10px] text-slate-400 leading-normal">
+                        Continue reading and learning to achieve your daily skills target.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </section>
+
+            {/* Saved Resources Widget */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="rounded-lg bg-amber-500/10 p-2 text-amber-400">
+                  <Bookmark size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Saved Resources</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Toggle bookmarks on any content to save.</p>
+                </div>
+              </div>
+
+              {bookmarks.length === 0 ? (
+                <div className="py-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                  <p className="text-xs font-semibold">No saved bookmarks yet</p>
+                  <p className="text-[10px] mt-0.5 text-slate-600">Bookmark articles or videos to read/watch later.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 max-h-[280px] overflow-y-auto custom-sidebar-scroll pr-1">
+                  {bookmarks.map((bookmark) => (
+                    <div
+                      key={bookmark.url}
+                      onClick={() => {
+                        if (bookmark.type === "video") {
+                          handlePlayVideo(bookmark);
+                        } else {
+                          handleArticleClick(bookmark);
+                        }
+                      }}
+                      className="p-3 rounded-xl border border-slate-855 bg-slate-900/60 hover:bg-slate-905 transition flex items-start gap-2.5 cursor-pointer relative group"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[8px] font-bold uppercase tracking-wider text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
+                            {bookmark.type}
+                          </span>
+                          <span className="text-[10px] text-slate-500 truncate">{getDomain(bookmark.url)}</span>
+                        </div>
+                        <h4 className="mt-1 text-[11px] font-bold text-white line-clamp-1 leading-snug group-hover:text-amber-300 transition-colors">
+                          {bookmark.title}
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => toggleBookmark(e, bookmark, bookmark.type)}
+                        className="text-slate-500 hover:text-red-400 p-0.5 shrink-0 bg-transparent border-0 cursor-pointer"
+                        title="Remove bookmark"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Recently Viewed */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+              <div className="mb-4 flex items-center gap-2">
+                <div className="rounded-lg bg-teal-500/10 p-2 text-teal-400">
+                  <Clock size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Recently Viewed</h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">History of content you recently read or played.</p>
+                </div>
+              </div>
+
+              {historyList.length === 0 ? (
+                <div className="py-6 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl">
+                  <p className="text-xs font-semibold">No recent activity</p>
+                  <p className="text-[10px] mt-0.5 text-slate-600">Items will list here as you browse.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {historyList.map((hist) => {
+                    const elapsedMs = Date.now() - new Date(hist.viewedAt).getTime();
+                    const elapsedMins = Math.max(1, Math.floor(elapsedMs / 60000));
+                    return (
+                      <div
+                        key={hist.url}
+                        onClick={() => {
+                          if (hist.type === "video") {
+                            handlePlayVideo(hist);
+                          } else {
+                            handleArticleClick(hist);
+                          }
+                        }}
+                        className="p-3 rounded-xl border border-slate-855 bg-slate-900/50 hover:bg-slate-905/80 transition cursor-pointer flex items-center justify-between gap-2 group"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-[11px] font-bold text-white truncate leading-snug group-hover:text-blue-400 transition-colors">
+                            {hist.title}
+                          </h4>
+                          <span className="text-[9px] text-slate-500 font-semibold">{elapsedMins}m ago</span>
+                        </div>
+                        <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[8px] font-bold text-slate-400 uppercase tracking-widest shrink-0">
+                          {hist.type}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Action Plan */}
+            {content && content.actionPlan && content.actionPlan.length > 0 && (
+              <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="rounded-lg bg-indigo-500/10 p-2 text-indigo-400">
+                    <CheckCircle2 size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Daily Action Plan</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">B2B skills execution guidelines from the AI Coach.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {content.actionPlan.map((step, index) => {
+                    const moduleName = String(step || `Module ${index + 1}`);
+                    const key = `${index}-${moduleName}`;
+                    const isCompleted = completedModules.has(key);
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-855 bg-slate-900/40 text-xs text-slate-200"
+                      >
+                        <span className={`mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                          isCompleted ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-400"
+                        }`}>
+                          {index + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`leading-relaxed font-semibold ${isCompleted ? "line-through text-slate-500" : ""}`}>{step}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isCompleted) return;
+                              setCompletedModules((prev) => new Set([...prev, key]));
+                              (async () => {
+                                const currentUserId = await getCurrentUserId();
+                                fetch("/api/audit", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    user_id: currentUserId || "anonymous",
+                                    event_type: "action",
+                                    page_name: "Learning",
+                                    action_name: "Completed Learning Module",
+                                    details: `Completed: ${moduleName}`,
+                                    session_id: getCurrentSessionId(),
+                                  }),
+                                }).catch(() => {});
+                              })();
+                            }}
+                            className="mt-2 rounded bg-slate-800 hover:bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-300 disabled:opacity-50 border-0 cursor-pointer"
+                            disabled={isCompleted}
+                          >
+                            {isCompleted ? "Completed" : "Mark Done"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+          </div>
         </div>
+      )}
 
-      </div>
+      {/* TAB 2: My Analytics (Personal Dashboard) */}
+      {activeTab === "dashboard" && (
+        <div className="space-y-6 animate-fadeIn">
+          
+          {/* Main Stat metrics Row */}
+          <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-4 text-center shadow-md relative overflow-hidden">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Learning Streak</p>
+              <div className="mt-2 flex items-center justify-center gap-1">
+                <Flame size={20} className="text-orange-500 fill-orange-500 animate-pulse" />
+                <span className="text-2xl font-black text-white">{streakDays} Days</span>
+              </div>
+              <div className="absolute right-0 bottom-0 h-10 w-10 bg-orange-500/5 rounded-full blur-md" />
+            </div>
+
+            <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-4 text-center shadow-md">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Hours</p>
+              <p className="mt-2 text-2xl font-black text-white">{(totalTime / 3600).toFixed(1)} Hrs</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-4 text-center shadow-md">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Videos Watched</p>
+              <p className="mt-2 text-2xl font-black text-white">{totalVideos}</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-4 text-center shadow-md">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Articles Opened</p>
+              <p className="mt-2 text-2xl font-black text-white">{totalArticles}</p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-4 text-center shadow-md col-span-2 md:col-span-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Avg Completion</p>
+              <p className="mt-2 text-2xl font-black text-emerald-400">{averageCompletion}%</p>
+            </div>
+          </section>
+
+          {/* Reports Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            
+            {/* Weekly Report Graph */}
+            <section className="md:col-span-7 rounded-2xl border border-slate-850 bg-slate-900/30 p-5 shadow-lg flex flex-col justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <Clock size={15} className="text-blue-400" />
+                  Weekly Progress Report
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Daily learning minutes logged during the past 7 days.</p>
+              </div>
+
+              {/* Bar Chart Container */}
+              <div className="mt-8 h-48 flex items-end justify-between px-2.5 border-b border-slate-800 pb-2">
+                {weeklyData.map((day, idx) => {
+                  // Max height base is 60 minutes
+                  const heightPercent = Math.min(100, Math.round((day.minutes / 60) * 100));
+                  return (
+                    <div key={idx} className="flex flex-col items-center flex-1 group relative">
+                      {/* Tooltip on Hover */}
+                      <div className="absolute bottom-full mb-2 bg-slate-900 border border-slate-800 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition duration-150 pointer-events-none z-10 w-28 text-center shadow-xl">
+                        <p className="font-bold text-white">{day.dateLabel}</p>
+                        <p className="mt-0.5 text-blue-400">{day.minutes} mins spent</p>
+                        <p className="text-slate-500">{day.videos} vids • {day.articles} arts</p>
+                      </div>
+
+                      {/* Bar Fill */}
+                      <div className="w-6 sm:w-8 bg-slate-800 rounded-t-md overflow-hidden h-36 flex items-end">
+                        <div
+                          style={{ height: `${heightPercent}%` }}
+                          className="w-full bg-gradient-to-t from-blue-600 to-indigo-500 rounded-t-md transition-all duration-500 group-hover:brightness-110"
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-semibold mt-2">{day.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between text-[10px] text-slate-500 font-semibold uppercase">
+                <span>Base: 60 min goal</span>
+                <span>Active Streak: {streakDays} days</span>
+              </div>
+            </section>
+
+            {/* Monthly Report progress bars */}
+            <section className="md:col-span-5 rounded-2xl border border-slate-850 bg-slate-900/30 p-5 shadow-lg flex flex-col justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                  <TrendingUp size={15} className="text-purple-400" />
+                  Monthly Performance
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Summed learning minutes mapped across 4-week blocks.</p>
+              </div>
+
+              <div className="mt-6 space-y-4 flex-1 flex flex-col justify-center">
+                {monthlyData.map((week, idx) => {
+                  // Max base is 300 minutes per week
+                  const pct = Math.min(100, Math.round((week.minutes / 300) * 100));
+                  return (
+                    <div key={idx}>
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300 mb-1">
+                        <span>{week.label}</span>
+                        <span>{week.minutes} min</span>
+                      </div>
+                      <div className="h-2 w-full bg-slate-850 rounded-full overflow-hidden">
+                        <div
+                          style={{ width: `${pct}%` }}
+                          className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between items-center">
+                <span className="text-[10px] text-slate-500 font-semibold uppercase">Monthly Goal: 1200 mins</span>
+                <button
+                  onClick={resetAllTrackingStats}
+                  className="text-[10px] font-bold text-red-400 hover:text-red-300 uppercase bg-transparent border-0 cursor-pointer"
+                >
+                  Reset Analytics
+                </button>
+              </div>
+            </section>
+
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: Team Leaderboard & Manager View */}
+      {activeTab === "team" && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-fadeIn">
+          
+          {/* Left Column (Team Leaderboard) */}
+          <section className="lg:col-span-7 rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Award size={15} className="text-amber-500" />
+                Team Leaderboard
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Real-time learning ranks based on cumulative learning hours.</p>
+            </div>
+
+            <div className="space-y-3">
+              {teamMembers.map((member, idx) => {
+                const rankColor = idx === 0 ? "text-amber-400" : idx === 1 ? "text-slate-300" : idx === 2 ? "text-amber-600" : "text-slate-500";
+                return (
+                  <div
+                    key={member.name}
+                    className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition duration-150 ${
+                      member.isUser
+                        ? "border-blue-500/50 bg-blue-950/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]"
+                        : "border-slate-850 bg-slate-900/40 hover:bg-slate-900/80"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      {/* Rank Indicator */}
+                      <span className={`w-5 font-black text-sm text-center shrink-0 ${rankColor}`}>
+                        {idx + 1}
+                      </span>
+                      {/* Avatar */}
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                        member.isUser ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-200"
+                      }`}>
+                        {member.avatar}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs font-bold text-white truncate leading-snug">
+                          {member.name}
+                        </h4>
+                        <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider flex items-center gap-1.5 mt-0.5">
+                          <span>🔥 {member.streak} Day Streak</span>
+                          <span>•</span>
+                          <span>📺 {member.videos} videos</span>
+                          <span>•</span>
+                          <span>📄 {member.articles} articles</span>
+                        </p>
+                      </div>
+                    </div>
+                    {/* Total Hours Badge */}
+                    <div className="text-right shrink-0">
+                      <span className="inline-flex rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
+                        {member.hours.toFixed(1)} Hrs
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Right Column (Manager View Console) */}
+          <section className="lg:col-span-5 rounded-2xl border border-slate-800 bg-slate-900/30 p-5 shadow-lg space-y-6">
+            <div>
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Users size={15} className="text-indigo-400" />
+                Manager Console
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Analytics overview of team B2B learning engagement.</p>
+            </div>
+
+            {/* Team Stats Cards */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-850 bg-slate-900/40 p-3 text-center">
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">Team Hours Learned</p>
+                <p className="mt-1 text-lg font-black text-white">{totalTeamHours} Hrs</p>
+              </div>
+              <div className="rounded-xl border border-slate-850 bg-slate-900/40 p-3 text-center">
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">Avg Team Streak</p>
+                <p className="mt-1 text-lg font-black text-amber-400">{avgTeamStreak} Days</p>
+              </div>
+            </div>
+
+            {/* Actionable Manager Cards */}
+            <div className="space-y-4 pt-2 border-t border-slate-800/80">
+              
+              {/* Top Learner Card */}
+              <div>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-2">Top Learner</span>
+                <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                    {topLearner.avatar}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold text-emerald-400 truncate">{topLearner.name}</h4>
+                    <p className="text-[10px] text-slate-400 leading-normal mt-0.5">
+                      Leading with **{topLearner.hours} hours** learned and a **{topLearner.streak} day streak**.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Least Active Card */}
+              <div>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-2">Needs Encouragement</span>
+                <div className="p-3 rounded-xl border border-red-500/20 bg-red-500/5 flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-red-950/60 text-red-400 flex items-center justify-center text-xs font-bold shrink-0 border border-red-900/50">
+                    {leastActive.avatar}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold text-red-400 truncate">{leastActive.name}</h4>
+                    <p className="text-[10px] text-slate-400 leading-normal mt-0.5">
+                      Completed **{leastActive.hours} hours** so far. Reach out to schedule coaching support.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Team Statistics list */}
+            <div className="pt-4 border-t border-slate-800/80">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-3">Team Engagement Audit</span>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between items-center text-slate-300">
+                  <span>Weekly Goal Completion Rate</span>
+                  <span className="font-bold text-white">82%</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-300">
+                  <span>Total Video Lectures Played</span>
+                  <span className="font-bold text-white">48 videos</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-300">
+                  <span>Articles Shared In Slack</span>
+                  <span className="font-bold text-white">36 shares</span>
+                </div>
+              </div>
+            </div>
+
+          </section>
+        </div>
+      )}
 
       {/* Main Overlay Video Player */}
       {activeVideo ? (
@@ -1271,7 +1780,7 @@ export default function LearningPage() {
                     setShowMiniPlayer(true);
                     setActiveVideo(null);
                   }}
-                  className="rounded-lg border border-slate-350 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-55 shadow-xs"
+                  className="rounded-lg border border-slate-350 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-55 shadow-xs bg-transparent cursor-pointer"
                 >
                   Picture in Picture
                 </button>
@@ -1279,11 +1788,11 @@ export default function LearningPage() {
                   href={activeVideo.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-lg border border-slate-350 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-55 shadow-xs"
+                  className="rounded-lg border border-slate-350 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-55 shadow-xs text-center"
                 >
                   YouTube
                 </a>
-                <button onClick={() => setActiveVideo(null)} className="rounded-lg border border-slate-300 p-1.5 hover:bg-slate-100">
+                <button onClick={() => setActiveVideo(null)} className="rounded-lg border border-slate-300 p-1.5 hover:bg-slate-100 bg-transparent cursor-pointer">
                   <X size={14} />
                 </button>
               </div>
@@ -1306,7 +1815,7 @@ export default function LearningPage() {
         <div className="fixed bottom-5 right-5 z-40 w-[320px] sm:w-[360px] overflow-hidden rounded-xl border border-slate-700 bg-black shadow-2xl">
           <div className="flex items-center justify-between bg-slate-900 px-3 py-2 text-xs font-semibold text-white">
             <span className="truncate max-w-[200px]">{miniPlayerVideo.title}</span>
-            <button onClick={() => setShowMiniPlayer(false)} className="rounded border border-white/30 px-1.5 py-0.5 text-[10px] hover:bg-slate-800 transition">
+            <button onClick={() => setShowMiniPlayer(false)} className="rounded border border-white/30 px-1.5 py-0.5 text-[10px] hover:bg-slate-800 transition bg-transparent cursor-pointer">
               Close
             </button>
           </div>
