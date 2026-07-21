@@ -92,7 +92,7 @@ export default function Sidebar({
           </button>
         </div>
 
-        <nav className="mt-4 flex-1 space-y-1.5 overflow-hidden px-3 pb-2">
+        <nav className="mt-4 flex-1 min-h-0 space-y-1.5 overflow-y-auto overflow-x-hidden scroll-smooth custom-sidebar-scroll px-3 pb-2">
           {navItems
             .filter((item) => !item.adminOnly || isAdmin)
             .map((item) => {
@@ -129,7 +129,7 @@ export default function Sidebar({
             })}
         </nav>
 
-        <div className="mt-auto p-3 border-t border-slate-100 dark:border-slate-800">
+        <div className="mt-auto shrink-0 p-3 border-t border-slate-100 dark:border-slate-800">
           <div className="relative" ref={userMenuRef}>
             <button
               onClick={() => setIsUserMenuOpen((p) => !p)}

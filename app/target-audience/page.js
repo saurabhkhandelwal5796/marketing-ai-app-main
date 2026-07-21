@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { ChevronDown, Globe, Link, Mail, Phone, Users, X } from "lucide-react";
+import { ChevronDown, Globe, Link, Mail, Phone, Search, Users, X } from "lucide-react";
 import { motion } from "framer-motion";
 import ThinkingDisplay from "../../components/ThinkingDisplay";
 
@@ -458,7 +458,7 @@ export default function TargetAudiencePage() {
     if (chatBottomRef.current) {
       chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [chatMessages]);
+  }, [chatMessages, chatLoading]);
 
   // Load lead statuses, chat messages, and list from localStorage on mount
   useEffect(() => {
@@ -1900,35 +1900,28 @@ export default function TargetAudiencePage() {
             ══════════════════════════════════════════════ */}
         {pageMode === "session" && (
           <>
-            {/* Salesforce-style Highlights Panel */}
-            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 dark:bg-slate-800 dark:border-slate-700 space-y-4">
-              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Target Audience &gt; <span className="text-slate-600 dark:text-slate-350">{autoNum}</span>
-              </div>
-              
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-700">
+            {/* Header / Actions Panel */}
+            <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-3.5 shrink-0 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-100 dark:border-blue-900">
-                    <Users size={20} />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-955 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900">
+                    <Users size={18} />
                   </div>
                   <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Target Audience &gt; <span className="text-slate-600 dark:text-slate-350">{autoNum}</span>
+                    </div>
                     <h1 className="text-base font-bold text-slate-900 dark:text-white leading-snug">
                       {prompt ? prompt.slice(0, 50) + (prompt.length > 50 ? "…" : "") : "New Generation"}
                     </h1>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="font-mono text-xs font-bold text-slate-500">{autoNum}</span>
-                      <span className={cx("rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", currentStatus.cls)}>
-                        {currentStatus.label}
-                      </span>
-                    </div>
                   </div>
                 </div>
-
+                
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={startNewConversation}
-                    className="btn-secondary text-xs font-bold"
+                    className="btn-secondary text-xs font-bold py-1.5 px-3"
                   >
                     Back to Sessions
                   </button>
@@ -1936,7 +1929,7 @@ export default function TargetAudiencePage() {
                     <button
                       type="button"
                       onClick={downloadCsv}
-                      className="btn-secondary text-xs font-bold"
+                      className="btn-secondary text-xs font-bold py-1.5 px-3"
                     >
                       Download CSV
                     </button>
@@ -1945,7 +1938,7 @@ export default function TargetAudiencePage() {
                     <button
                       type="button"
                       onClick={handleStopSearch}
-                      className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 px-4 py-2 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-100 transition"
+                      className="rounded-xl border border-red-200 bg-red-50 dark:bg-red-955/20 px-4 py-1.5 text-xs font-bold text-red-600 dark:text-red-400 hover:bg-red-100 transition"
                     >
                       Stop Search
                     </button>
@@ -1954,7 +1947,7 @@ export default function TargetAudiencePage() {
                       type="button"
                       onClick={generate}
                       disabled={!prompt.trim()}
-                      className="btn-primary text-xs font-bold"
+                      className="btn-primary text-xs font-bold py-1.5 px-3"
                     >
                       {hasResults ? "Regenerate" : "Generate"}
                     </button>
@@ -1963,860 +1956,879 @@ export default function TargetAudiencePage() {
               </div>
 
               {/* Salesforce Metadata Row */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 pt-2 text-xs">
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Industry</p>
-                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentMeta.industry}</p>
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Location</p>
-                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentMeta.location}</p>
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Avg Confidence</p>
-                  <p className="font-semibold text-slate-800 dark:text-slate-200">{avgConfScore > 0 ? `${avgConfScore}%` : "—"}</p>
-                </div>
-                <div className="space-y-0.5">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Created By</p>
-                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentCreatedBy}</p>
-                </div>
-                <div className="space-y-0.5 col-span-2">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Created</p>
-                  <p className="font-semibold text-slate-800 dark:text-slate-200">{currentCreatedDate}</p>
-                </div>
+              <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[11px] border-t border-slate-100 dark:border-slate-700 pt-2 text-slate-500">
+                <div>Industry: <span className="font-semibold text-slate-700 dark:text-slate-300">{currentMeta.industry}</span></div>
+                <div>Location: <span className="font-semibold text-slate-700 dark:text-slate-300">{currentMeta.location}</span></div>
+                <div>Avg Confidence: <span className="font-semibold text-slate-700 dark:text-slate-300">{avgConfScore > 0 ? `${avgConfScore}%` : "—"}</span></div>
+                <div>Created By: <span className="font-semibold text-slate-700 dark:text-slate-300">{currentCreatedBy}</span></div>
+                <div>Date Created: <span className="font-semibold text-slate-700 dark:text-slate-300">{currentCreatedDate}</span></div>
               </div>
-            </div>
+            </header>
 
-            {/* Salesforce Record Detail Layout Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              
-              {/* Left Column: Main Results Panel (Span 8) */}
-              <div className="lg:col-span-8 space-y-6">
-                {!hasResults && (
-                  <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-sm min-h-[350px] dark:bg-slate-800 dark:border-slate-700">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 mb-4">
-                      <Users size={28} />
-                    </div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white">No Audience Generated Yet</h3>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-450 max-w-xs mx-auto">
-                      Describe your ideal target audience in the Copilot sidebar on the right to begin.
-                    </p>
+            {/* Chat Section (Top) */}
+            <div className="w-full bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex flex-col shrink-0 h-[45vh] min-h-[45vh] max-h-[45vh] md:h-[40vh] md:min-h-[40vh] md:max-h-[40vh] lg:h-[35vh] lg:min-h-[35vh] lg:max-h-[35vh]">
+              {/* Scrollable Conversation Timeline */}
+              <div className="flex-1 overflow-y-scroll scroll-smooth overscroll-contain p-5 space-y-4 bg-slate-50/40 dark:bg-slate-900/40">
+                {chatMessages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center h-full text-slate-400 dark:text-slate-500 py-4">
+                    <Users size={28} className="mb-1 text-slate-300 dark:text-slate-700" />
+                    <p className="text-xs font-semibold">Welcome to Target Audience Copilot</p>
+                    <p className="text-[11px]">Describe your target audience below to generate lead records.</p>
                   </div>
-                )}
-
-                {hasResults && (
-                  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:bg-slate-800 dark:border-slate-700">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white p-1">
-                <button
-                  type="button"
-                  onClick={() => { setAudienceView("companies"); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                    audienceView === "companies" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
-                  )}
-                >
-                  Companies
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setAudienceView("employees"); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                    audienceView === "employees" ? "bg-blue-500 text-white" : "text-slate-700 hover:bg-slate-50"
-                  )}
-                >
-                  Employees
-                </button>
-              </div>
-              <button
-                type="button"
-                onClick={downloadCsv}
-                className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Download CSV
-              </button>
-            </div>
-
-            {/* Top Summary Section */}
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 border-t border-slate-100 pt-4">
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-center flex flex-col justify-between min-h-[70px]">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Results Summary</p>
-                <div className="mt-1 text-left text-[11.5px] text-slate-700 leading-normal font-semibold space-y-0.5">
-                  <div>Results: <span className="font-bold text-slate-900">{totalResults}</span></div>
-                  <div>Loaded: <span className="font-bold text-slate-900">{batchesCount} batches</span></div>
-                  <div>Unique: <span className="font-bold text-slate-900">{totalResults}</span></div>
-                </div>
-                <div />
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-center flex flex-col justify-between min-h-[70px]">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Emails Found</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{emailsFound}</p>
-                {emailsFound === 0 ? (
-                  <p className="text-[8px] text-slate-400 mt-1 leading-normal">Public emails are rarely available.</p>
-                ) : <div />}
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-center flex flex-col justify-between min-h-[70px]">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Phones Found</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{phonesFound}</p>
-                {phonesFound === 0 ? (
-                  <p className="text-[8px] text-slate-400 mt-1 leading-normal">Public phone numbers are often unavailable.</p>
-                ) : <div />}
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-center flex flex-col justify-between min-h-[70px]">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">LinkedIn Summary</p>
-                <div className="mt-1 text-left text-[9px] text-slate-700 leading-tight font-semibold space-y-0.5">
-                  <div>Verified: <span className="text-emerald-600 font-bold">{linkedinCounts.verified}</span></div>
-                  <div>Estimated: <span className="text-amber-600 font-bold">{linkedinCounts.estimated}</span></div>
-                  <div>Invalid: <span className="text-red-600 font-bold">{linkedinCounts.invalid}</span></div>
-                  <div>Not Found: <span className="text-slate-500 font-bold">{linkedinCounts.notFound}</span></div>
-                </div>
-                <div />
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-center flex flex-col justify-between min-h-[70px]">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Complete Profiles</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{completeProfiles}</p>
-                <div />
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-center flex flex-col justify-between min-h-[70px]">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-slate-500">Avg Confidence</p>
-                <p className="mt-1 text-lg font-bold text-slate-900">{avgConfidence}%</p>
-                <div />
-              </div>
-            </div>
-
-            {/* Search Results Input & Filters Row */}
-            <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-4">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <label htmlFor="search-input" className="text-xs font-semibold text-slate-500 shrink-0">Search Results:</label>
-                <input
-                  id="search-input"
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-                  placeholder="Search by name, industry, or country..."
-                  className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => { setSearchQuery(""); setCurrentPage(1); }}
-                    className="text-xs font-semibold text-slate-500 hover:text-slate-700 px-2"
-                  >
-                    Clear Search
-                  </button>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-slate-500">Filters:</span>
-                <button
-                  type="button"
-                  onClick={() => { setFilterEmail(prev => !prev); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1 text-xs font-medium border transition",
-                    filterEmail
-                      ? "bg-slate-900 text-white border-slate-900"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                  )}
-                >
-                  Has Email
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterPhone(prev => !prev); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1 text-xs font-medium border transition",
-                    filterPhone
-                      ? "bg-slate-900 text-white border-slate-900"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                  )}
-                >
-                  Has Phone
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterLinkedIn(prev => !prev); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1 text-xs font-medium border transition",
-                    filterLinkedIn
-                      ? "bg-slate-900 text-white border-slate-900"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                  )}
-                >
-                  Has LinkedIn
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterComplete(prev => !prev); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1 text-xs font-medium border transition",
-                    filterComplete
-                      ? "bg-slate-900 text-white border-slate-900"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                  )}
-                >
-                  Complete Profiles
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setFilterConfidence80(prev => !prev); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1 text-xs font-medium border transition",
-                    filterConfidence80
-                      ? "bg-slate-900 text-white border-slate-900"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                  )}
-                >
-                  Confidence &gt; 80
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setHideInvalidLinkedIn(prev => !prev); setCurrentPage(1); }}
-                  className={cx(
-                    "rounded-full px-3 py-1 text-xs font-medium border transition",
-                    hideInvalidLinkedIn
-                      ? "bg-rose-900 text-white border-rose-900"
-                      : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                  )}
-                >
-                  Hide Invalid LinkedIn
-                </button>
-                {(filterEmail || filterPhone || filterLinkedIn || filterComplete || filterConfidence80 || searchQuery || hideInvalidLinkedIn) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFilterEmail(false);
-                      setFilterPhone(false);
-                      setFilterLinkedIn(false);
-                      setFilterComplete(false);
-                      setFilterConfidence80(false);
-                      setSearchQuery("");
-                      setHideInvalidLinkedIn(false);
-                      setCurrentPage(1);
-                    }}
-                    className="text-xs font-semibold text-red-500 hover:text-red-700 ml-2"
-                  >
-                    Clear All
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Dynamic Intelligence Bar: Top Leads & AI Recommendations */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 border-t border-slate-100 pt-4">
-              {/* AI Recommended Leads */}
-              {(audienceView === "companies" ? processedCompanies : processedEmployees).length > 0 && (
-                <div className="rounded-xl border border-blue-100 bg-blue-50/20 p-4">
-                  <h3 className="text-xs font-bold text-blue-800 uppercase tracking-wider mb-3">AI Recommended Leads</h3>
-                  <div className="space-y-3">
-                    {(audienceView === "companies" ? processedCompanies : processedEmployees).slice(0, 3).map((item, idx) => {
-                      const fit = calculateCampaignFit(item);
-                      return (
-                        <div key={idx} className="text-xs">
-                          <p className="font-semibold text-slate-900">{idx + 1}. {item.name}</p>
-                          <ul className="list-disc pl-4 mt-1 text-slate-600 space-y-0.5">
-                            <li>{item.description || "No description available."}</li>
-                            {item.whyRelevant && <li>{item.whyRelevant}</li>}
-                            <li>Highly aligned with overall fit of {fit.overall}%.</li>
-                          </ul>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Top Leads Panel */}
-              {(audienceView === "companies" ? processedCompanies : processedEmployees).length > 0 && (
-                <div className="rounded-xl border border-slate-200 bg-slate-50/30 p-4">
-                  <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Top Leads</h3>
-                  <ol className="list-decimal pl-5 text-sm space-y-2 font-medium text-slate-800">
-                    {(audienceView === "companies" ? processedCompanies : processedEmployees).slice(0, 3).map((lead, idx) => (
-                      <li key={idx} className="border-b border-slate-100 pb-1 last:border-0 last:pb-0">
-                        <div className="flex items-center justify-between">
-                          <span>{lead.name}</span>
-                          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                            Score: {lead.score}
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-            </div>
-
-            {audienceView === "companies" ? (
-              <div className="mt-4">
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {paginatedCompanies.length === 0 ? (
-                    <p className="col-span-full text-center py-6 text-sm text-slate-500">No companies found matching the current filters.</p>
-                  ) : null}
-                  {paginatedCompanies.map((c, idx) => (
-                    <motion.article
-                      key={`${c.name}-${idx}`}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col justify-between"
+                ) : (
+                  chatMessages.map((msg, index) => (
+                    <div
+                      key={index}
+                      className={cx(
+                        "flex flex-col max-w-[75%] rounded-2xl px-3.5 py-2 text-xs shadow-sm",
+                        msg.role === "user"
+                          ? "bg-blue-600 text-white self-end ml-auto rounded-tr-none"
+                          : "bg-white text-slate-800 mr-auto rounded-tl-none border border-slate-100 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700"
+                      )}
                     >
-                      <div>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3 min-w-0">
-                            {/* Company Logo / Initials Avatar */}
-                            {getLogoUrl(c.website) && !logoError[c.name] ? (
-                              <img
-                                src={getLogoUrl(c.website)}
-                                alt={c.name}
-                                onError={() => setLogoError(prev => ({ ...prev, [c.name]: true }))}
-                                className="h-10 w-10 rounded-lg object-contain bg-slate-50 border border-slate-100 p-1 shrink-0 mt-0.5"
-                              />
-                            ) : (
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 mt-0.5">
-                                {initials(c.name)}
-                              </div>
-                            )}
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-sm font-semibold text-slate-900">{c.name}</p>
-                                <span className={cx(
-                                  "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border",
-                                  c.score >= 80 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                    c.score >= 60 ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                      "bg-amber-50 text-amber-700 border-amber-200"
-                                )}>
-                                  Score: {c.score}
-                                </span>
-                              </div>
-                              <p className="mt-1 text-sm leading-6 text-slate-700">{c.description}</p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                Country: <span className="font-semibold text-slate-700">{c.country || "-"}</span>
-                              </p>
-                            </div>
-                          </div>
-                          <span className="whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
-                            {c.sector || c.industry || "-"}
-                          </span>
-                        </div>
+                      <span className="text-[9px] font-bold uppercase tracking-wider opacity-60 mb-0.5">
+                        {msg.role === "user" ? "You" : "AI Copilot"}
+                      </span>
+                      <p className="leading-relaxed whitespace-pre-line text-xs">{msg.content}</p>
+                    </div>
+                  ))
+                )}
+                {chatLoading && (
+                  <div className="bg-white border border-slate-100 text-slate-800 mr-auto rounded-2xl rounded-tl-none px-3.5 py-2.5 text-xs max-w-[75%] flex flex-col gap-1.5 shadow-sm dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="font-semibold text-[10px] text-slate-500 animate-pulse">
+                        Analyzing Batch {batchesCount} of 5...
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleStopSearch}
+                        className="rounded bg-red-50 dark:bg-red-955/40 hover:bg-red-100 text-red-600 dark:text-red-400 px-1.5 py-0.5 text-[9px] font-bold border border-red-100 dark:border-red-900 transition"
+                      >
+                        Stop
+                      </button>
+                    </div>
+                    <ThinkingDisplay preset="marketing_analysis" />
+                  </div>
+                )}
+                <div ref={chatBottomRef} />
+              </div>
 
-                        {/* Expandable Why Relevant */}
-                        {c.whyRelevant ? (
-                          <div className="border-t border-slate-100 pt-2 mt-2">
-                            <button
-                              type="button"
-                              onClick={() => setExpandedWhy(prev => ({ ...prev, [c.name]: !prev[c.name] }))}
-                              className="flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-blue-600 transition"
-                            >
-                              Why Relevant {expandedWhy[c.name] ? "▲" : "▼"}
-                            </button>
-                            {expandedWhy[c.name] && (
-                              <p className="mt-1 text-sm leading-6 text-slate-600 pl-2 border-l-2 border-slate-200">
-                                {c.whyRelevant}
-                              </p>
-                            )}
-                          </div>
-                        ) : null}
+              {/* Chat Input fixed at bottom of Chat section */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (chatMessages.length === 0) generate(false);
+                  else submitFollowUp(e);
+                }}
+                className="flex gap-2 p-2.5 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shrink-0"
+              >
+                <input
+                  type="text"
+                  value={chatMessages.length === 0 ? prompt : chatInput}
+                  onChange={(e) => {
+                    if (chatMessages.length === 0) setPrompt(e.target.value);
+                    else setChatInput(e.target.value);
+                  }}
+                  placeholder={chatMessages.length === 0 ? "Describe target (e.g. manufacturing companies)..." : "Refine (e.g. 'only from Rajasthan')..."}
+                  className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 dark:text-white dark:bg-slate-900 dark:border-slate-700 outline-none transition focus:bg-white focus:border-blue-500"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || chatLoading || (chatMessages.length === 0 ? !prompt.trim() : !chatInput.trim())}
+                  className="btn-primary text-xs font-bold px-4 py-2 shrink-0"
+                >
+                  {loading || chatLoading ? "Generating..." : chatMessages.length === 0 ? "Generate" : "Refine"}
+                </button>
+              </form>
+            </div>
 
-                        {/* Campaign Fit Section */}
-                        {(() => {
-                          const fit = calculateCampaignFit(c);
-                          return (
-                            <div className="mt-3 bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
-                              <p className="font-semibold text-slate-700 mb-1.5 flex justify-between">
-                                <span>Campaign Fit</span>
-                                <span className="text-blue-600 font-bold">Overall Fit: {fit.overall}%</span>
-                              </p>
-                              <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-600">
-                                <div>Cloud: <span className="font-semibold text-slate-800">{fit.cloud}%</span></div>
-                                <div>CRM: <span className="font-semibold text-slate-800">{fit.crm}%</span></div>
-                                <div>Infra: <span className="font-semibold text-slate-800">{fit.infra}%</span></div>
-                              </div>
-                            </div>
-                          );
-                        })()}
+            {/* Output Section (Bottom) */}
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col w-full bg-slate-50 dark:bg-slate-900">
+              {!hasResults ? (
+                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 dark:bg-blue-955 text-blue-600 dark:text-blue-400 mb-4">
+                    <Users size={28} />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">No Audience Generated Yet</h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
+                    Type a prompt in the timeline bar above and click Generate to start.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {/* Tabs Selector Ribbon */}
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-6 py-1 shrink-0">
+                    <div className="flex items-center gap-1">
+                      {[
+                        { id: "companies", label: "Companies" },
+                        { id: "employees", label: "Employees" },
+                        { id: "analytics", label: "Analytics" }
+                      ].map(tab => (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => { setAudienceView(tab.id); setCurrentPage(1); }}
+                          className={cx(
+                            "border-b-2 px-4 py-2.5 text-xs font-bold transition-all focus:outline-none",
+                            audienceView === tab.id
+                              ? "border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400"
+                              : "border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white hover:border-slate-250"
+                          )}
+                        >
+                          {tab.label}
+                        </button>
+                      ))}
+                    </div>
+                    {audienceView !== "analytics" && (
+                      <div className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                        Showing {totalItems} records (Page {currentPage} of {totalPages})
+                      </div>
+                    )}
+                  </div>
 
-                        {/* UI Badges Row */}
-                        {renderBadges(c, false, linkedInStatuses[c.name])}
+                  {/* Filter & Search Ribbon */}
+                  {audienceView !== "analytics" && (
+                    <div className="bg-white dark:bg-slate-850 border-b border-slate-200 dark:border-slate-700 px-6 py-2.5 shrink-0 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+                      <div className="flex items-center gap-2 flex-1 max-w-md">
+                        <Search size={13} className="text-slate-400" />
+                        <input
+                          id="search-input-bottom"
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+                          placeholder="Search by name, industry, or country..."
+                          className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900 px-3 py-1.5 text-xs text-slate-900 dark:text-white outline-none transition focus:border-blue-550"
+                        />
+                        {searchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => { setSearchQuery(""); setCurrentPage(1); }}
+                            className="text-xs font-semibold text-slate-505 hover:text-slate-700 px-1"
+                          >
+                            Clear
+                          </button>
+                        )}
                       </div>
 
-                      <div className="mt-4 space-y-3">
-                        {/* Lead Status Selection & Role */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                          {c.decisionMakerRole ? (
-                            <div className="min-w-0">
-                              <span className="text-[11px] font-semibold text-slate-500 mr-1.5">Decision Maker:</span>
-                              <span className="inline-block rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-600">
-                                {c.decisionMakerRole}
-                              </span>
-                            </div>
-                          ) : <div />}
-
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span className="text-slate-500 font-medium">Status:</span>
-                            <select
-                              value={leadStatus[c.name] || "NEW"}
-                              onChange={(e) => handleStatusChange(c.name, e.target.value)}
-                              className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 font-semibold outline-none transition focus:border-blue-500"
-                            >
-                              <option value="NEW">NEW</option>
-                              <option value="CONTACTED">CONTACTED</option>
-                              <option value="FOLLOW UP">FOLLOW UP</option>
-                              <option value="MEETING DONE">MEETING DONE</option>
-                              <option value="NOT INTERESTED">NOT INTERESTED</option>
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Action Buttons Row */}
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          <button
-                            type="button"
-                            disabled={!c.email || !c.email.trim()}
-                            title={(!c.email || !c.email.trim()) ? "Email not available." : ""}
-                            onClick={(e) => openPopup(e, "email", c.name, c.email)}
-                            className={cx(
-                              "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition",
-                              (!c.email || !c.email.trim())
-                                ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                            )}
-                          >
-                            <Mail size={14} /> Email
-                          </button>
-                          <button
-                            type="button"
-                            disabled={!c.phone || !c.phone.trim()}
-                            title={(!c.phone || !c.phone.trim()) ? "Phone number not publicly available." : ""}
-                            onClick={(e) => openPopup(e, "call", c.name, c.phone)}
-                            className={cx(
-                              "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition",
-                              (!c.phone || !c.phone.trim())
-                                ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                            )}
-                          >
-                            <Phone size={14} /> Phone
-                          </button>
-                          {(() => {
-                            const status = linkedInStatuses[c.name] || (c.linkedin ? "ESTIMATED" : "NOT_FOUND");
-                            const isDisabled = status === "INVALID" || status === "NOT_FOUND" || !c.linkedin;
-                            return (
-                              <button
-                                type="button"
-                                disabled={isDisabled}
-                                title={getLinkedInTooltip(status)}
-                                onClick={() => {
-                                  if (c.linkedin) window.open(c.linkedin, "_blank", "noopener,noreferrer");
-                                }}
-                                className={cx(
-                                  "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition",
-                                  isDisabled
-                                    ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                                    : status === "VERIFIED"
-                                      ? "border-emerald-300 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50"
-                                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                                )}
-                              >
-                                <Link size={14} /> LinkedIn
-                              </button>
-                            );
-                          })()}
-
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-xs font-semibold text-slate-450 mr-1">Filters:</span>
+                        <button
+                          type="button"
+                          onClick={() => { setFilterEmail(prev => !prev); setCurrentPage(1); }}
+                          className={cx(
+                            "rounded-full px-2.5 py-0.5 text-xs font-medium border transition",
+                            filterEmail
+                              ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-350 dark:border-slate-700"
+                          )}
+                        >
+                          Has Email
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setFilterPhone(prev => !prev); setCurrentPage(1); }}
+                          className={cx(
+                            "rounded-full px-2.5 py-0.5 text-xs font-medium border transition",
+                            filterPhone
+                              ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-350 dark:border-slate-700"
+                          )}
+                        >
+                          Has Phone
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setFilterLinkedIn(prev => !prev); setCurrentPage(1); }}
+                          className={cx(
+                            "rounded-full px-2.5 py-0.5 text-xs font-medium border transition",
+                            filterLinkedIn
+                              ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-355 dark:border-slate-700"
+                          )}
+                        >
+                          Has LinkedIn
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setFilterComplete(prev => !prev); setCurrentPage(1); }}
+                          className={cx(
+                            "rounded-full px-2.5 py-0.5 text-xs font-medium border transition",
+                            filterComplete
+                              ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-355 dark:border-slate-700"
+                          )}
+                        >
+                          Complete
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setFilterConfidence80(prev => !prev); setCurrentPage(1); }}
+                          className={cx(
+                            "rounded-full px-2.5 py-0.5 text-xs font-medium border transition",
+                            filterConfidence80
+                              ? "bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-355 dark:border-slate-700"
+                          )}
+                        >
+                          Confidence &gt; 80
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setHideInvalidLinkedIn(prev => !prev); setCurrentPage(1); }}
+                          className={cx(
+                            "rounded-full px-2.5 py-0.5 text-xs font-medium border transition",
+                            hideInvalidLinkedIn
+                              ? "bg-rose-900 text-white border-rose-900"
+                              : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-355 dark:border-slate-700"
+                          )}
+                        >
+                          Hide Invalid LinkedIn
+                        </button>
+                        {(filterEmail || filterPhone || filterLinkedIn || filterComplete || filterConfidence80 || searchQuery || hideInvalidLinkedIn) && (
                           <button
                             type="button"
                             onClick={() => {
-                              navigator.clipboard.writeText(c.name);
-                              alert(`Copied "${c.name}" to clipboard.`);
+                              setFilterEmail(false);
+                              setFilterPhone(false);
+                              setFilterLinkedIn(false);
+                              setFilterComplete(false);
+                              setFilterConfidence80(false);
+                              setSearchQuery("");
+                              setHideInvalidLinkedIn(false);
+                              setCurrentPage(1);
                             }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            className="text-xs font-semibold text-red-505 hover:text-red-700 ml-1.5"
                           >
-                            📋 Copy Name
+                            Clear All
                           </button>
-                          {c.website ? (
-                            <a
-                              href={c.website}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                              <Globe size={14} /> Open Website
-                            </a>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled
-                              title="Website not available."
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-400 cursor-not-allowed"
-                            >
-                              <Globe size={14} /> Open Website
-                            </button>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    </motion.article>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="mt-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={companyFilter}
-                    onChange={(e) => { setCompanyFilter(e.target.value); setCurrentPage(1); }}
-                    placeholder="Filter by company name..."
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                  {companyFilter && (
-                    <button
-                      type="button"
-                      onClick={() => { setCompanyFilter(""); setCurrentPage(1); }}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                {paginatedEmployees.length === 0 ? (
-                  <p className="text-center py-6 text-sm text-slate-500">{companyFilter ? `No employees found for "${companyFilter}" matching the current filters.` : "No employee data matching the current filters."}</p>
-                ) : null}
-                {paginatedEmployees.map((emp, idx) => (
-                  <div
-                    key={`${emp.name}-${emp.company}-${idx}`}
-                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-start gap-3">
-                        {/* Company Logo / Initials Avatar */}
-                        {(() => {
-                          const comp = targetAudience.find(t => t.name.toLowerCase() === emp.company.toLowerCase());
-                          const logoUrl = getLogoUrl(emp.website || comp?.website);
-                          return logoUrl && !logoError[emp.name] ? (
-                            <img
-                              src={logoUrl}
-                              alt={emp.company}
-                              onError={() => setLogoError(prev => ({ ...prev, [emp.name]: true }))}
-                              className="h-10 w-10 rounded-lg object-contain bg-slate-50 border border-slate-100 p-1 shrink-0 mt-0.5"
-                            />
-                          ) : (
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 mt-0.5">
-                              {initials(emp.name)}
-                            </div>
-                          );
-                        })()}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-sm font-semibold text-slate-900">{emp.name || "-"}</p>
-                            <span className={cx(
-                              "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border",
-                              emp.score >= 80 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                emp.score >= 60 ? "bg-blue-50 text-blue-700 border-blue-200" :
-                                  "bg-amber-50 text-amber-700 border-amber-200"
-                            )}>
-                              Score: {emp.score}
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-700">{emp.title || "-"}</p>
-                          <p className="mt-0.5 text-xs text-slate-500">{emp.company || "-"}</p>
-                        </div>
-                      </div>
-
-                      {/* Campaign Fit Section */}
-                      {(() => {
-                        const fit = calculateCampaignFit(emp);
-                        return (
-                          <div className="mt-3 bg-slate-50 rounded-xl p-3 border border-slate-100 text-xs">
-                            <p className="font-semibold text-slate-700 mb-1.5 flex justify-between">
-                              <span>Campaign Fit</span>
-                              <span className="text-blue-600 font-bold">Overall Fit: {fit.overall}%</span>
-                            </p>
-                            <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-600">
-                              <div>Cloud: <span className="font-semibold text-slate-800">{fit.cloud}%</span></div>
-                              <div>CRM: <span className="font-semibold text-slate-800">{fit.crm}%</span></div>
-                              <div>Infra: <span className="font-semibold text-slate-800">{fit.infra}%</span></div>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      {/* UI Badges Row */}
-                      {renderBadges(emp, true, linkedInStatuses[emp.name])}
                     </div>
+                  )}
 
-                    <div className="mt-4 space-y-3">
-                      {/* Lead Status Select for Employee */}
-                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <span className="text-slate-500 font-medium">Status:</span>
-                          <select
-                            value={leadStatus[emp.name] || "NEW"}
-                            onChange={(e) => handleStatusChange(emp.name, e.target.value)}
-                            className="rounded border border-slate-300 bg-white px-2 py-1 text-slate-700 font-semibold outline-none transition focus:border-blue-500"
+                  {/* List / Grid content container */}
+                  <div className="flex-1 overflow-y-auto p-5">
+                    {audienceView === "companies" && (
+                      <div className="space-y-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {paginatedCompanies.length === 0 ? (
+                            <p className="col-span-full text-center py-10 text-xs text-slate-500">No companies found matching the current filters.</p>
+                          ) : null}
+                          {paginatedCompanies.map((c, idx) => (
+                            <motion.article
+                              key={`${c.name}-${idx}`}
+                              initial={{ opacity: 0, y: 8 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-4 shadow-sm flex flex-col justify-between"
+                            >
+                              <div>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex items-start gap-3 min-w-0">
+                                    {/* Company Logo / Initials Avatar */}
+                                    {getLogoUrl(c.website) && !logoError[c.name] ? (
+                                      <img
+                                        src={getLogoUrl(c.website)}
+                                        alt={c.name}
+                                        onError={() => setLogoError(prev => ({ ...prev, [c.name]: true }))}
+                                        className="h-10 w-10 rounded-lg object-contain bg-slate-50 border border-slate-100 p-1 shrink-0 mt-0.5"
+                                      />
+                                    ) : (
+                                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 mt-0.5">
+                                        {initials(c.name)}
+                                      </div>
+                                    )}
+                                    <div className="min-w-0">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{c.name}</p>
+                                        <span className={cx(
+                                          "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border",
+                                          c.score >= 80 ? "bg-emerald-50 text-emerald-700 border-emerald-205" :
+                                            c.score >= 60 ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                              "bg-amber-50 text-amber-700 border-amber-200"
+                                        )}>
+                                          Score: {c.score}
+                                        </span>
+                                      </div>
+                                      <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-355">{c.description}</p>
+                                      <p className="mt-1 text-[11px] text-slate-500">
+                                        Country: <span className="font-semibold text-slate-700 dark:text-slate-300">{c.country || "-"}</span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <span className="whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:bg-blue-955 dark:border-blue-900 dark:text-blue-400">
+                                    {c.sector || c.industry || "-"}
+                                  </span>
+                                </div>
+
+                                {/* Expandable Why Relevant */}
+                                {c.whyRelevant ? (
+                                  <div className="border-t border-slate-100 dark:border-slate-700 pt-2 mt-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => setExpandedWhy(prev => ({ ...prev, [c.name]: !prev[c.name] }))}
+                                      className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-blue-600 transition"
+                                    >
+                                      Why Relevant {expandedWhy[c.name] ? "▲" : "▼"}
+                                    </button>
+                                    {expandedWhy[c.name] && (
+                                      <p className="mt-1 text-xs leading-5 text-slate-505 pl-2 border-l-2 border-slate-200 dark:border-slate-700">
+                                        {c.whyRelevant}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : null}
+
+                                {/* Campaign Fit Section */}
+                                {(() => {
+                                  const fit = calculateCampaignFit(c);
+                                  return (
+                                    <div className="mt-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-700/60 text-[11px]">
+                                      <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1 flex justify-between">
+                                        <span>Campaign Fit</span>
+                                        <span className="text-blue-600 dark:text-blue-400 font-bold">Overall Fit: {fit.overall}%</span>
+                                      </p>
+                                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-500">
+                                        <div>Cloud: <span className="font-semibold text-slate-800 dark:text-slate-200">{fit.cloud}%</span></div>
+                                        <div>CRM: <span className="font-semibold text-slate-800 dark:text-slate-200">{fit.crm}%</span></div>
+                                        <div>Infra: <span className="font-semibold text-slate-800 dark:text-slate-200">{fit.infra}%</span></div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* UI Badges Row */}
+                                {renderBadges(c, false, linkedInStatuses[c.name])}
+                              </div>
+
+                              <div className="mt-3.5 space-y-2.5">
+                                {/* Lead Status Selection & Role */}
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                                  {c.decisionMakerRole ? (
+                                    <div className="min-w-0">
+                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1">Decision Maker:</span>
+                                      <span className="inline-block rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-0.5 text-[10px] text-slate-600 dark:text-slate-400 font-semibold">
+                                        {c.decisionMakerRole}
+                                      </span>
+                                    </div>
+                                  ) : <div />}
+
+                                  <div className="flex items-center gap-1 text-xs">
+                                    <span className="text-slate-500 font-medium">Status:</span>
+                                    <select
+                                      value={leadStatus[c.name] || "NEW"}
+                                      onChange={(e) => handleStatusChange(c.name, e.target.value)}
+                                      className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-850 px-1.5 py-0.5 text-xs text-slate-700 dark:text-slate-300 font-semibold outline-none focus:border-blue-500"
+                                    >
+                                      <option value="NEW">NEW</option>
+                                      <option value="CONTACTED">CONTACTED</option>
+                                      <option value="FOLLOW UP">FOLLOW UP</option>
+                                      <option value="MEETING DONE">MEETING DONE</option>
+                                      <option value="NOT INTERESTED">NOT INTERESTED</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {/* Action Buttons Row */}
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  <button
+                                    type="button"
+                                    disabled={!c.email || !c.email.trim()}
+                                    title={(!c.email || !c.email.trim()) ? "Email not available." : ""}
+                                    onClick={(e) => openPopup(e, "email", c.name, c.email)}
+                                    className={cx(
+                                      "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition",
+                                      (!c.email || !c.email.trim())
+                                        ? "border-slate-105 bg-slate-50 text-slate-400 cursor-not-allowed dark:bg-slate-900 dark:border-slate-800"
+                                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-855 dark:text-slate-300 dark:border-slate-750"
+                                    )}
+                                  >
+                                    <Mail size={12} /> Email
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!c.phone || !c.phone.trim()}
+                                    title={(!c.phone || !c.phone.trim()) ? "Phone number not publicly available." : ""}
+                                    onClick={(e) => openPopup(e, "call", c.name, c.phone)}
+                                    className={cx(
+                                      "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition",
+                                      (!c.phone || !c.phone.trim())
+                                        ? "border-slate-105 bg-slate-50 text-slate-400 cursor-not-allowed dark:bg-slate-900 dark:border-slate-800"
+                                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-855 dark:text-slate-300 dark:border-slate-750"
+                                    )}
+                                  >
+                                    <Phone size={12} /> Phone
+                                  </button>
+                                  {(() => {
+                                    const status = linkedInStatuses[c.name] || (c.linkedin ? "ESTIMATED" : "NOT_FOUND");
+                                    const isDisabled = status === "INVALID" || status === "NOT_FOUND" || !c.linkedin;
+                                    return (
+                                      <button
+                                        type="button"
+                                        disabled={isDisabled}
+                                        title={getLinkedInTooltip(status)}
+                                        onClick={() => {
+                                          if (c.linkedin) window.open(c.linkedin, "_blank", "noopener,noreferrer");
+                                        }}
+                                        className={cx(
+                                          "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition",
+                                          isDisabled
+                                            ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed dark:bg-slate-900 dark:border-slate-800"
+                                            : status === "VERIFIED"
+                                              ? "border-emerald-250 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-400"
+                                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-855 dark:text-slate-300 dark:border-slate-750"
+                                        )}
+                                      >
+                                        <Link size={12} /> LinkedIn
+                                      </button>
+                                    );
+                                  })()}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(c.name);
+                                      alert(`Copied "${c.name}" to clipboard.`);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-855 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50"
+                                  >
+                                    📋 Copy
+                                  </button>
+                                  {c.website ? (
+                                    <a
+                                      href={c.website}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-855 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50"
+                                    >
+                                      <Globe size={12} /> Open
+                                    </a>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-100 bg-slate-50 dark:bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-400 cursor-not-allowed"
+                                    >
+                                      <Globe size={12} /> Open
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </motion.article>
+                          ))}
+                        </div>
+
+                        {/* Infinite Scroll / Load More */}
+                        <div className="flex flex-col items-center gap-4 border-t border-slate-200 dark:border-slate-700 pt-4">
+                          <button
+                            type="button"
+                            disabled={chatLoading || batchesCount >= 5 || targetAudience.length >= 100}
+                            onClick={loadMoreLeads}
+                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 dark:bg-white dark:text-slate-900 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 shadow-sm"
                           >
-                            <option value="NEW">NEW</option>
-                            <option value="CONTACTED">CONTACTED</option>
-                            <option value="FOLLOW UP">FOLLOW UP</option>
-                            <option value="MEETING DONE">MEETING DONE</option>
-                            <option value="NOT INTERESTED">NOT INTERESTED</option>
-                          </select>
+                            {chatLoading
+                              ? "Loading..."
+                              : batchesCount >= 5 || targetAudience.length >= 100
+                                ? "Maximum Limit Reached"
+                                : "Load More"}
+                          </button>
+
+                          {/* Pagination Controls */}
+                          {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                              >
+                                &lt; Previous
+                              </button>
+                              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                                <button
+                                  key={pageNum}
+                                  type="button"
+                                  onClick={() => setCurrentPage(pageNum)}
+                                  className={cx(
+                                    "px-2.5 py-1 text-xs font-semibold rounded-lg transition",
+                                    currentPage === pageNum
+                                      ? "bg-slate-900 text-white"
+                                      : "border border-slate-300 hover:bg-slate-50 text-slate-700"
+                                  )}
+                                >
+                                  {pageNum}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                              >
+                                Next &gt;
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
-
-                      {/* Action Buttons Row */}
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <button
-                          type="button"
-                          disabled={!emp.email || !emp.email.trim()}
-                          title={(!emp.email || !emp.email.trim()) ? "Email not available." : ""}
-                          onClick={(e) => openPopup(e, "email", emp.name, emp.email)}
-                          className={cx(
-                            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition",
-                            (!emp.email || !emp.email.trim())
-                              ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                          )}
-                        >
-                          <Mail size={12} /> Email
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!emp.phone || !emp.phone.trim()}
-                          title={(!emp.phone || !emp.phone.trim()) ? "Phone number not publicly available." : ""}
-                          onClick={(e) => openPopup(e, "call", emp.name, emp.phone)}
-                          className={cx(
-                            "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition",
-                            (!emp.phone || !emp.phone.trim())
-                              ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                          )}
-                        >
-                          <Phone size={12} /> Phone
-                        </button>
-                        {(() => {
-                          const status = linkedInStatuses[emp.name] || (emp.linkedin ? "ESTIMATED" : "NOT_FOUND");
-                          const isDisabled = status === "INVALID" || status === "NOT_FOUND" || !emp.linkedin;
-                          return (
-                            <button
-                              type="button"
-                              disabled={isDisabled}
-                              title={getLinkedInTooltip(status)}
-                              onClick={() => {
-                                if (emp.linkedin) window.open(emp.linkedin, "_blank", "noopener,noreferrer");
-                              }}
-                              className={cx(
-                                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition",
-                                isDisabled
-                                  ? "border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed"
-                                  : status === "VERIFIED"
-                                    ? "border-emerald-300 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50"
-                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                              )}
-                            >
-                              <Link size={12} /> LinkedIn
-                            </button>
-                          );
-                        })()}
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(emp.name);
-                            alert(`Copied "${emp.name}" to clipboard.`);
-                          }}
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
-                        >
-                          📋 Copy Name
-                        </button>
-                        {(() => {
-                          const comp = targetAudience.find(t => t.name.toLowerCase() === emp.company.toLowerCase());
-                          const website = emp.website || comp?.website;
-                          return website ? (
-                            <a
-                              href={website}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-white px-2 py-0.5 text-[11px] text-slate-700 hover:bg-slate-50"
-                            >
-                              <Globe size={12} /> Open Website
-                            </a>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled
-                              title="Website not available."
-                              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-400 cursor-not-allowed"
-                            >
-                              <Globe size={12} /> Open Website
-                            </button>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Load More Button */}
-            <div className="mt-6 flex justify-center border-t border-slate-100 pt-4">
-              <button
-                type="button"
-                disabled={chatLoading || batchesCount >= 5 || targetAudience.length >= 100}
-                onClick={loadMoreLeads}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 shadow-sm"
-              >
-                {chatLoading
-                  ? "Loading..."
-                  : batchesCount >= 5 || targetAudience.length >= 100
-                    ? "Maximum Limit Reached (100 Records / 5 Batches)"
-                    : "Load More"}
-              </button>
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="mt-6 flex items-center justify-center gap-2 border-t border-slate-100 pt-4">
-                <button
-                  type="button"
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
-                  &lt; Previous
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
-                  <button
-                    key={pageNum}
-                    type="button"
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={cx(
-                      "px-3 py-1.5 text-xs font-semibold rounded-lg transition",
-                      currentPage === pageNum
-                        ? "bg-slate-900 text-white"
-                        : "border border-slate-300 hover:bg-slate-50 text-slate-700"
                     )}
-                  >
-                    {pageNum}
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  className="px-3 py-1.5 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-                >
-                  Next &gt;
-                </button>
-              </div>
-            )}
-          </section>
-        )}
-      </div>
 
-      {/* Right Column: AI Refinement Copilot & Target Details (Span 4) */}
-      <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-[24px]">
-        {/* Target Description Box */}
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm space-y-4 dark:bg-slate-800 dark:border-slate-700">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Target Description</h2>
-            <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-          </div>
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            rows={3}
-            placeholder="e.g. We are an IT consultancy targeting real estate and manufacturing companies in India."
-            className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-3 text-sm text-slate-900 dark:text-white dark:bg-slate-900 outline-none transition focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-          />
-          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={generate}
-              disabled={loading || !prompt.trim()}
-              className="btn-primary text-xs font-bold w-full"
-            >
-              {loading ? "Generating…" : "Update Target"}
-            </button>
-          </div>
-        </section>
+                    {audienceView === "employees" && (
+                      <div className="space-y-5">
+                        <div className="flex items-center gap-2 bg-white dark:bg-slate-850 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm max-w-md">
+                          <input
+                            type="text"
+                            value={companyFilter}
+                            onChange={(e) => { setCompanyFilter(e.target.value); setCurrentPage(1); }}
+                            placeholder="Filter by company name..."
+                            className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg text-xs outline-none transition focus:border-blue-500"
+                          />
+                          {companyFilter && (
+                            <button
+                              type="button"
+                              onClick={() => { setCompanyFilter(""); setCurrentPage(1); }}
+                              className="text-xs font-semibold text-slate-550 hover:text-slate-700"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
 
-        {/* AI Refinement Copilot Chat */}
-        {chatMessages.length > 0 && (
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm flex flex-col space-y-4 dark:bg-slate-800 dark:border-slate-700">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
-              <h2 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                💬 AI Refinement Copilot
-              </h2>
-              <div className="flex gap-1.5">
-                <button
-                  type="button"
-                  onClick={clearConversationMessages}
-                  className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold text-slate-600 dark:text-slate-400 dark:bg-slate-900 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-750 transition"
-                >
-                  Clear
-                </button>
-              </div>
-            </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {paginatedEmployees.length === 0 ? (
+                            <p className="col-span-full text-center py-10 text-xs text-slate-500">
+                              {companyFilter
+                                ? `No employees found for "${companyFilter}" matching filters.`
+                                : "No employee data matching current filters."}
+                            </p>
+                          ) : null}
+                          {paginatedEmployees.map((emp, idx) => (
+                            <div
+                              key={`${emp.name}-${emp.company}-${idx}`}
+                              className="rounded-2xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-4 shadow-sm flex flex-col justify-between"
+                            >
+                              <div>
+                                <div className="flex items-start gap-3">
+                                  {/* Company Logo / Initials Avatar */}
+                                  {(() => {
+                                    const comp = targetAudience.find(t => t.name.toLowerCase() === emp.company.toLowerCase());
+                                    const logoUrl = getLogoUrl(emp.website || comp?.website);
+                                    return logoUrl && !logoError[emp.name] ? (
+                                      <img
+                                        src={logoUrl}
+                                        alt={emp.company}
+                                        onError={() => setLogoError(prev => ({ ...prev, [emp.name]: true }))}
+                                        className="h-10 w-10 rounded-lg object-contain bg-slate-50 border border-slate-100 p-1 shrink-0 mt-0.5"
+                                      />
+                                    ) : (
+                                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700 mt-0.5">
+                                        {initials(emp.name)}
+                                      </div>
+                                    );
+                                  })()}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-semibold text-slate-900 dark:text-white">{emp.name || "-"}</p>
+                                      <span className={cx(
+                                        "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border",
+                                        emp.score >= 80 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                          emp.score >= 60 ? "bg-blue-50 text-blue-700 border-blue-200" :
+                                            "bg-amber-50 text-amber-700 border-amber-200"
+                                      )}>
+                                        Score: {emp.score}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-700 dark:text-slate-300 font-semibold">{emp.title || "-"}</p>
+                                    <p className="mt-0.5 text-[11px] text-slate-450">{emp.company || "-"}</p>
+                                  </div>
+                                </div>
 
-            {/* Chat Messages */}
-            <div className="max-h-[260px] overflow-y-auto space-y-3 pr-1 flex flex-col scrollbar-thin">
-              {chatMessages.map((msg, index) => (
-                <div
-                  key={index}
-                  className={cx(
-                    "flex flex-col max-w-[85%] rounded-2xl px-3.5 py-2 text-xs",
-                    msg.role === "user"
-                      ? "bg-blue-600 text-white self-end ml-auto rounded-tr-none"
-                      : "bg-slate-50 text-slate-800 mr-auto rounded-tl-none border border-slate-100 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-750"
-                  )}
-                >
-                  <span className="text-[9px] font-bold uppercase tracking-wider opacity-60 mb-0.5">
-                    {msg.role === "user" ? "You" : "AI Assistant"}
-                  </span>
-                  <p className="leading-relaxed whitespace-pre-line">{msg.content}</p>
-                </div>
-              ))}
-              {chatLoading && (
-                <div className="bg-slate-50 border border-slate-200 text-slate-700 mr-auto rounded-2xl rounded-tl-none px-3.5 py-2.5 text-xs max-w-[85%] flex flex-col gap-2 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-750">
-                  <div className="flex items-center justify-between gap-4">
-                    <span className="font-semibold text-[10px] text-slate-500 animate-pulse">
-                      Searching Batch {batchesCount} of 5...
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleStopSearch}
-                      className="rounded-lg bg-red-50 dark:bg-red-950/40 hover:bg-red-100 text-red-600 dark:text-red-400 px-2 py-0.5 text-[10px] font-bold border border-red-200 dark:border-red-900 transition"
-                    >
-                      Stop
-                    </button>
+                                {/* Campaign Fit Section */}
+                                {(() => {
+                                  const fit = calculateCampaignFit(emp);
+                                  return (
+                                    <div className="mt-2.5 bg-slate-50 dark:bg-slate-900/60 rounded-xl p-2.5 border border-slate-100 dark:border-slate-700/60 text-[11px]">
+                                      <p className="font-semibold text-slate-700 dark:text-slate-305 mb-1 flex justify-between">
+                                        <span>Campaign Fit</span>
+                                        <span className="text-blue-600 dark:text-blue-400 font-bold">Overall Fit: {fit.overall}%</span>
+                                      </p>
+                                      <div className="grid grid-cols-3 gap-2 text-[10px] text-slate-550">
+                                        <div>Cloud: <span className="font-semibold text-slate-800 dark:text-slate-200">{fit.cloud}%</span></div>
+                                        <div>CRM: <span className="font-semibold text-slate-800 dark:text-slate-200">{fit.crm}%</span></div>
+                                        <div>Infra: <span className="font-semibold text-slate-800 dark:text-slate-200">{fit.infra}%</span></div>
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
+                                {/* UI Badges Row */}
+                                {renderBadges(emp, true, linkedInStatuses[emp.name])}
+                              </div>
+
+                              <div className="mt-3.5 space-y-2.5">
+                                {/* Lead Status Select for Employee */}
+                                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-slate-500 font-medium">Status:</span>
+                                    <select
+                                      value={leadStatus[emp.name] || "NEW"}
+                                      onChange={(e) => handleStatusChange(emp.name, e.target.value)}
+                                      className="rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 py-0.5 text-xs text-slate-700 dark:text-slate-300 font-semibold outline-none focus:border-blue-550"
+                                    >
+                                      <option value="NEW">NEW</option>
+                                      <option value="CONTACTED">CONTACTED</option>
+                                      <option value="FOLLOW UP">FOLLOW UP</option>
+                                      <option value="MEETING DONE">MEETING DONE</option>
+                                      <option value="NOT INTERESTED">NOT INTERESTED</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                {/* Action Buttons Row */}
+                                <div className="flex flex-wrap gap-1.5 pt-1">
+                                  <button
+                                    type="button"
+                                    disabled={!emp.email || !emp.email.trim()}
+                                    title={(!emp.email || !emp.email.trim()) ? "Email not available." : ""}
+                                    onClick={(e) => openPopup(e, "email", emp.name, emp.email)}
+                                    className={cx(
+                                      "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition",
+                                      (!emp.email || !emp.email.trim())
+                                        ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed dark:bg-slate-900 dark:border-slate-800"
+                                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-855 dark:text-slate-300 dark:border-slate-750"
+                                    )}
+                                  >
+                                    <Mail size={12} /> Email
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!emp.phone || !emp.phone.trim()}
+                                    title={(!emp.phone || !emp.phone.trim()) ? "Phone number not publicly available." : ""}
+                                    onClick={(e) => openPopup(e, "call", emp.name, emp.phone)}
+                                    className={cx(
+                                      "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition",
+                                      (!emp.phone || !emp.phone.trim())
+                                        ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed dark:bg-slate-900 dark:border-slate-800"
+                                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-855 dark:text-slate-300 dark:border-slate-750"
+                                    )}
+                                  >
+                                    <Phone size={12} /> Phone
+                                  </button>
+                                  {(() => {
+                                    const status = linkedInStatuses[emp.name] || (emp.linkedin ? "ESTIMATED" : "NOT_FOUND");
+                                    const isDisabled = status === "INVALID" || status === "NOT_FOUND" || !emp.linkedin;
+                                    return (
+                                      <button
+                                        type="button"
+                                        disabled={isDisabled}
+                                        title={getLinkedInTooltip(status)}
+                                        onClick={() => {
+                                          if (emp.linkedin) window.open(emp.linkedin, "_blank", "noopener,noreferrer");
+                                        }}
+                                        className={cx(
+                                          "inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition",
+                                          isDisabled
+                                            ? "border-slate-100 bg-slate-50 text-slate-400 cursor-not-allowed dark:bg-slate-900 dark:border-slate-800"
+                                            : status === "VERIFIED"
+                                              ? "border-emerald-250 bg-emerald-50/50 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-400"
+                                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:bg-slate-855 dark:text-slate-300 dark:border-slate-750"
+                                        )}
+                                      >
+                                        <Link size={12} /> LinkedIn
+                                      </button>
+                                    );
+                                  })()}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(emp.name);
+                                      alert(`Copied "${emp.name}" to clipboard.`);
+                                    }}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-750 bg-white dark:bg-slate-855 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50"
+                                  >
+                                    📋 Copy
+                                  </button>
+                                  {(() => {
+                                    const comp = targetAudience.find(t => t.name.toLowerCase() === emp.company.toLowerCase());
+                                    const website = emp.website || comp?.website;
+                                    return website ? (
+                                      <a
+                                        href={website}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-755 bg-white dark:bg-slate-855 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50"
+                                      >
+                                        <Globe size={12} /> Open
+                                      </a>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        disabled
+                                        className="inline-flex items-center gap-1 rounded-lg border border-slate-100 bg-slate-50 dark:bg-slate-900 px-2.5 py-1 text-xs font-semibold text-slate-400 cursor-not-allowed"
+                                      >
+                                        <Globe size={12} /> Open
+                                      </button>
+                                    );
+                                  })()}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Infinite Scroll / Load More */}
+                        <div className="flex flex-col items-center gap-4 border-t border-slate-200 dark:border-slate-700 pt-4">
+                          <button
+                            type="button"
+                            disabled={chatLoading || batchesCount >= 5 || targetAudience.length >= 100}
+                            onClick={loadMoreLeads}
+                            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 dark:bg-white dark:text-slate-900 px-6 py-2.5 text-xs font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 shadow-sm"
+                          >
+                            {chatLoading
+                              ? "Loading..."
+                              : batchesCount >= 5 || targetAudience.length >= 100
+                                ? "Maximum Limit Reached"
+                                : "Load More"}
+                          </button>
+
+                          {/* Pagination Controls */}
+                          {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                disabled={currentPage === 1}
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                              >
+                                &lt; Previous
+                              </button>
+                              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
+                                <button
+                                  key={pageNum}
+                                  type="button"
+                                  onClick={() => setCurrentPage(pageNum)}
+                                  className={cx(
+                                    "px-2.5 py-1 text-xs font-semibold rounded-lg transition",
+                                    currentPage === pageNum
+                                      ? "bg-slate-900 text-white"
+                                      : "border border-slate-300 hover:bg-slate-50 text-slate-700"
+                                  )}
+                                >
+                                  {pageNum}
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                disabled={currentPage === totalPages}
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                className="px-2.5 py-1 text-xs font-semibold border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                              >
+                                Next &gt;
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {audienceView === "analytics" && (
+                      <div className="space-y-6">
+                        {/* Analytics Metric Cards Grid */}
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                          <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-3 text-center flex flex-col justify-between min-h-[80px]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Results Summary</p>
+                            <div className="mt-1 text-left text-[11px] text-slate-750 dark:text-slate-300 leading-normal font-semibold space-y-0.5">
+                              <div>Results: <span className="font-bold text-slate-900 dark:text-white">{totalResults}</span></div>
+                              <div>Loaded: <span className="font-bold text-slate-900 dark:text-white">{batchesCount} batches</span></div>
+                              <div>Unique: <span className="font-bold text-slate-900 dark:text-white">{totalResults}</span></div>
+                            </div>
+                            <div />
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-3 text-center flex flex-col justify-between min-h-[80px]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Emails Found</p>
+                            <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{emailsFound}</p>
+                            {emailsFound === 0 ? (
+                              <p className="text-[8px] text-slate-455 leading-normal">Public emails rarely available.</p>
+                            ) : <div />}
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-3 text-center flex flex-col justify-between min-h-[80px]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Phones Found</p>
+                            <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{phonesFound}</p>
+                            {phonesFound === 0 ? (
+                              <p className="text-[8px] text-slate-455 leading-normal">Public numbers often unavailable.</p>
+                            ) : <div />}
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-3 text-center flex flex-col justify-between min-h-[80px]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">LinkedIn Summary</p>
+                            <div className="mt-1 text-left text-[9px] text-slate-750 dark:text-slate-300 leading-tight font-semibold space-y-0.5">
+                              <div>Verified: <span className="text-emerald-600 font-bold">{linkedinCounts.verified}</span></div>
+                              <div>Estimated: <span className="text-amber-600 font-bold">{linkedinCounts.estimated}</span></div>
+                              <div>Invalid: <span className="text-red-600 font-bold">{linkedinCounts.invalid}</span></div>
+                              <div>Not Found: <span className="text-slate-400 font-bold">{linkedinCounts.notFound}</span></div>
+                            </div>
+                            <div />
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-3 text-center flex flex-col justify-between min-h-[80px]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-455">Complete Profiles</p>
+                            <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{completeProfiles}</p>
+                            <div />
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white dark:bg-slate-800 dark:border-slate-700 p-3 text-center flex flex-col justify-between min-h-[80px]">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-455">Avg Confidence</p>
+                            <p className="mt-1 text-lg font-bold text-slate-900 dark:text-white">{avgConfidence}%</p>
+                            <div />
+                          </div>
+                        </div>
+
+                        {/* Top Leads & Recommendations panels */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* AI Recommendations Panel */}
+                          {targetAudience.length > 0 && (
+                            <div className="rounded-xl border border-blue-100 bg-blue-50/20 dark:bg-blue-955/10 dark:border-blue-900/50 p-4">
+                              <h3 className="text-xs font-bold text-blue-800 dark:text-blue-400 uppercase tracking-wider mb-3">AI Recommended Leads</h3>
+                              <div className="space-y-3">
+                                {targetAudience.slice(0, 3).map((item, idx) => {
+                                  const fit = calculateCampaignFit(item);
+                                  return (
+                                    <div key={idx} className="text-xs">
+                                      <p className="font-semibold text-slate-900 dark:text-white">{idx + 1}. {item.name}</p>
+                                      <ul className="list-disc pl-4 mt-1 text-slate-600 dark:text-slate-350 space-y-0.5">
+                                        <li>{item.description || "No description available."}</li>
+                                        {item.whyRelevant && <li>{item.whyRelevant}</li>}
+                                        <li>Highly aligned with overall fit of {fit.overall}%.</li>
+                                      </ul>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Top Leads Panel */}
+                          {targetAudience.length > 0 && (
+                            <div className="rounded-xl border border-slate-200 bg-slate-55/30 dark:bg-slate-800/30 p-4">
+                              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Top Leads</h3>
+                              <ol className="list-decimal pl-5 text-sm space-y-2 font-medium text-slate-800 dark:text-slate-300">
+                                {targetAudience.slice(0, 3).map((lead, idx) => (
+                                  <li key={idx} className="border-b border-slate-100 dark:border-slate-800 pb-1 last:border-0 last:pb-0">
+                                    <div className="flex items-center justify-between">
+                                      <span>{lead.name}</span>
+                                      <span className="text-xs font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded dark:bg-blue-955 dark:text-blue-400">
+                                        Score: {lead.score}
+                                      </span>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <ThinkingDisplay preset="marketing_analysis" />
-                </div>
+                </>
               )}
-              <div ref={chatBottomRef} />
             </div>
-
-            {/* Chat Input */}
-            <form onSubmit={submitFollowUp} className="flex gap-1.5 border-t border-slate-100 dark:border-slate-700 pt-3">
-              <input
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Refine (e.g. 'only from Rajasthan')..."
-                className="flex-1 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 dark:text-white dark:bg-slate-900 dark:border-slate-700 outline-none transition focus:bg-white focus:border-blue-500"
-              />
-              <button
-                type="submit"
-                disabled={chatLoading || !chatInput.trim()}
-                className="btn-primary text-xs font-bold px-3"
-              >
-                Refine
-              </button>
-            </form>
-          </section>
-        )}
-      </div>
-    </div>
 
 
       {/* Contact Popup */}
@@ -2912,7 +2924,7 @@ export default function TargetAudiencePage() {
               <div>
                 <h3 className="text-base font-bold text-slate-900">Similar Audience Found</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  You generated a similar audience ("<span className="font-semibold text-slate-800">{duplicateModal.similarSession.sessionName}</span>"){" "}
+                  You generated a similar audience (&ldquo;<span className="font-semibold text-slate-800">{duplicateModal.similarSession.sessionName}</span>&rdquo;){" "}
                   {(() => {
                     const diffMs = Date.now() - new Date(duplicateModal.similarSession.createdAt).getTime();
                     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
