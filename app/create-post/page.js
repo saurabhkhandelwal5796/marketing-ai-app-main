@@ -21,7 +21,10 @@ import {
   Star,
   FileDown,
   Download,
-  FolderOpen
+  FolderOpen,
+  History,
+  Search,
+  X
 } from "lucide-react";
 
 function normalizeEmail(value) {
@@ -2132,13 +2135,14 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                   } else if (typeId === "email_campaign" || typeId === "newsletter") {
                                     handleSendEmail(contentObj);
                                   } else {
-                                    setMessage(`${meta.label} API Integration: Coming Soon.`);
+                                    /* No direct publish API available for this content type */
                                   }
                                 }}
-                                disabled={submittingPost}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-650 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
+                                disabled={submittingPost || !(typeId === "linkedin_post" || typeId === "instagram_post" || typeId === "facebook_post" || typeId === "email_campaign" || typeId === "newsletter")}
+                                title={!(typeId === "linkedin_post" || typeId === "instagram_post" || typeId === "facebook_post" || typeId === "email_campaign" || typeId === "newsletter") ? `Direct publishing is not available for ${meta.label}. Copy your content and post it manually.` : undefined}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-bold text-white transition disabled:opacity-50 ${(typeId === "linkedin_post" || typeId === "instagram_post" || typeId === "facebook_post" || typeId === "email_campaign" || typeId === "newsletter") ? "bg-indigo-650 hover:bg-indigo-700 cursor-pointer" : "bg-slate-400 cursor-not-allowed"}`}
                               >
-                                <Send size={11} /> Publish
+                                <Send size={11} /> {(typeId === "email_campaign" || typeId === "newsletter") ? "Send Email" : "Publish"}
                               </button>
                             )}
 
@@ -2406,13 +2410,14 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                   } else if (typeId === "email_campaign" || typeId === "newsletter") {
                                     handleSendEmail(contentObj);
                                   } else {
-                                    setMessage(`${meta.label} API Integration: Coming Soon.`);
+                                    /* No direct publish API available for this content type */
                                   }
                                 }}
-                                disabled={submittingPost}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-650 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
+                                disabled={submittingPost || !(typeId === "linkedin_post" || typeId === "instagram_post" || typeId === "facebook_post" || typeId === "email_campaign" || typeId === "newsletter")}
+                                title={!(typeId === "linkedin_post" || typeId === "instagram_post" || typeId === "facebook_post" || typeId === "email_campaign" || typeId === "newsletter") ? `Direct publishing is not available for ${meta.label}. Copy your content and post it manually.` : undefined}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-bold text-white transition disabled:opacity-50 ${(typeId === "linkedin_post" || typeId === "instagram_post" || typeId === "facebook_post" || typeId === "email_campaign" || typeId === "newsletter") ? "bg-indigo-650 hover:bg-indigo-700 cursor-pointer" : "bg-slate-400 cursor-not-allowed"}`}
                               >
-                                <Send size={11} /> Publish
+                                <Send size={11} /> {(typeId === "email_campaign" || typeId === "newsletter") ? "Send Email" : "Publish"}
                               </button>
                             )}
 
