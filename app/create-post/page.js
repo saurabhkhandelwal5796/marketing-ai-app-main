@@ -182,6 +182,40 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       setMessage(e.message || `Failed to disconnect ${provider}.`);
     }
   };
+
+  const handleSendEmail = (contentObj, recipientEmail = null) => {
+    let toVal = "";
+    let subjectVal = "";
+    let bodyVal = "";
+
+    if (recipientEmail) {
+      const draft = recipientDrafts[recipientEmail] || { subject: baseEmailSubject, body: baseEmailBody };
+      toVal = recipientEmail;
+      subjectVal = draft.subject || "";
+      bodyVal = draft.body || "";
+    } else {
+      toVal = allRecipients.join(outlookConnected ? "; " : ",");
+      subjectVal = contentObj?.subject || baseEmailSubject || "";
+      bodyVal = contentObj?.content || baseEmailBody || "";
+    }
+
+    if (outlookConnected) {
+      const subject = encodeURIComponent(subjectVal);
+      const body = encodeURIComponent(bodyVal);
+      const to = encodeURIComponent(toVal);
+      const url = `https://outlook.office.com/mail/deeplink/compose?to=${to}&subject=${subject}&body=${body}`;
+      window.open(url, "_blank");
+    } else if (gmailConnected) {
+      const subject = encodeURIComponent(subjectVal);
+      const body = encodeURIComponent(bodyVal);
+      const to = encodeURIComponent(toVal);
+      const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}&body=${body}`;
+      window.open(url, "_blank");
+    } else {
+      setMessage("Please connect Outlook or Gmail.");
+    }
+  };
+
   //Added below 7 lines
   const [useTemplate, setUseTemplate] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -1899,6 +1933,15 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             >
                               <Download size={11} /> Download TXT
                             </button>
+                            {(typeId === "email_campaign" || typeId === "newsletter") && (
+                              <button
+                                onClick={() => handleSendEmail(contentObj)}
+                                className="inline-flex items-center gap-1 rounded bg-indigo-600 hover:bg-indigo-750 border border-indigo-650 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
+                                title="Send Email"
+                              >
+                                <Send size={11} /> Send Email
+                              </button>
+                            )}
                           </div>
                         </div>
                         {/* Real Metadata bar */}
@@ -2062,6 +2105,8 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                       return;
                                     }
                                     setMessage("Instagram API Integration: Coming Soon.");
+                                  } else if (typeId === "email_campaign" || typeId === "newsletter") {
+                                    handleSendEmail(contentObj);
                                   } else {
                                     setMessage(`${meta.label} API Integration: Coming Soon.`);
                                   }
@@ -2198,6 +2243,15 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           >
                             <Download size={12} /> Download TXT
                           </button>
+                          {(typeId === "email_campaign" || typeId === "newsletter") && (
+                            <button
+                              onClick={() => handleSendEmail(contentObj)}
+                              className="inline-flex items-center gap-1.5 rounded bg-indigo-600 hover:bg-indigo-755 border border-indigo-650 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-2xs"
+                              title="Send Email"
+                            >
+                              <Send size={12} /> Send Email
+                            </button>
+                          )}
                         </div>
 
                         {/* Editor input fields */}
@@ -2325,6 +2379,8 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                       return;
                                     }
                                     setMessage("Instagram API Integration: Coming Soon.");
+                                  } else if (typeId === "email_campaign" || typeId === "newsletter") {
+                                    handleSendEmail(contentObj);
                                   } else {
                                     setMessage(`${meta.label} API Integration: Coming Soon.`);
                                   }
@@ -2569,27 +2625,41 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                   </div>
                 </div>
 
-                <div className="mt-4 flex justify-end">
-                   <button
-                     onClick={saveDraftForRecipient}
-                     disabled={!activeRecipient || savingRecipientDraft}
-                     className="rounded-lg border border-slate-205 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
-                   >
-                     {savingRecipientDraft ? "Saving..." : "Save Draft"}
-                   </button>
-                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                    <button
+                      onClick={() => handleSendEmail(null, activeRecipient)}
+                      disabled={!activeRecipient}
+                      className="rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-5 py-2.5 text-sm font-semibold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Send size={14} /> Send Email to Recipient
+                    </button>
+                    <button
+                      onClick={saveDraftForRecipient}
+                      disabled={!activeRecipient || savingRecipientDraft}
+                      className="rounded-lg border border-slate-205 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
+                    >
+                      {savingRecipientDraft ? "Saving..." : "Save Draft"}
+                    </button>
+                 </div>
               </div>
             </div>
 
-            <div className="pt-2">
-               <button
-                 onClick={() => submitPostAction("send_all")}
-                 disabled={submittingPost || allRecipients.length === 0}
-                 className="w-full rounded-xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[0.99] hover:bg-indigo-705 hover:shadow-lg disabled:opacity-50 border-0 cursor-pointer"
-               >
-                 {submittingPost ? "Sending Campaign..." : `Send to ${allRecipients.length} Recipient${allRecipients.length !== 1 ? 's' : ''}`}
-               </button>
-            </div>
+             <div className="pt-2 flex gap-3">
+                <button
+                  onClick={() => submitPostAction("send_all")}
+                  disabled={submittingPost || allRecipients.length === 0}
+                  className="flex-1 rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[0.99] hover:bg-slate-800 hover:shadow-lg disabled:opacity-50 border-0 cursor-pointer"
+                >
+                  {submittingPost ? "Sending Campaign..." : `Send to ${allRecipients.length} Recipient${allRecipients.length !== 1 ? 's' : ''}`}
+                </button>
+                <button
+                  onClick={() => handleSendEmail(null)}
+                  disabled={allRecipients.length === 0}
+                  className="flex-1 rounded-xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[0.99] hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50 border-0 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  <Send size={14} /> Send Email (Outlook/Gmail)
+                </button>
+             </div>
           </div>
         </div>
       ) : null}
