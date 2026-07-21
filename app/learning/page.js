@@ -35,7 +35,7 @@ const VIDEO_RECOMMENDATIONS = [
   {
     title: "Marketing Fundamentals: 4 Ps of Marketing Explained",
     url: "https://www.youtube.com/watch?v=h95p3fQbGn4",
-    takeaway: "Master the classic 4 Ps of marketing: Product, Price, Place, and Promotion with modern B2B examples.",
+    takeaway: "Master the classic 4 Ps of marketing: Product, Price, Place, and Promotion with B2B models.",
     category: "Marketing",
     views: "145K views",
     likes: "8.2K likes",
@@ -71,7 +71,7 @@ const VIDEO_RECOMMENDATIONS = [
   {
     title: "LinkedIn Organic Outreach and Social Selling Strategy",
     url: "https://www.youtube.com/watch?v=qX3H4zG0g5U",
-    takeaway: "Optimize your LinkedIn presence and run non-spammy organic outreach campaigns.",
+    takeaway: "Optimize your LinkedIn presence and run organic outreach campaigns.",
     category: "LinkedIn",
     views: "105K views",
     likes: "5.8K likes",
@@ -297,7 +297,7 @@ const TRENDING_CONTENT = [
     title: "Cold Email Outreaches that Booked Fortune 500 Clients",
     url: "https://www.youtube.com/watch?v=mD0kY8S9d14",
     type: "video",
-    takeaway: "Step-by-step review of real cold emails that converted B2B accounts.",
+    takeaway: "Review of real cold emails that converted B2B accounts.",
     category: "Lead Generation",
     views: "35K views",
     likes: "2.8K saves",
@@ -371,6 +371,20 @@ function getCardImage(item, variant) {
   return svgThumbnail(item, variant);
 }
 
+// Lookup Level Info
+const getLevelInfo = (xp) => {
+  if (xp < 1000) {
+    return { level: 1, title: "B2B Novice", nextThreshold: 1000, progress: Math.min(100, Math.round((xp / 1000) * 100)) };
+  }
+  if (xp < 2500) {
+    return { level: 2, title: "B2B Specialist", nextThreshold: 2500, progress: Math.min(100, Math.round(((xp - 1000) / 1500) * 100)) };
+  }
+  if (xp < 5000) {
+    return { level: 3, title: "B2B Strategist", nextThreshold: 5000, progress: Math.min(100, Math.round(((xp - 2500) / 2500) * 100)) };
+  }
+  return { level: 4, title: "Growth Marketing Expert", nextThreshold: 10000, progress: Math.min(100, Math.round(((xp - 5000) / 5000) * 100)) };
+};
+
 export default function LearningPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -402,6 +416,10 @@ export default function LearningPage() {
   const [streakDays, setStreakDays] = useState(0);
   const [dailyLogs, setDailyLogs] = useState([]);
 
+  // Gamification States
+  const [userXp, setUserXp] = useState(0);
+  const [claimedCert, setClaimedCert] = useState(null);
+
   // AI Assistant Chat States
   const [threads, setThreads] = useState([]);
   const [activeThreadId, setActiveThreadId] = useState(null);
@@ -421,6 +439,7 @@ export default function LearningPage() {
       setTotalVideos(parseInt(localStorage.getItem("learning_stats_total_videos") || "0", 10));
       setStreakDays(parseInt(localStorage.getItem("learning_stats_streak") || "0", 10));
       setDailyLogs(JSON.parse(localStorage.getItem("learning_stats_daily_log") || "[]"));
+      setUserXp(parseInt(localStorage.getItem("learning_stats_xp") || "0", 10));
     } catch {}
   };
 
@@ -449,6 +468,16 @@ export default function LearningPage() {
     } catch {
       return 1;
     }
+  };
+
+  // Add XP helper
+  const addXp = (amount) => {
+    try {
+      const currentXp = parseInt(localStorage.getItem("learning_stats_xp") || "0", 10);
+      const newXp = currentXp + amount;
+      localStorage.setItem("learning_stats_xp", String(newXp));
+      setUserXp(newXp);
+    } catch {}
   };
 
   // Log activity helper
@@ -559,8 +588,9 @@ export default function LearningPage() {
         localStorage.setItem("learning_time_today", String(newTime));
       } catch {}
 
-      // Accumulate to cumulative and log stats
+      // Accumulate to cumulative, log, and add XP
       logActivity(10, 0, 0);
+      addXp(2);
       loadCumulativeStats();
     }, 10000);
 
@@ -574,6 +604,31 @@ export default function LearningPage() {
       assistantChatBottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [activeThread?.messages, chatLoading]);
+
+  // Pre-existing unmount audit tracking event
+  useEffect(() => {
+    const startTime = Date.now();
+    return () => {
+      const timeSpent = Date.now() - startTime;
+      if (timeSpent > 10000) {
+        (async () => {
+          const currentUserId = await getCurrentUserId();
+          fetch("/api/audit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              user_id: currentUserId || "anonymous",
+              event_type: "page_visit",
+              page_name: "Learning",
+              time_spent_ms: timeSpent,
+              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Learning page`,
+              session_id: getCurrentSessionId(),
+            }),
+          }).catch(() => {});
+        })();
+      }
+    };
+  }, []);
 
   const loadContent = useCallback(async () => {
     setLoading(true);
@@ -614,8 +669,9 @@ export default function LearningPage() {
       localStorage.setItem("learning_articles_today", String(newCount));
     } catch {}
 
-    // Accumulate to cumulative stats
+    // Accumulate to cumulative stats and award XP
     logActivity(0, 1, 0);
+    addXp(50);
     loadCumulativeStats();
 
     // Audit log
@@ -649,8 +705,9 @@ export default function LearningPage() {
       localStorage.setItem("learning_videos_today", "1");
     } catch {}
 
-    // Accumulate to cumulative stats
+    // Accumulate to cumulative stats and award XP
     logActivity(0, 0, 1);
+    addXp(100);
     loadCumulativeStats();
 
     // Audit log
@@ -731,6 +788,21 @@ export default function LearningPage() {
   const articlesProgress = Math.min(100, Math.round((articlesReadToday / 3) * 100));
   const videosProgress = Math.min(100, Math.round((videosWatchedToday / 1) * 100));
 
+  // Goal completion check to trigger +200 XP award once daily
+  useEffect(() => {
+    if (timeProgress >= 100 && articlesProgress >= 100 && videosProgress >= 100) {
+      const todayStr = new Date().toDateString();
+      try {
+        const claimedDate = localStorage.getItem("learning_daily_goal_claimed_date");
+        if (claimedDate !== todayStr) {
+          localStorage.setItem("learning_daily_goal_claimed_date", todayStr);
+          addXp(200);
+          alert("🎉 Daily Goal Achieved! +200 XP awarded!");
+        }
+      } catch {}
+    }
+  }, [timeProgress, articlesProgress, videosProgress]);
+
   const videoRailRef = useRef(null);
   const scrollVideoRail = (direction) => {
     if (!videoRailRef.current) return;
@@ -760,7 +832,7 @@ export default function LearningPage() {
   };
 
   const resetAllTrackingStats = () => {
-    const conf = window.confirm("Are you sure you want to reset all your learning statistics and dashboard logs?");
+    const conf = window.confirm("Are you sure you want to reset all your learning statistics, XP, achievements, and dashboard logs?");
     if (!conf) return;
     try {
       localStorage.removeItem("learning_stats_total_time");
@@ -769,6 +841,8 @@ export default function LearningPage() {
       localStorage.removeItem("learning_stats_streak");
       localStorage.removeItem("learning_stats_last_active");
       localStorage.removeItem("learning_stats_daily_log");
+      localStorage.removeItem("learning_stats_xp");
+      localStorage.removeItem("learning_daily_goal_claimed_date");
       loadCumulativeStats();
     } catch {}
   };
@@ -836,16 +910,117 @@ export default function LearningPage() {
   // Completion percentage
   const averageCompletion = Math.round((timeProgress + articlesProgress + videosProgress) / 3);
 
-  // Leaderboard data
-  const teamMembers = [
-    { name: "Sarah Connor", videos: 15, articles: 18, hours: 12.0, streak: 10, avatar: "SC", isUser: false },
-    { name: "John Doe (You)", videos: totalVideos, articles: totalArticles, hours: parseFloat((totalTime / 3600).toFixed(1)), streak: streakDays, avatar: "JD", isUser: true },
-    { name: "Bharti Sharma", videos: 10, articles: 7, hours: 6.5, streak: 5, avatar: "BS", isUser: false },
-    { name: "Akshay Verma", videos: 8, articles: 4, hours: 5.0, streak: 3, avatar: "AV", isUser: false },
-    { name: "Emily Watson", videos: 3, articles: 2, hours: 2.0, streak: 1, avatar: "EW", isUser: false },
-  ].sort((a, b) => b.hours - a.hours);
+  // Dynamic Badge Unlocking Evaluator
+  const getBadgesState = () => {
+    const marketingExpert = totalArticles >= 5;
+    const salesChampion = totalVideos >= 5;
+    
+    let totalMessages = 0;
+    try {
+      const stored = localStorage.getItem("learning_chat_threads");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        parsed.forEach(t => {
+          totalMessages += t.messages.filter(m => m.role === "user").length;
+        });
+      }
+    } catch {}
+    const aiMaster = totalMessages >= 5;
 
-  const totalTeamHours = teamMembers.reduce((acc, m) => acc + m.hours, 0).toFixed(1);
+    let linkedinCount = 0;
+    historyList.forEach(item => {
+      if (item.category === "LinkedIn" || (item.title && item.title.toLowerCase().includes("linkedin"))) {
+        linkedinCount++;
+      }
+    });
+    const linkedinPro = linkedinCount >= 3;
+
+    let customCount = 0;
+    try {
+      const stored = localStorage.getItem("learning_chat_threads");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const suggestionChips = [
+          "Generate a cold email for real estate.",
+          "Explain B2B lead generation.",
+          "Create 10 LinkedIn outreach messages.",
+          "Generate a B2B cold call script.",
+          "Generate 5 SaaS campaign ideas.",
+          "Generate 10 blog content ideas."
+        ];
+        parsed.forEach(t => {
+          t.messages.forEach(m => {
+            if (m.role === "user" && !suggestionChips.includes(m.content)) {
+              customCount++;
+            }
+          });
+        });
+      }
+    } catch {}
+    const promptEngineer = customCount >= 3;
+
+    return [
+      { key: "marketing", title: "Marketing Expert", description: "Read 5 marketing resources", unlocked: marketingExpert, icon: "🎯" },
+      { key: "sales", title: "Sales Champion", description: "Watch 5 tutorial videos", unlocked: salesChampion, icon: "🏆" },
+      { key: "ai", title: "AI Master", description: "Query the AI Assistant 5 times", unlocked: aiMaster, icon: "⚡" },
+      { key: "linkedin", title: "LinkedIn Pro", description: "Study 3 LinkedIn resources", unlocked: linkedinPro, icon: "💼" },
+      { key: "prompt", title: "Prompt Engineer", description: "Submit 3 custom prompts", unlocked: promptEngineer, icon: "✍️" }
+    ];
+  };
+
+  const badgesList = getBadgesState();
+  const unlockedBadgesCount = badgesList.filter(b => b.unlocked).length;
+
+  // Dynamic Certification Achievements Evaluator
+  const getCertificationsState = () => {
+    const marketingCert = totalArticles >= 3 && totalVideos >= 2;
+    const salesCert = totalVideos >= 4 && totalArticles >= 2;
+    
+    const promptEngineerUnlocked = badgesList.find(b => b.key === "prompt")?.unlocked || false;
+    const aiCert = totalVideos >= 1 && promptEngineerUnlocked;
+
+    return [
+      {
+        id: "cert-marketing",
+        title: "B2B Growth Marketing Specialist",
+        description: "Credentials in B2B content positioning, lead loops, and growth hacking campaigns.",
+        progress: Math.min(100, Math.round(((totalArticles / 3) * 0.5 + (totalVideos / 2) * 0.5) * 100)),
+        unlocked: marketingCert,
+        criteria: "Read 3 articles & Watch 2 videos"
+      },
+      {
+        id: "cert-sales",
+        title: "Inbound Sales Associate",
+        description: "Credentials in sales discovery frameworks, pipeline, and objection handling.",
+        progress: Math.min(100, Math.round(((totalVideos / 4) * 0.6 + (totalArticles / 2) * 0.4) * 100)),
+        unlocked: salesCert,
+        criteria: "Watch 4 videos & Read 2 articles"
+      },
+      {
+        id: "cert-ai",
+        title: "AI Prospecting Professional",
+        description: "Credentials in prompt engineering, automated lead scraping, and script generation workflows.",
+        progress: aiCert ? 100 : Math.min(99, Math.round(((totalVideos / 1) * 0.4 + (promptEngineerUnlocked ? 1 : 0) * 0.6) * 100)),
+        unlocked: aiCert,
+        criteria: "Watch 1 video & Unlock Prompt Engineer badge"
+      }
+    ];
+  };
+
+  const certificationsList = getCertificationsState();
+  const levelInfo = getLevelInfo(userXp);
+
+  // Leaderboard data sorted dynamically by XP
+  const teamMembers = [
+    { name: "Sarah Connor", xp: 14400, streak: 10, avatar: "SC", badges: ["marketing", "sales", "linkedin"], isUser: false },
+    { name: "John Doe (You)", xp: userXp, streak: streakDays, avatar: "JD", badges: badgesList.filter(b => b.unlocked).map(b => b.key), isUser: true },
+    { name: "Bharti Sharma", xp: 7850, streak: 5, avatar: "BS", badges: ["marketing", "linkedin"], isUser: false },
+    { name: "Akshay Verma", xp: 6000, streak: 3, avatar: "AV", badges: ["sales"], isUser: false },
+    { name: "Emily Watson", xp: 2400, streak: 1, avatar: "EW", badges: [], isUser: false },
+  ].sort((a, b) => b.xp - a.xp);
+
+  // Manager console summaries
+  const totalTeamHours = (teamMembers.reduce((acc, m) => acc + (m.isUser ? parseFloat((totalTime / 3600).toFixed(1)) : parseFloat((m.xp / 1000).toFixed(1))), 0)).toFixed(1);
   const avgTeamStreak = Math.round(teamMembers.reduce((acc, m) => acc + m.streak, 0) / teamMembers.length);
   const topLearner = teamMembers[0];
   const leastActive = teamMembers[teamMembers.length - 1];
@@ -954,6 +1129,7 @@ export default function LearningPage() {
     } catch {}
 
     setChatLoading(true);
+    addXp(20);
 
     try {
       const res = await fetch("/api/learning/chat", {
@@ -1148,7 +1324,7 @@ export default function LearningPage() {
                           handleArticleClick(activeContinue);
                         }
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-blue-500 shadow-md transition-all active:scale-95"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white hover:bg-blue-500 shadow-md transition-all active:scale-95 border-0 cursor-pointer"
                     >
                       Resume Learning
                     </button>
@@ -1171,10 +1347,10 @@ export default function LearningPage() {
                 </div>
                 
                 <div className="flex items-center gap-2 self-end md:self-center">
-                  <button onClick={() => scrollVideoRail("left")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800">
+                  <button onClick={() => scrollVideoRail("left")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800 bg-transparent cursor-pointer">
                     <ChevronLeft size={14} />
                   </button>
-                  <button onClick={() => scrollVideoRail("right")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800">
+                  <button onClick={() => scrollVideoRail("right")} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-300 hover:bg-slate-800 bg-transparent cursor-pointer">
                     <ChevronRight size={14} />
                   </button>
                 </div>
@@ -1186,7 +1362,7 @@ export default function LearningPage() {
                   <button
                     key={tab}
                     onClick={() => setSelectedVideoTab(tab)}
-                    className={`rounded-full px-3.5 py-1 text-xs font-semibold whitespace-nowrap transition-all ${
+                    className={`rounded-full px-3.5 py-1 text-xs font-semibold whitespace-nowrap transition-all border-0 cursor-pointer ${
                       selectedVideoTab === tab
                         ? "bg-blue-600 text-white shadow-sm"
                         : "bg-slate-900/80 text-slate-400 border border-slate-800 hover:bg-slate-800"
@@ -1220,7 +1396,7 @@ export default function LearningPage() {
                         </span>
                         <button
                           onClick={(e) => toggleBookmark(e, video, "video")}
-                          className="absolute top-2 right-2 rounded-lg bg-black/60 p-1.5 text-slate-300 hover:text-amber-400 hover:bg-black transition-colors"
+                          className="absolute top-2 right-2 rounded-lg bg-black/60 p-1.5 text-slate-300 hover:text-amber-400 hover:bg-black transition-colors border-0 cursor-pointer"
                           title="Bookmark"
                         >
                           <Bookmark size={13} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
@@ -1258,7 +1434,7 @@ export default function LearningPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">Recommended Articles</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Handpicked resources that rotate daily (10 fresh updates every morning).</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Handpicked B2B resources that rotate daily.</p>
                 </div>
               </div>
 
@@ -1273,7 +1449,7 @@ export default function LearningPage() {
                     >
                       <button
                         onClick={(e) => toggleBookmark(e, article, "article")}
-                        className="absolute top-3 right-3 rounded-lg bg-slate-900/80 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                        className="absolute top-3 right-3 rounded-lg bg-slate-900/80 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition border-0 cursor-pointer bg-transparent"
                         title="Bookmark"
                       >
                         <Bookmark size={13} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
@@ -1426,6 +1602,7 @@ export default function LearningPage() {
                         setArticlesReadToday(val);
                         try { localStorage.setItem("learning_articles_today", String(val)); } catch {}
                         logActivity(0, 1, 0);
+                        addXp(50);
                         loadCumulativeStats();
                       }}
                       className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 tracking-wider uppercase bg-transparent border-0 cursor-pointer"
@@ -1454,6 +1631,7 @@ export default function LearningPage() {
                         setVideosWatchedToday(1);
                         try { localStorage.setItem("learning_videos_today", "1"); } catch {}
                         logActivity(0, 0, 1);
+                        addXp(100);
                         loadCumulativeStats();
                       }}
                       className="text-[9px] font-bold text-blue-400 hover:text-blue-300 tracking-wider uppercase bg-transparent border-0 cursor-pointer"
@@ -1596,14 +1774,111 @@ export default function LearningPage() {
               )}
             </section>
 
+            {/* Action Plan */}
+            {content && content.actionPlan && content.actionPlan.length > 0 && (
+              <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+                <div className="mb-4 flex items-center gap-2">
+                  <div className="rounded-lg bg-indigo-500/10 p-2 text-indigo-400">
+                    <CheckCircle2 size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">Daily Action Plan</h3>
+                    <p className="text-[11px] text-slate-400 mt-0.5">B2B skills execution guidelines from the AI Coach.</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {content.actionPlan.map((step, index) => {
+                    const moduleName = String(step || `Module ${index + 1}`);
+                    const key = `${index}-${moduleName}`;
+                    const isCompleted = completedModules.has(key);
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-855 bg-slate-900/40 text-xs text-slate-200"
+                      >
+                        <span className={`mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                          isCompleted ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-400"
+                        }`}>
+                          {index + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className={`leading-relaxed font-semibold ${isCompleted ? "line-through text-slate-500" : ""}`}>{step}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isCompleted) return;
+                              setCompletedModules((prev) => new Set([...prev, key]));
+                              addXp(150);
+                              (async () => {
+                                const currentUserId = await getCurrentUserId();
+                                fetch("/api/audit", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    user_id: currentUserId || "anonymous",
+                                    event_type: "action",
+                                    page_name: "Learning",
+                                    action_name: "Completed Learning Module",
+                                    details: `Completed: ${moduleName}`,
+                                    session_id: getCurrentSessionId(),
+                                  }),
+                                }).catch(() => {});
+                              })();
+                            }}
+                            className="mt-2 rounded bg-slate-800 hover:bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-300 disabled:opacity-50 border-0 cursor-pointer"
+                            disabled={isCompleted}
+                          >
+                            {isCompleted ? "Completed" : "Mark Done"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
           </div>
         </div>
       )}
 
-      {/* TAB 2: My Analytics (Personal Dashboard) */}
+      {/* TAB 2: My Analytics (Personal Dashboard & Gamification) */}
       {activeTab === "dashboard" && (
         <div className="space-y-6 animate-fadeIn">
           
+          {/* XP & Level Progress Bar */}
+          <section className="rounded-2xl border border-slate-800 bg-gradient-to-r from-slate-900 to-indigo-950 p-5 shadow-lg relative overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-4 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-2xl shadow-md border border-amber-300/30">
+                  ⚡
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-1.5">
+                    Level {levelInfo.level}: {levelInfo.title}
+                  </h3>
+                  <p className="text-xs text-slate-400">Claim certificates and unlock badges by earning XP.</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="text-2xl font-black text-amber-400">{userXp} XP</span>
+                <span className="text-xs text-slate-500 block">Next Level: {levelInfo.nextThreshold} XP</span>
+              </div>
+            </div>
+            
+            <div className="mt-4">
+              <div className="h-2.5 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-750">
+                <div
+                  style={{ width: `${levelInfo.progress}%` }}
+                  className="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-indigo-500 rounded-full transition-all duration-500"
+                />
+              </div>
+            </div>
+            <div className="absolute right-0 bottom-0 h-24 w-24 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+          </section>
+
+          {/* Main Stat metrics Row */}
           <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-4 text-center shadow-md relative overflow-hidden">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Learning Streak</p>
@@ -1635,6 +1910,106 @@ export default function LearningPage() {
             </div>
           </section>
 
+          {/* Badges Locker Grid */}
+          <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Award size={15} className="text-amber-500" />
+                Gamification Badges ({unlockedBadgesCount}/5 Unlocked)
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Badges unlock automatically when you achieve the milestone criteria.</p>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              {badgesList.map((badge) => (
+                <div
+                  key={badge.key}
+                  className={`p-4 rounded-2xl border text-center transition flex flex-col items-center justify-center gap-2 ${
+                    badge.unlocked
+                      ? "border-amber-500/40 bg-amber-500/5 shadow-[0_0_15px_rgba(245,158,11,0.08)]"
+                      : "border-slate-850 bg-slate-900/10 opacity-40 grayscale"
+                  }`}
+                >
+                  <span className="text-3xl">{badge.icon}</span>
+                  <div>
+                    <h4 className="text-xs font-bold text-white leading-snug">{badge.title}</h4>
+                    <p className="text-[9px] text-slate-400 leading-normal mt-1 max-w-[120px] mx-auto">
+                      {badge.description}
+                    </p>
+                  </div>
+                  {badge.unlocked ? (
+                    <span className="rounded bg-amber-500/10 px-2 py-0.5 text-[8px] font-bold text-amber-400 uppercase tracking-widest">
+                      Unlocked
+                    </span>
+                  ) : (
+                    <span className="rounded bg-slate-800 px-2 py-0.5 text-[8px] font-bold text-slate-500 uppercase tracking-widest">
+                      Locked
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Certifications Panel */}
+          <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
+                <Award size={15} className="text-indigo-400" />
+                Curriculum Certifications
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Pass targets to claim and print your official certificate credentials.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {certificationsList.map((cert) => (
+                <div
+                  key={cert.id}
+                  className={`p-4 rounded-2xl border flex flex-col justify-between gap-4 ${
+                    cert.unlocked
+                      ? "border-indigo-500/40 bg-indigo-500/5 shadow-[0_0_15px_rgba(99,102,241,0.08)]"
+                      : "border-slate-850 bg-slate-905"
+                  }`}
+                >
+                  <div>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                      {cert.unlocked ? "✅ Achieved" : "⏳ In Progress"}
+                    </span>
+                    <h4 className="text-sm font-black text-white leading-snug mt-1">{cert.title}</h4>
+                    <p className="text-[11px] text-slate-400 leading-normal mt-1.5">{cert.description}</p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1">
+                        <span>Progress Criteria: {cert.criteria}</span>
+                        <span>{cert.progress}%</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          style={{ width: `${cert.progress}%` }}
+                          className={`h-full rounded-full ${
+                            cert.unlocked ? "bg-indigo-500" : "bg-slate-700"
+                          }`}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={!cert.unlocked}
+                      onClick={() => setClaimedCert(cert)}
+                      className="w-full text-center inline-flex items-center justify-center gap-1 py-1.5 rounded-lg text-xs font-bold transition border-0 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed bg-indigo-600 hover:bg-indigo-500 text-white"
+                    >
+                      {cert.unlocked ? "Claim Certificate" : "Locked"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Reports Grid */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             
             {/* Weekly Report Graph */}
@@ -1731,7 +2106,7 @@ export default function LearningPage() {
                 <Award size={15} className="text-amber-500" />
                 Team Leaderboard
               </h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">Real-time learning ranks based on cumulative learning hours.</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Real-time learning ranks based on cumulative XP Points.</p>
             </div>
 
             <div className="space-y-3">
@@ -1759,23 +2134,56 @@ export default function LearningPage() {
                         <h4 className="text-xs font-bold text-white truncate leading-snug">
                           {member.name}
                         </h4>
-                        <p className="text-[10px] text-slate-400 uppercase font-semibold tracking-wider flex items-center gap-1.5 mt-0.5">
-                          <span>🔥 {member.streak} Day Streak</span>
-                          <span>•</span>
-                          <span>📺 {member.videos} videos</span>
-                          <span>•</span>
-                          <span>📄 {member.articles} articles</span>
-                        </p>
+                        
+                        {/* Member achievements badges line */}
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                          <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">🔥 {member.streak}d streak</span>
+                          {member.badges.map(bKey => {
+                            const matchBadge = badgesList.find(badge => badge.key === bKey);
+                            if (!matchBadge) return null;
+                            return (
+                              <span
+                                key={bKey}
+                                className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-400 font-bold border border-amber-500/10"
+                                title={matchBadge.title}
+                              >
+                                {matchBadge.icon}
+                              </span>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
                       <span className="inline-flex rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
-                        {member.hours.toFixed(1)} Hrs
+                        {member.xp} XP
                       </span>
                     </div>
                   </div>
                 );
               })}
+            </div>
+
+            {/* Monthly Awards Section */}
+            <div className="mt-6 pt-5 border-t border-slate-800">
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-3">Monthly Awards</span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3 rounded-xl border border-slate-850 bg-slate-900/30 text-center">
+                  <span className="text-2xl block mb-1">🥇</span>
+                  <h4 className="text-[11px] font-bold text-white">Top Learner</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Sarah Connor</p>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-850 bg-slate-900/30 text-center">
+                  <span className="text-2xl block mb-1">🔥</span>
+                  <h4 className="text-[11px] font-bold text-white">Super Streak</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Sarah Connor (10 days)</p>
+                </div>
+                <div className="p-3 rounded-xl border border-slate-850 bg-slate-900/30 text-center">
+                  <span className="text-2xl block mb-1">🚀</span>
+                  <h4 className="text-[11px] font-bold text-white">Growth Star</h4>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Bharti Sharma</p>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -1791,28 +2199,31 @@ export default function LearningPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-slate-850 bg-slate-900/40 p-3 text-center">
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">Team Hours Learned</p>
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">Total Learning Hours</p>
                 <p className="mt-1 text-lg font-black text-white">{totalTeamHours} Hrs</p>
               </div>
               <div className="rounded-xl border border-slate-850 bg-slate-900/40 p-3 text-center">
-                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">Avg Team Streak</p>
+                <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">Active Users (Streak)</p>
                 <p className="mt-1 text-lg font-black text-amber-400">{avgTeamStreak} Days</p>
               </div>
             </div>
 
             <div className="space-y-4 pt-2 border-t border-slate-800/80">
               <div>
-                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-2">Top Learner</span>
-                <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                    {topLearner.avatar}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-bold text-emerald-400 truncate">{topLearner.name}</h4>
-                    <p className="text-[10px] text-slate-400 leading-normal mt-0.5">
-                      Leading with **{topLearner.hours} hours** learned and a **{topLearner.streak} day streak**.
-                    </p>
-                  </div>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-2">Top Performers</span>
+                <div className="space-y-2">
+                  {teamMembers.slice(0, 2).map((member, idx) => (
+                    <div key={member.name} className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="text-xs font-bold text-emerald-400">{idx + 1}</span>
+                        <div className="h-7 w-7 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                          {member.avatar}
+                        </div>
+                        <h4 className="text-xs font-bold text-white truncate">{member.name}</h4>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-400 shrink-0">{member.xp} XP</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -1825,7 +2236,7 @@ export default function LearningPage() {
                   <div className="min-w-0">
                     <h4 className="text-xs font-bold text-red-400 truncate">{leastActive.name}</h4>
                     <p className="text-[10px] text-slate-400 leading-normal mt-0.5">
-                      Completed **{leastActive.hours} hours** so far. Reach out to schedule coaching support.
+                      Completed **{leastActive.xp} XP** so far. Reach out to schedule coaching support.
                     </p>
                   </div>
                 </div>
@@ -1833,19 +2244,25 @@ export default function LearningPage() {
             </div>
 
             <div className="pt-4 border-t border-slate-800/80">
-              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-3">Team Engagement Audit</span>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between items-center text-slate-300">
-                  <span>Weekly Goal Completion Rate</span>
-                  <span className="font-bold text-white">82%</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-3">Team Completion Stats</span>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <div className="flex justify-between items-center text-slate-300 mb-1">
+                    <span>B2B Growth Marketing Specialist</span>
+                    <span className="font-bold text-white">80% completion rate</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: "80%" }} />
+                  </div>
                 </div>
-                <div className="flex justify-between items-center text-slate-300">
-                  <span>Total Video Lectures Played</span>
-                  <span className="font-bold text-white">48 videos</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-300">
-                  <span>Articles Shared In Slack</span>
-                  <span className="font-bold text-white">36 shares</span>
+                <div>
+                  <div className="flex justify-between items-center text-slate-300 mb-1">
+                    <span>Inbound Sales Associate</span>
+                    <span className="font-bold text-white">60% completion rate</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: "60%" }} />
+                  </div>
                 </div>
               </div>
             </div>
@@ -1862,12 +2279,11 @@ export default function LearningPage() {
             <div className="space-y-3 min-h-0 flex-1 flex flex-col">
               <button
                 onClick={createNewThread}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 py-2 text-xs font-bold text-white transition active:scale-95 shadow-md"
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 py-2 text-xs font-bold text-white transition active:scale-95 shadow-md border-0 cursor-pointer"
               >
                 + New Chat
               </button>
 
-              {/* Search Box */}
               <div className="relative">
                 <input
                   type="text"
@@ -1878,7 +2294,6 @@ export default function LearningPage() {
                 />
               </div>
 
-              {/* Threads list */}
               <div className="flex-1 overflow-y-auto space-y-1.5 custom-sidebar-scroll pr-1">
                 {filteredThreadsList.length === 0 ? (
                   <p className="text-[11px] text-slate-600 italic text-center py-4">No conversations found</p>
@@ -1990,7 +2405,7 @@ export default function LearningPage() {
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={(e) => togglePinThread(activeThread.id, e)}
-                    className={`rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 hover:text-amber-400 transition cursor-pointer ${
+                    className={`rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 hover:text-amber-400 transition cursor-pointer border-0 ${
                       activeThread.pinned ? "text-amber-500" : "text-slate-400"
                     }`}
                     title={activeThread.pinned ? "Unpin chat" : "Pin chat"}
@@ -1999,7 +2414,7 @@ export default function LearningPage() {
                   </button>
                   <button
                     onClick={() => exportChat(activeThread)}
-                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-blue-400 transition cursor-pointer"
+                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-blue-400 transition cursor-pointer border-0 bg-transparent"
                     title="Export transcript"
                   >
                     <FileText size={12} />
@@ -2009,14 +2424,14 @@ export default function LearningPage() {
                       setEditingThreadId(activeThread.id);
                       setEditingTitle(activeThread.title);
                     }}
-                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-blue-400 transition cursor-pointer"
+                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-blue-400 transition cursor-pointer border-0 bg-transparent"
                     title="Rename chat"
                   >
                     <Edit3 size={12} />
                   </button>
                   <button
                     onClick={(e) => deleteThread(activeThread.id, e)}
-                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-red-400 transition cursor-pointer"
+                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-red-400 transition cursor-pointer border-0 bg-transparent"
                     title="Delete chat"
                   >
                     <Trash2 size={12} />
@@ -2025,12 +2440,12 @@ export default function LearningPage() {
               </div>
 
               {/* Chat Messages scroll area */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-4 [scrollbar-width:thin] bg-slate-950/10">
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 [scrollbar-width:thin] bg-slate-955/10">
                 {activeThread.messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center text-center h-full max-w-lg mx-auto py-8">
                     <Sparkles size={36} className="text-blue-500 animate-pulse mb-2" />
                     <h4 className="text-sm font-bold text-white">How can I help you today?</h4>
-                    <p className="text-xs text-slate-400 mt-1">Ask questions, outline cold email campaigns, write LinkedIn followups, or generate sales cold scripts.</p>
+                    <p className="text-xs text-slate-400 mt-1">Ask marketing or sales questions, outline email campaigns, write LinkedIn followups, or generate scripting cold calls.</p>
                     
                     {/* Prompt suggestions grid */}
                     <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
@@ -2045,7 +2460,7 @@ export default function LearningPage() {
                         <button
                           key={promptText}
                           onClick={() => handleSendChatMessage(promptText)}
-                          className="p-3 text-left rounded-xl border border-slate-850 bg-slate-900/50 hover:bg-slate-900 text-[11px] text-slate-300 hover:text-white font-semibold transition leading-relaxed"
+                          className="p-3 text-left rounded-xl border border-slate-850 bg-slate-900/50 hover:bg-slate-900 text-[11px] text-slate-300 hover:text-white font-semibold transition leading-relaxed cursor-pointer"
                         >
                           &ldquo;{promptText}&rdquo;
                         </button>
@@ -2094,7 +2509,7 @@ export default function LearningPage() {
                   e.preventDefault();
                   handleSendChatMessage();
                 }}
-                className="border-t border-slate-800 p-4 bg-slate-950/20 flex gap-2"
+                className="border-t border-slate-800 p-4 bg-slate-955/20 flex gap-2"
               >
                 <input
                   type="text"
@@ -2120,6 +2535,125 @@ export default function LearningPage() {
             </div>
           )}
 
+        </div>
+      )}
+
+      {/* Printable Certificate Preview Modal */}
+      {claimedCert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 no-print animate-fadeIn">
+          <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+            
+            {/* Modal actions panel */}
+            <div className="mb-4 flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-white">Your Certificate Credential</h4>
+                <p className="text-[11px] text-slate-400">Achieved by fulfilling curriculum training goals.</p>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-1.5 text-xs font-bold transition border-0 cursor-pointer"
+                >
+                  Print Certificate
+                </button>
+                <button
+                  onClick={() => setClaimedCert(null)}
+                  className="rounded-lg border border-slate-700 hover:bg-slate-800 text-slate-300 p-1.5 bg-transparent cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </div>
+
+            {/* Certificate Print Area */}
+            <div
+              id="print-certificate-area"
+              className="bg-white text-slate-950 p-8 sm:p-12 rounded-xl border-[12px] border-double border-amber-600 text-center relative overflow-hidden shadow-inner flex flex-col justify-between aspect-[1.414/1] min-h-[420px]"
+            >
+              <div>
+                <span className="text-amber-600 font-extrabold text-xs tracking-widest uppercase block mb-1">
+                  OFFICIAL DIPLOMA CREDENTIAL
+                </span>
+                <div className="h-0.5 w-24 bg-amber-600 mx-auto mb-6" />
+                
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase tracking-tight font-serif">
+                  Certificate of Completion
+                </h2>
+                <p className="text-xs text-slate-500 italic mt-3">This B2B qualification is proudly presented to</p>
+                
+                <h3 className="text-xl sm:text-3xl font-serif font-black text-slate-900 border-b-2 border-slate-300 max-w-md mx-auto py-2 my-2 tracking-tight">
+                  John Doe (You)
+                </h3>
+                
+                <p className="text-xs text-slate-600 max-w-lg mx-auto leading-relaxed mt-4">
+                  for successfully finishing all curricular learning criteria and demonstrating mastery in B2B tactics, frameworks, and pipeline execution inside:
+                </p>
+                <p className="text-sm sm:text-lg font-extrabold text-indigo-950 mt-2 font-serif uppercase tracking-normal">
+                  {claimedCert.title}
+                </p>
+              </div>
+
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-6 max-w-2xl mx-auto w-full">
+                <div className="text-center sm:text-left">
+                  <span className="block font-serif font-semibold text-sm italic text-indigo-950">AI Lead Coach</span>
+                  <div className="h-px w-28 bg-slate-300 my-1 mx-auto sm:mx-0" />
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-bold">Authorized Signature</span>
+                </div>
+
+                {/* Golden Badge Seal */}
+                <div className="h-16 w-16 bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600 rounded-full flex items-center justify-center border-4 border-white shadow-lg relative shrink-0">
+                  <Award size={32} className="text-white fill-white/10" />
+                  <div className="absolute inset-0 rounded-full border border-dashed border-white/40 animate-spin-slow pointer-events-none" />
+                </div>
+
+                <div className="text-center sm:text-right">
+                  <span className="block font-serif font-semibold text-sm text-indigo-950">
+                    {new Date().toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+                  </span>
+                  <div className="h-px w-28 bg-slate-300 my-1 mx-auto sm:mx-0" />
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-bold">Date of Qualification</span>
+                </div>
+              </div>
+
+              {/* Decorative Corner Seals */}
+              <div className="absolute top-3 left-3 h-10 w-10 border-t-2 border-l-2 border-amber-600/30" />
+              <div className="absolute top-3 right-3 h-10 w-10 border-t-2 border-r-2 border-amber-600/30" />
+              <div className="absolute bottom-3 left-3 h-10 w-10 border-b-2 border-l-2 border-amber-600/30" />
+              <div className="absolute bottom-3 right-3 h-10 w-10 border-b-2 border-r-2 border-amber-600/30" />
+            </div>
+
+            {/* Local Styles for Print Layout */}
+            <style jsx global>{`
+              @media print {
+                body * {
+                  visibility: hidden;
+                }
+                #print-certificate-area, #print-certificate-area * {
+                  visibility: visible;
+                }
+                #print-certificate-area {
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                  height: 100%;
+                  background: white !important;
+                  color: black !important;
+                  border: 12px double #b45309 !important;
+                  padding: 50px !important;
+                  box-shadow: none !important;
+                  display: flex !important;
+                  flex-direction: column !important;
+                  justify-content: space-between !important;
+                }
+                .no-print {
+                  display: none !important;
+                }
+              }
+            `}</style>
+
+          </div>
         </div>
       )}
 
