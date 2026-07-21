@@ -322,10 +322,7 @@ useEffect(() => {
 
   // Load drafts and recent activity from DB/LocalStorage on mount
   useEffect(() => {
-    try {
-      const storedDrafts = localStorage.getItem("create_post_drafts");
-      if (storedDrafts) setDrafts(JSON.parse(storedDrafts));
-    } catch {}
+    loadDraftsFromDb();
   }, []);
 
   const fetchRecentActivity = useCallback(async () => {
@@ -389,73 +386,121 @@ useEffect(() => {
     }
   };
 
-  const saveDraft = (typeId, contentObj) => {
+  const loadDraftsFromDb = async () => {
+    try {
+      const res = await fetch("/api/create-post/drafts");
+      const data = await res.json();
+      if (data && !data.error && Array.isArray(data.drafts)) {
+        setDrafts(data.drafts);
+      }
+    } catch (e) {
+      console.error("Failed to load drafts from database:", e);
+    }
+  };
+
+  const saveDraft = async (typeId, contentObj) => {
     const formattedDate = new Date().toLocaleDateString();
     const defaultName = `Draft - ${PLATFORM_META[typeId]?.label || typeId} - ${formattedDate}`;
-    const newDraft = {
-      id: `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: defaultName,
-      typeId,
-      typeLabel: PLATFORM_META[typeId]?.label || typeId,
-      subject: contentObj.subject || "",
-      content: contentObj.content || "",
-      imageUrl: contentObj.imageUrl || "",
-      attachments: contentObj.attachments || [],
-      createdAt: new Date().toLocaleString(),
-      lastModified: new Date().toLocaleString(),
-      createdBy: currentUser?.name || "User",
-      status: "Active",
-      favorite: false
-    };
-    const updatedDrafts = [newDraft, ...drafts];
-    setDrafts(updatedDrafts);
     try {
-      localStorage.setItem("create_post_drafts", JSON.stringify(updatedDrafts));
-    } catch {}
-    setMessage(`Draft "${newDraft.name}" saved successfully!`);
+      const res = await fetch("/api/create-post/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: defaultName,
+          typeId,
+          typeLabel: PLATFORM_META[typeId]?.label || typeId,
+          subject: contentObj.subject || "",
+          content: contentObj.content || "",
+          imageUrl: contentObj.imageUrl || "",
+          attachments: contentObj.attachments || [],
+          status: "Draft",
+          favorite: false
+        })
+      });
+      const data = await res.json();
+      if (data?.success) {
+        await loadDraftsFromDb();
+        setMessage(`Draft "${defaultName}" saved successfully!`);
+      } else {
+        setMessage(data?.error || "Failed to save draft.");
+      }
+    } catch (e) {
+      setMessage(e.message || "Failed to save draft.");
+    }
   };
 
-  const duplicateContent = (typeId, contentObj) => {
+  const duplicateContent = async (typeId, contentObj) => {
     const formattedDate = new Date().toLocaleDateString();
     const defaultName = `Draft - ${PLATFORM_META[typeId]?.label || typeId} (Copy) - ${formattedDate}`;
-    const newDraft = {
-      id: `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name: defaultName,
-      typeId,
-      typeLabel: `${PLATFORM_META[typeId]?.label || typeId} (Copy)`,
-      subject: contentObj.subject ? `${contentObj.subject} (Copy)` : "",
-      content: contentObj.content || "",
-      imageUrl: contentObj.imageUrl || "",
-      attachments: contentObj.attachments || [],
-      createdAt: new Date().toLocaleString(),
-      lastModified: new Date().toLocaleString(),
-      createdBy: currentUser?.name || "User",
-      status: "Active",
-      favorite: false
-    };
-    const updatedDrafts = [newDraft, ...drafts];
-    setDrafts(updatedDrafts);
     try {
-      localStorage.setItem("create_post_drafts", JSON.stringify(updatedDrafts));
-    } catch {}
-    setMessage(`Duplicated ${PLATFORM_META[typeId]?.label || typeId} content to drafts!`);
+      const res = await fetch("/api/create-post/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: defaultName,
+          typeId,
+          typeLabel: `${PLATFORM_META[typeId]?.label || typeId} (Copy)`,
+          subject: contentObj.subject ? `${contentObj.subject} (Copy)` : "",
+          content: contentObj.content || "",
+          imageUrl: contentObj.imageUrl || "",
+          attachments: contentObj.attachments || [],
+          status: "Draft",
+          favorite: false
+        })
+      });
+      const data = await res.json();
+      if (data?.success) {
+        await loadDraftsFromDb();
+        setMessage(`Duplicated ${PLATFORM_META[typeId]?.label || typeId} content to drafts!`);
+      } else {
+        setMessage(data?.error || "Failed to duplicate draft.");
+      }
+    } catch (e) {
+      setMessage(e.message || "Failed to duplicate draft.");
+    }
   };
 
-  const updateDraftInList = (draftId, updatedFields) => {
-    const updated = drafts.map(d => {
-      if (d.id === draftId) {
-        return {
-          ...d,
-          ...updatedFields,
-          lastModified: new Date().toLocaleString()
-        };
-      }
-      return d;
-    });
-    setDrafts(updated);
+  const updateDraftInList = async (draftId, updatedFields) => {
+    const existingDraft = drafts.find(d => d.id === draftId);
+    if (!existingDraft) return;
+
+    const merged = {
+      ...existingDraft,
+      ...updatedFields
+    };
+
     try {
-      localStorage.setItem("create_post_drafts", JSON.stringify(updated));
-    } catch {}
+      const res = await fetch("/api/create-post/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(merged)
+      });
+      const data = await res.json();
+      if (data?.success) {
+        await loadDraftsFromDb();
+      }
+    } catch (e) {
+      console.error("Failed to update draft:", e);
+    }
+  };
+
+  const deleteDraft = async (draftId) => {
+    const conf = window.confirm("Are you sure you want to delete this draft?");
+    if (!conf) return;
+    try {
+      const res = await fetch(`/api/create-post/drafts?id=${draftId}`, {
+        method: "DELETE"
+      });
+      const data = await res.json();
+      if (data?.success) {
+        await loadDraftsFromDb();
+        setMessage("Draft deleted successfully.");
+      } else {
+        setMessage(data?.error || "Failed to delete draft.");
+      }
+    } catch (e) {
+      setMessage(e.message || "Failed to delete draft.");
+    }
   };
 
   const handleDownloadTxt = (typeId, contentObj) => {
@@ -1728,16 +1773,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                   {draft.status === "Active" ? "Archive" : "Activate"}
                                 </button>
                                 <button
-                                  onClick={() => {
-                                    const conf = window.confirm("Are you sure you want to delete this draft?");
-                                    if (!conf) return;
-                                    const updated = drafts.filter(d => d.id !== draft.id);
-                                    setDrafts(updated);
-                                    try {
-                                      localStorage.setItem("create_post_drafts", JSON.stringify(updated));
-                                    } catch {}
-                                    setMessage("Draft deleted successfully.");
-                                  }}
+                                  onClick={() => deleteDraft(draft.id)}
                                   className="text-[10px] font-bold text-red-600 hover:underline bg-transparent border-0 cursor-pointer"
                                 >
                                   Delete
@@ -1847,20 +1883,11 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                               <Bookmark size={10} /> {draft.status === "Active" ? "Archive" : "Activate"}
                             </button>
                             <button
-                              onClick={() => {
-                                const conf = window.confirm("Are you sure you want to delete this draft?");
-                                if (!conf) return;
-                                const updated = drafts.filter(d => d.id !== draft.id);
-                                setDrafts(updated);
-                                try {
-                                  localStorage.setItem("create_post_drafts", JSON.stringify(updated));
-                                } catch {}
-                                setMessage("Draft deleted successfully.");
-                              }}
-                              className="inline-flex items-center gap-1 rounded bg-red-50 text-red-655 hover:bg-red-650 hover:text-white px-2.5 py-1.2 text-[10px] font-bold transition border-0 cursor-pointer"
-                            >
-                              <Trash2 size={10} /> Delete
-                            </button>
+                               onClick={() => deleteDraft(draft.id)}
+                               className="inline-flex items-center gap-1 rounded bg-red-50 text-red-655 hover:bg-red-650 hover:text-white px-2.5 py-1.2 text-[10px] font-bold transition border-0 cursor-pointer"
+                             >
+                               <Trash2 size={10} /> Delete
+                             </button>
                           </div>
                         </div>
                       );
