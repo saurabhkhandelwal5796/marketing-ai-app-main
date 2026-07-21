@@ -33,6 +33,8 @@ Run these SQL files in Supabase SQL Editor (in this order):
 1. `supabase/users.sql`
 2. `supabase/campaigns.sql`
 3. `supabase/campaign_logs.sql`
+4. `supabase/connected_accounts.sql`
+5. `supabase/google_integrations.sql`
 
 For login, each user requires an `email` and `password`, and admins can impersonate standard users from the Users tab.
 
