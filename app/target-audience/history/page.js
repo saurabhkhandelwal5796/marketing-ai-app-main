@@ -43,6 +43,7 @@ export default function TargetAudienceHistoryPage() {
     try {
       const stored = localStorage.getItem("target_audience_history");
       if (stored) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setHistory(JSON.parse(stored));
       }
     } catch (e) {
