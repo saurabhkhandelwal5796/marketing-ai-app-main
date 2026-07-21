@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { signIn } from "next-auth/react";
 import {
   BriefcaseBusiness,
   Camera,
@@ -34,6 +35,33 @@ function normalizeEmail(value) {
 function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
 }
+
+function personalizeText(text, contact) {
+  if (!text) return "";
+  const name = contact?.name || "";
+  const company = contact?.company || "";
+  const email = contact?.email || "";
+  return text
+    .replace(/\{\{name\}\}/gi, name)
+    .replace(/\{\{company\}\}/gi, company)
+    .replace(/\{\{email\}\}/gi, email);
+}
+
+
+// Session helper — persists a random UUID for the browser session
+function getCurrentSessionId() {
+  if (typeof window === 'undefined') return 'ssr';
+  let id = localStorage.getItem('createPostSessionId');
+  if (!id) {
+    id = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+    localStorage.setItem('createPostSessionId', id);
+  }
+  return id;
+}
+
+function getCurrentUserId() { return null; }
 
 async function parseRecipientFile(file) {
   return new Promise((resolve, reject) => {
@@ -117,6 +145,8 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailConnectedAccount, setGmailConnectedAccount] = useState("");
   const [configuredProviders, setConfiguredProviders] = useState({});
+  const [emailHistory, setEmailHistory] = useState([]);
+  const [automatedGmailStatus, setAutomatedGmailStatus] = useState("");
   const [emailClientPreference, setEmailClientPreference] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('cp_email_client') || 'gmail';
@@ -166,13 +196,122 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     }
   };
 
+  const fetchEmailHistory = async () => {
+    try {
+      const res = await fetch("/api/create-post/email-history");
+      const data = await res.json();
+      if (data && !data.error) {
+        setEmailHistory(data.history || []);
+      }
+    } catch (err) {
+      console.warn("Failed to fetch email history:", err);
+    }
+  };
+
+  const handleSendAutomatedGmail = async (recipientInfo = null) => {
+    if (!gmailConnected) {
+      showToast("Please connect your Gmail account first.");
+      setAutomatedGmailStatus("Failed to Send.");
+      setTimeout(() => setAutomatedGmailStatus(""), 4000);
+      return;
+    }
+
+    let toVal = "";
+    let ccVal = "";
+    let bccVal = "";
+    let subjectVal = "";
+    let bodyVal = "";
+    let attachmentsVal = [];
+
+    const activeType = contentByType.email_campaign ? "email_campaign" : contentByType.newsletter ? "newsletter" : "";
+    const activeContent = contentByType[activeType] || {};
+
+    if (recipientInfo && recipientInfo.toAddress && !recipientInfo.content) {
+      // Single recipient mode
+      const emailAddr = recipientInfo.toAddress;
+      const contact = findContactForEmail(emailAddr);
+      const draft = recipientDrafts[emailAddr] || { subject: baseEmailSubject, body: baseEmailBody };
+      toVal = emailAddr;
+      subjectVal = personalizeText(draft.subject || "", contact);
+      bodyVal = personalizeText(draft.body || "", contact);
+      ccVal = activeContent.ccAddress || "";
+      bccVal = activeContent.bccAddress || "";
+      attachmentsVal = draft.attachments || activeContent.attachments || [];
+    } else if (recipientInfo) {
+      // Custom contentObj mode (from workspace button click)
+      toVal = recipientInfo.toAddress || activeContent.toAddress || allRecipients.join(",");
+      ccVal = recipientInfo.ccAddress || activeContent.ccAddress || "";
+      bccVal = recipientInfo.bccAddress || activeContent.bccAddress || "";
+      subjectVal = recipientInfo.subject || baseEmailSubject || "";
+      bodyVal = recipientInfo.content || recipientInfo.body || baseEmailBody || "";
+      attachmentsVal = recipientInfo.attachments || activeContent.attachments || [];
+    } else {
+      // Bulk campaign mode
+      toVal = activeContent.toAddress || allRecipients.join(",");
+      ccVal = activeContent.ccAddress || "";
+      bccVal = activeContent.bccAddress || "";
+      subjectVal = baseEmailSubject || "";
+      bodyVal = baseEmailBody || "";
+      attachmentsVal = activeContent.attachments || [];
+    }
+
+    if (!toVal) {
+      showToast("Please add at least one recipient email.");
+      return;
+    }
+
+    setAutomatedGmailStatus("Connecting to Gmail...");
+    setSubmittingPost(true);
+
+    try {
+      await new Promise(r => setTimeout(r, 800));
+      setAutomatedGmailStatus("Sending Email...");
+
+      const res = await fetch("/api/create-post/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "send_gmail_api",
+          to: toVal,
+          cc: ccVal,
+          bcc: bccVal,
+          subject: subjectVal,
+          body: bodyVal,
+          attachments: attachmentsVal
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAutomatedGmailStatus("Email Sent Successfully.");
+        showToast("Email Sent Successfully.");
+        fetchEmailHistory();
+      } else {
+        throw new Error(data.error || "Failed to Send.");
+      }
+    } catch (err) {
+      console.error(err);
+      setAutomatedGmailStatus("Failed to Send.");
+      showToast(err.message || "Failed to Send.");
+    } finally {
+      setSubmittingPost(false);
+      setTimeout(() => setAutomatedGmailStatus(""), 5000);
+    }
+  };
+
+
   const handleConnectProvider = (provider) => {
     if (!configuredProviders[provider]) {
       setMessage("Integration Not Configured");
       return;
     }
+    if (provider === "gmail") {
+      signIn("google", { callbackUrl: "/create-post" });
+      return;
+    }
     window.location.href = `/api/integrations/connect?provider=${provider}`;
   };
+
 
   const handleDisconnectProvider = async (provider) => {
     try {
@@ -243,11 +382,31 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const handlePostToLinkedIn = (contentObj) => {
     const text = contentObj?.content || '';
     navigator.clipboard.writeText(text).catch(() => {});
-    showToast('LinkedIn content copied to clipboard! Paste and publish in the new tab.');
-    logHistoryEvent('LinkedIn', text, '', 'Copied');
+    showToast('LinkedIn content copied successfully. Press Ctrl+V in the LinkedIn post composer.');
+    logHistoryEvent('LinkedIn', text, '', 'Posted to LinkedIn');
     logAuditAction('Generated Content Archive', { typeId: 'linkedin_post', typeLabel: 'LinkedIn', content: text, subject: '', action: 'copied_posted' });
-    window.open('https://www.linkedin.com/feed/', '_blank');
+    window.open('https://www.linkedin.com/', '_blank');
   };
+
+  const handleCopyHashtags = (contentObj) => {
+    const text = contentObj?.content || '';
+    const hashtags = text.match(/#[a-zA-Z0-9_]+/g);
+    const hashtagStr = hashtags ? hashtags.join(' ') : '';
+    if (!hashtagStr) {
+      showToast('No hashtags found in the content.');
+      return;
+    }
+    navigator.clipboard.writeText(hashtagStr).then(() => {
+      showToast('Hashtags copied to clipboard!');
+      logAuditAction('Copied Hashtags', { length: hashtags.length });
+    }).catch(() => {});
+  };
+
+  const handleOpenLinkedInComposer = () => {
+    window.open('https://www.linkedin.com/feed/?shareActive=true', '_blank');
+    logAuditAction('Opened LinkedIn Composer', {});
+  };
+
 
   // Post to Instagram: copy caption + hashtags + open (no OAuth needed)
   const handlePostToInstagram = (contentObj) => {
@@ -269,49 +428,320 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     window.open('https://www.facebook.com/', '_blank');
   };
 
-  const handleSendEmail = (contentObj, recipientEmail = null) => {
+  // Upload a file attachment to Supabase Storage via API
+  const handleAttachmentUpload = async (typeId, files) => {
+    if (!files || files.length === 0) return;
+    setUploadingAttachment(true);
+    const results = [];
+    const errors = [];
+    for (const file of Array.from(files)) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch('/api/create-post/upload', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          errors.push(`${file.name}: ${data.error || 'Upload failed'}`);
+        } else {
+          results.push({ name: data.name, size: data.size, url: data.url, fileKey: data.fileKey });
+        }
+      } catch (e) {
+        errors.push(`${file.name}: ${e.message}`);
+      }
+    }
+    if (results.length > 0) {
+      setContentByType(prev => ({
+        ...prev,
+        [typeId]: {
+          ...prev[typeId],
+          attachments: [...(prev[typeId]?.attachments || []), ...results],
+        }
+      }));
+      showToast(`${results.length} attachment(s) uploaded successfully.`);
+    }
+    if (errors.length > 0) {
+      setMessage(errors.join('\n'));
+    }
+    setUploadingAttachment(false);
+  };
+
+  // Parse CSV/XLSX file, validate records (max 500), display stats, allow invalid download & save to Supabase
+  const parseStructuredContactFile = async (file) => {
+    if (!file) return;
+    setParsingFile(true);
+    try {
+      const ext = file.name.toLowerCase();
+      let rows = [];
+
+      if (ext.endsWith('.xlsx')) {
+        const XLSX = await import('xlsx');
+        const buffer = await file.arrayBuffer();
+        const wb = XLSX.read(buffer, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const jsonRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        rows = jsonRows.map(r => (Array.isArray(r) ? r.map(c => String(c).trim()) : []));
+      } else {
+        const text = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = () => reject(new Error('Failed to read CSV file.'));
+          reader.readAsText(file);
+        });
+        const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+        rows = lines.map(line => {
+          const matched = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(',');
+          return matched.map(m => m.replace(/^"|"$/g, '').trim());
+        });
+      }
+
+      if (!rows || rows.length === 0) {
+        setMessage('The uploaded file is empty.');
+        return;
+      }
+
+      // Detect header row
+      let nameIdx = -1;
+      let emailIdx = -1;
+      let companyIdx = -1;
+      let startRow = 0;
+
+      const headerCells = rows[0].map(c => c.toLowerCase());
+      headerCells.forEach((cell, idx) => {
+        if (cell.includes('email') || cell.includes('mail')) emailIdx = idx;
+        else if (cell.includes('name')) nameIdx = idx;
+        else if (cell.includes('company') || cell.includes('org') || cell.includes('business')) companyIdx = idx;
+      });
+
+      if (emailIdx !== -1 || nameIdx !== -1 || companyIdx !== -1) {
+        startRow = 1;
+      } else {
+        // Infer columns from first row
+        rows[0].forEach((cell, idx) => {
+          if (isEmail(cell) || cell.includes('@')) {
+            if (emailIdx === -1) emailIdx = idx;
+          }
+        });
+        if (emailIdx === -1) emailIdx = 1;
+        if (nameIdx === -1) nameIdx = emailIdx === 0 ? 1 : 0;
+        if (companyIdx === -1) companyIdx = [0, 1, 2].find(i => i !== emailIdx && i !== nameIdx) ?? 2;
+      }
+
+      const dataRows = rows.slice(startRow).filter(r => r.some(c => c.length > 0));
+      const truncated = dataRows.length > 500;
+      const targetRows = dataRows.slice(0, 500); // Enforce max 500 records
+
+      let validCount = 0;
+      let invalidCount = 0;
+
+      const parsedRecords = targetRows.map((row, idx) => {
+        const nameVal = row[nameIdx] !== undefined ? row[nameIdx] : '';
+        const emailVal = row[emailIdx] !== undefined ? row[emailIdx] : '';
+        const companyVal = row[companyIdx] !== undefined ? row[companyIdx] : '';
+
+        const normEmail = normalizeEmail(emailVal);
+        const valid = isEmail(normEmail);
+
+        let reason = '';
+        if (!emailVal) {
+          reason = 'Missing email address';
+        } else if (!valid) {
+          reason = 'Invalid email format';
+        }
+
+        if (valid) validCount++;
+        else invalidCount++;
+
+        return {
+          id: `c-${idx}-${Date.now()}`,
+          name: nameVal || (valid ? normEmail.split('@')[0] : 'Unknown'),
+          email: emailVal,
+          company: companyVal || '-',
+          isValid: valid,
+          reason
+        };
+      });
+
+      setImportedContacts(parsedRecords);
+      setImportedFileName(file.name);
+      setImportStats({
+        total: parsedRecords.length,
+        valid: validCount,
+        invalid: invalidCount,
+        truncated
+      });
+      setContactPage(1);
+      setShowEmailListModal(true);
+
+      // Save valid contacts in Supabase
+      saveContactsToSupabase(parsedRecords.filter(r => r.isValid));
+
+      // Append valid emails to recipient list in Create & Post
+      const validEmails = parsedRecords.filter(r => r.isValid).map(r => normalizeEmail(r.email));
+      if (validEmails.length > 0) {
+        setRecipientEmails(prev => [...new Set([...prev, ...validEmails])]);
+      }
+
+      showToast(`Imported ${parsedRecords.length} records (${validCount} valid, ${invalidCount} invalid).`);
+    } catch (err) {
+      setMessage(`Failed to parse file: ${err.message}`);
+    } finally {
+      setParsingFile(false);
+    }
+  };
+
+  // Download invalid records as CSV
+  const downloadInvalidRecords = () => {
+    const invalidRecords = importedContacts.filter(c => !c.isValid);
+    if (invalidRecords.length === 0) {
+      showToast("No invalid records to download.");
+      return;
+    }
+
+    let csvContent = "Name,Email,Company,Reason\n";
+    invalidRecords.forEach(c => {
+      const esc = (str) => `"${String(str || '').replace(/"/g, '""')}"`;
+      csvContent += `${esc(c.name)},${esc(c.email)},${esc(c.company)},${esc(c.reason)}\n`;
+    });
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `invalid_records_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showToast(`Downloaded ${invalidRecords.length} invalid record(s).`);
+  };
+
+  // Save imported contacts in Supabase via API
+  const saveContactsToSupabase = async (recordsToSave) => {
+    const validRecords = (recordsToSave || importedContacts).filter(c => c.isValid);
+    if (validRecords.length === 0) return;
+
+    setSavingContacts(true);
+    try {
+      const res = await fetch('/api/create-post/contacts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contacts: validRecords.map(r => ({
+            name: r.name,
+            email: r.email,
+            company: r.company,
+            status: 'valid'
+          }))
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast(`Saved ${data.count || validRecords.length} valid contacts to Supabase.`);
+      } else {
+        console.warn("Save contacts note:", data.error);
+      }
+    } catch (e) {
+      console.warn("Save contacts error:", e);
+    } finally {
+      setSavingContacts(false);
+    }
+  };
+
+  const handleEmailListUpload = async (file) => {
+    if (!file) return;
+    await parseStructuredContactFile(file);
+  };
+
+  const handleSendEmail = (contentObj, recipientEmail = null, forceClient = null) => {
     let toVal = "";
+    let ccVal = "";
+    let bccVal = "";
     let subjectVal = "";
     let bodyVal = "";
 
+    const activeType = contentByType.email_campaign ? "email_campaign" : contentByType.newsletter ? "newsletter" : "";
+    const activeContent = contentByType[activeType] || {};
+
     if (recipientEmail) {
+      const contact = findContactForEmail(recipientEmail);
       const draft = recipientDrafts[recipientEmail] || { subject: baseEmailSubject, body: baseEmailBody };
       toVal = recipientEmail;
-      subjectVal = draft.subject || "";
-      bodyVal = draft.body || "";
+      subjectVal = personalizeText(draft.subject || "", contact);
+      bodyVal = personalizeText(draft.body || "", contact);
+      ccVal = contentObj?.ccAddress || activeContent.ccAddress || "";
+      bccVal = contentObj?.bccAddress || activeContent.bccAddress || "";
     } else {
-      toVal = allRecipients.join(outlookConnected ? "; " : ",");
+      toVal = contentObj?.toAddress || activeContent.toAddress || allRecipients.join(outlookConnected ? "; " : ",");
+      ccVal = contentObj?.ccAddress || activeContent.ccAddress || "";
+      bccVal = contentObj?.bccAddress || activeContent.bccAddress || "";
       subjectVal = contentObj?.subject || baseEmailSubject || "";
       bodyVal = contentObj?.content || baseEmailBody || "";
     }
 
-    if (outlookConnected) {
-      const subject = encodeURIComponent(subjectVal);
-      const body = encodeURIComponent(bodyVal);
-      const to = encodeURIComponent(toVal);
-      const url = `https://outlook.office.com/mail/deeplink/compose?to=${to}&subject=${subject}&body=${body}`;
-      window.open(url, "_blank");
-    } else if (gmailConnected) {
-      const subject = encodeURIComponent(subjectVal);
-      const body = encodeURIComponent(bodyVal);
-      const to = encodeURIComponent(toVal);
-      const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}&body=${body}`;
-      window.open(url, "_blank");
+    // Attachments check & warning popup
+    const attachments = contentObj?.attachments || (recipientEmail ? recipientDrafts[recipientEmail]?.attachments : null) || activeContent.attachments || [];
+    if (attachments.length > 0) {
+      showToast("Attachments cannot be added automatically due to browser restrictions. Please attach them manually.");
+      alert("Attachments cannot be added automatically due to browser restrictions. Please attach them manually.");
+    }
+
+    // Determine target client
+    const pref = forceClient || emailClientPreference || (typeof window !== 'undefined' ? localStorage.getItem('cp_email_client') : null) || 'gmail';
+
+    // Store in campaign_emails as 'Sent'
+    try {
+      const contact = recipientEmail ? findContactForEmail(recipientEmail) : { name: "Manual Compose", company: "" };
+      fetch("/api/create-post/campaign-emails", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId: "CAMP-MANUAL-" + Date.now(),
+          emails: [{
+            recipientEmail: toVal,
+            recipientName: contact.name,
+            company: contact.company,
+            subject: subjectVal,
+            body: bodyVal,
+            sendStatus: "Sent"
+          }]
+        })
+      });
+      logAuditAction('Sent Email Activity Logged', { client: pref, recipients: toVal });
+    } catch (err) {
+      console.warn("Failed to store individual personalized email:", err);
+    }
+
+    // Store in email history table
+    try {
+      fetch("/api/create-post/email-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipient: toVal,
+          subject: subjectVal,
+          status: "Sent",
+          sent_via: pref === 'outlook' ? 'Outlook' : 'Browser Gmail'
+        })
+      }).then(() => fetchEmailHistory());
+    } catch (err) {
+      console.warn("Failed to store email history:", err);
+    }
+
+    const subject = encodeURIComponent(subjectVal);
+    const body = encodeURIComponent(bodyVal);
+    const to = encodeURIComponent(toVal);
+    const cc = encodeURIComponent(ccVal);
+    const bcc = encodeURIComponent(bccVal);
+
+    if (pref === 'outlook') {
+      const url = `https://outlook.office.com/mail/deeplink/compose?to=${to}&cc=${cc}&bcc=${bcc}&subject=${subject}&body=${body}`;
+      window.open(url, '_blank');
     } else {
-      // No OAuth connection — use preferred client deeplink (user is already logged in browser)
-      const pref = emailClientPreference || (typeof window !== 'undefined' ? localStorage.getItem('cp_email_client') : null) || 'gmail';
-      const subject = encodeURIComponent(subjectVal);
-      const body = encodeURIComponent(bodyVal);
-      const to = encodeURIComponent(toVal);
-      if (pref === 'outlook') {
-        const url = `https://outlook.office.com/mail/deeplink/compose?to=${to}&subject=${subject}&body=${body}`;
-        window.open(url, '_blank');
-      } else {
-        const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}&body=${body}`;
-        window.open(url, '_blank');
-      }
+      const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&cc=${cc}&bcc=${bcc}&su=${subject}&body=${body}`;
+      window.open(url, '_blank');
     }
   };
+
+
+
 
   //Added below 7 lines
   const [useTemplate, setUseTemplate] = useState(false);
@@ -331,13 +761,60 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [editDraftContent, setEditDraftContent] = useState("");
   const [editDraftSubject, setEditDraftSubject] = useState("");
   const attachmentInputRef = useRef(null);
+  const emailListInputRef = useRef(null);
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
   const [recipientFile, setRecipientFile] = useState(null);
   const [recipientFileEmails, setRecipientFileEmails] = useState([]);
   const recipientFileInputRef = useRef(null);
+
+  // Email List Upload & Manager state
+  const [showEmailListModal, setShowEmailListModal] = useState(false);
+  const [importedContacts, setImportedContacts] = useState([]);
+  const [importedFileName, setImportedFileName] = useState("");
+  const [importStats, setImportStats] = useState({ total: 0, valid: 0, invalid: 0, truncated: false });
+  const [contactPage, setContactPage] = useState(1);
+  const [contactPageSize, setContactPageSize] = useState(10);
+  const [contactSearch, setContactSearch] = useState("");
+  const [contactFilter, setContactFilter] = useState("all");
+  const [savingContacts, setSavingContacts] = useState(false);
+  const [parsingFile, setParsingFile] = useState(false);
+
   const strategyAbortRef = useRef(null);
   const contentAbortRef = useRef(null);
   const imageAbortRef = useRef(null);
   const aiEditAbortRef = useRef(null);
+
+  const filteredContacts = useMemo(() => {
+    return importedContacts.filter(c => {
+      if (contactFilter === 'valid' && !c.isValid) return false;
+      if (contactFilter === 'invalid' && c.isValid) return false;
+      if (contactSearch.trim()) {
+        const q = contactSearch.toLowerCase();
+        return (
+          c.name.toLowerCase().includes(q) ||
+          c.email.toLowerCase().includes(q) ||
+          c.company.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [importedContacts, contactFilter, contactSearch]);
+
+  const totalContactPages = useMemo(() => Math.ceil(filteredContacts.length / contactPageSize) || 1, [filteredContacts, contactPageSize]);
+
+  const paginatedContacts = useMemo(() => {
+    const start = (contactPage - 1) * contactPageSize;
+    return filteredContacts.slice(start, start + contactPageSize);
+  }, [filteredContacts, contactPage, contactPageSize]);
+
+  const findContactForEmail = (email) => {
+    const contact = importedContacts.find(c => normalizeEmail(c.email) === normalizeEmail(email));
+    if (contact) return contact;
+    const u = users.find(u => normalizeEmail(u.email) === normalizeEmail(email));
+    if (u) return { name: u.name, email: u.email, company: "" };
+    return { name: email.split('@')[0], email, company: "" };
+  };
+
 
 
   const needsRecipients = useMemo(
@@ -420,6 +897,7 @@ useEffect(() => {
   // Load drafts and recent activity from DB/LocalStorage on mount
   useEffect(() => {
     loadDraftsFromDb();
+    fetchEmailHistory();
   }, []);
 
   const fetchRecentActivity = useCallback(async () => {
@@ -508,6 +986,9 @@ useEffect(() => {
           typeLabel: PLATFORM_META[typeId]?.label || typeId,
           subject: contentObj.subject || "",
           content: contentObj.content || "",
+          toAddress: contentObj.toAddress || "",
+          ccAddress: contentObj.ccAddress || "",
+          bccAddress: contentObj.bccAddress || "",
           imageUrl: contentObj.imageUrl || "",
           attachments: contentObj.attachments || [],
           status: "Draft",
@@ -541,12 +1022,16 @@ useEffect(() => {
           typeLabel: `${PLATFORM_META[typeId]?.label || typeId} (Copy)`,
           subject: contentObj.subject ? `${contentObj.subject} (Copy)` : "",
           content: contentObj.content || "",
+          toAddress: contentObj.toAddress || "",
+          ccAddress: contentObj.ccAddress || "",
+          bccAddress: contentObj.bccAddress || "",
           imageUrl: contentObj.imageUrl || "",
           attachments: contentObj.attachments || [],
           status: "Draft",
           favorite: false
         })
       });
+
       const data = await res.json();
       if (data?.success) {
         await loadDraftsFromDb();
@@ -1214,6 +1699,42 @@ if (useTemplate && emailSelected && selectedTemplateId) {
     setMessage("");
     const typeId = mode === "post_linkedin" ? "linkedin_post" : mode === "post_instagram" ? "instagram_post" : mode === "post_facebook" ? "facebook_post" : "";
     const provider = mode === "post_linkedin" ? "LinkedIn" : mode === "post_instagram" ? "Instagram" : mode === "post_facebook" ? "Facebook" : "";
+
+    if (mode === "send_all") {
+      const campaignId = "CAMP-" + Math.random().toString(36).substring(2, 10).toUpperCase();
+      const personalizedList = allRecipients.map(email => {
+        const contact = findContactForEmail(email);
+        const draft = recipientDrafts[email];
+        const finalSubject = draft?.subject || personalizeText(baseEmailSubject, contact);
+        const finalBody = draft?.body || personalizeText(baseEmailBody, contact);
+        return {
+          recipientEmail: email,
+          recipientName: contact.name,
+          company: contact.company,
+          subject: finalSubject,
+          body: finalBody,
+          sendStatus: "Pending"
+        };
+      });
+
+      try {
+        const cRes = await fetch("/api/create-post/campaign-emails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            campaignId,
+            emails: personalizedList
+          })
+        });
+        const cData = await cRes.json();
+        if (cRes.ok && cData.success) {
+          showToast(`Campaign saved with status Pending (ID: ${campaignId}).`);
+        }
+      } catch (err) {
+        console.warn("Failed to store personalized campaign emails:", err);
+      }
+    }
+
     try {
       const res = await fetch("/api/create-post/publish", {
         method: "POST",
@@ -2090,20 +2611,26 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             >
                               <Download size={11} /> Download TXT
                             </button>
-                            {(typeId === "email_campaign" || typeId === "newsletter") && (
-                               <div className="inline-flex items-center">
-                                 <button
-                                   onClick={() => handleSendEmail(contentObj)}
-                                   className="inline-flex items-center gap-1 rounded-l bg-indigo-600 hover:bg-indigo-700 border border-indigo-600 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
-                                   title={`Send via ${emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}`}
-                                 >
-                                   <Send size={11} /> Send Email
-                                 </button>
-                                 <div className="inline-flex border-y border-r border-indigo-200 rounded-r overflow-hidden">
-                                   <button onClick={() => setEmailPref('gmail')} title="Use Gmail" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>G</button>
-                                   <button onClick={() => setEmailPref('outlook')} title="Use Outlook" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>O</button>
-                                 </div>
-                               </div>
+                             {(typeId === "email_campaign" || typeId === "newsletter") && (
+                                <div className="inline-flex items-center gap-1">
+                                  <button
+                                    onClick={() => handleSendEmail(contentObj)}
+                                    className="inline-flex items-center gap-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
+                                    title={`Send via ${emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}`}
+                                  >
+                                    <Send size={11} /> Send Email
+                                  </button>
+                                  <button
+                                    onClick={() => handleSendAutomatedGmail(contentObj)}
+                                    className="inline-flex items-center gap-1 rounded bg-red-650 hover:bg-red-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs animate-pulse"
+                                  >
+                                    Send Automated Gmail (BETA)
+                                  </button>
+                                  <div className="inline-flex border border-indigo-200 rounded overflow-hidden">
+                                    <button onClick={() => { setEmailPref('gmail'); handleSendEmail(contentObj, null, 'gmail'); }} title="Use Gmail" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>G</button>
+                                    <button onClick={() => { setEmailPref('outlook'); handleSendEmail(contentObj, null, 'outlook'); }} title="Use Outlook" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>O</button>
+                                  </div>
+                                </div>
                              )}
                           </div>
                         </div>
@@ -2146,21 +2673,71 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                         {/* Editor inputs */}
                         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
                           {(typeId === "email_campaign" || typeId === "newsletter") && (
-                            <input
-                              value={contentObj.subject}
-                              onChange={(e) => {
-                                setContentByType(prev => ({
-                                  ...prev,
-                                  [typeId]: {
-                                    ...prev[typeId],
-                                    subject: e.target.value,
-                                    lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-                                  }
-                                }));
-                              }}
-                              placeholder="Email Subject"
-                              className="mb-2 w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
-                            />
+                            <>
+                              {/* To Address */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">To</label>
+                                <input
+                                  value={contentObj.toAddress || ""}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], toAddress: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="recipient@example.com, another@example.com"
+                                  className={`w-full rounded-lg bg-white px-3 py-2 text-sm outline-none ring-1 focus:ring-2 focus:ring-indigo-400 ${(contentObj.toAddress || '').split(',').map(e => e.trim()).filter(Boolean).some(e => !isEmail(e)) ? 'ring-red-300' : 'ring-slate-200'}`}
+                                />
+                                {(contentObj.toAddress || '').split(',').map(e => e.trim()).filter(Boolean).some(e => !isEmail(e)) && (
+                                  <p className="mt-0.5 text-[10px] text-red-500 font-medium">One or more email addresses are invalid.</p>
+                                )}
+                              </div>
+                              {/* CC Address */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">CC</label>
+                                <input
+                                  value={contentObj.ccAddress || ""}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], ccAddress: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="cc@example.com"
+                                  className="mb-1 w-full rounded-lg bg-white px-3 py-2 text-sm outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+                                />
+                              </div>
+                              {/* BCC Address */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">BCC</label>
+                                <input
+                                  value={contentObj.bccAddress || ""}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], bccAddress: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="bcc@example.com"
+                                  className="mb-1 w-full rounded-lg bg-white px-3 py-2 text-sm outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+                                />
+                              </div>
+                              {/* Subject */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Subject</label>
+                                <input
+                                  value={contentObj.subject}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], subject: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="Email Subject"
+                                  className="w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+                                />
+                              </div>
+                            </>
                           )}
                           <textarea
                             value={contentObj.content}
@@ -2179,45 +2756,85 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           />
                         </div>
 
-                        {/* Email Campaign Attachments integration if applicable */}
+                        {/* Email Campaign Attachments + Email List Upload */}
                         {(typeId === "email_campaign" || typeId === "newsletter") && (
-                          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-semibold text-slate-900">Attachments</p>
-                              <button
-                                type="button"
-                                onClick={() => attachmentInputRef.current?.click()}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                              >
-                                + Add from computer
-                              </button>
-                            </div>
-                            {(contentObj.attachments || []).length > 0 ? (
-                              <div className="mt-2 space-y-1.5">
-                                {contentObj.attachments.map((file, idx) => (
-                                  <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
-                                    <span className="truncate text-xs font-medium text-slate-700">{file.name}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setContentByType(prev => ({
-                                          ...prev,
-                                          [typeId]: {
-                                            ...prev[typeId],
-                                            attachments: (prev[typeId]?.attachments || []).filter((_, i) => i !== idx)
-                                          }
-                                        }));
-                                      }}
-                                      className="text-xs font-bold text-red-500 hover:text-red-700 bg-transparent border-0 cursor-pointer"
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
+                          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                            {/* Attachment Upload */}
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <p className="text-sm font-semibold text-slate-900">Attachments</p>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={uploadingAttachment}
+                                    onClick={() => {
+                                      const input = document.createElement('input');
+                                      input.type = 'file';
+                                      input.multiple = true;
+                                      input.accept = '.pdf,.docx,.xlsx,.jpg,.jpeg,.png';
+                                      input.onchange = (e) => handleAttachmentUpload(typeId, e.target.files);
+                                      input.click();
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                                  >
+                                    {uploadingAttachment ? <><LoadingSpinner size="h-3 w-3" /> Uploading…</> : '+ Add Attachment'}
+                                  </button>
+                                </div>
                               </div>
-                            ) : (
-                              <p className="mt-2 text-xs text-slate-400">No attachments added.</p>
-                            )}
+                              <p className="text-[10px] text-slate-400 mb-1.5">Accepted: PDF, DOCX, XLSX, JPG, PNG (max 10 MB each)</p>
+                              {(contentObj.attachments || []).length > 0 ? (
+                                <div className="space-y-1.5">
+                                  {contentObj.attachments.map((file, idx) => (
+                                    <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+                                      <div className="min-w-0 flex-1">
+                                        <span className="block truncate text-xs font-medium text-slate-700">{file.name}</span>
+                                        {file.size && <span className="text-[10px] text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setContentByType(prev => ({
+                                            ...prev,
+                                            [typeId]: {
+                                              ...prev[typeId],
+                                              attachments: (prev[typeId]?.attachments || []).filter((_, i) => i !== idx)
+                                            }
+                                          }));
+                                        }}
+                                        className="ml-2 text-xs font-bold text-red-500 hover:text-red-700 bg-transparent border-0 cursor-pointer flex-shrink-0"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-slate-400">No attachments added.</p>
+                              )}
+                            </div>
+
+                            {/* Email List Upload */}
+                            <div className="border-t border-slate-100 pt-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">Email List</p>
+                                  <p className="text-[10px] text-slate-400">Upload .csv or .xlsx to add bulk recipients</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const input = document.createElement('input');
+                                    input.type = 'file';
+                                    input.accept = '.csv,.xlsx';
+                                    input.onchange = (e) => handleEmailListUpload(e.target.files[0]);
+                                    input.click();
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 text-xs font-semibold cursor-pointer transition"
+                                >
+                                  <FileDown size={12} /> Upload Email List
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
                         
@@ -2293,13 +2910,30 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           {/* Direct-post: copy to clipboard + open platform (no OAuth required) */}
                           <div className="flex flex-wrap gap-1.5">
                             {typeId === "linkedin_post" && (
-                              <button
-                                onClick={() => handlePostToLinkedIn(contentObj)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
-                              >
-                                Post to LinkedIn
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handlePostToLinkedIn(contentObj)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Post to LinkedIn
+                                </button>
+                                <button
+                                  onClick={() => handleCopyHashtags(contentObj)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Copy Hashtags
+                                </button>
+                                {(typeof window !== 'undefined' && typeof window.open === 'function') && (
+                                  <button
+                                    onClick={handleOpenLinkedInComposer}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                  >
+                                    Open LinkedIn Composer
+                                  </button>
+                                )}
+                              </>
                             )}
+
                             {typeId === "instagram_post" && (
                               <button
                                 onClick={() => handlePostToInstagram(contentObj)}
@@ -2418,40 +3052,96 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             <Download size={12} /> Download TXT
                           </button>
                           {(typeId === "email_campaign" || typeId === "newsletter") && (
-                             <div className="inline-flex items-center">
-                               <button
-                                 onClick={() => handleSendEmail(contentObj)}
-                                 className="inline-flex items-center gap-1.5 rounded-l bg-indigo-600 hover:bg-indigo-700 border border-indigo-600 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-2xs"
-                                 title={`Send via ${emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}`}
-                               >
-                                 <Send size={12} /> Send Email
-                               </button>
-                               <div className="inline-flex border-y border-r border-indigo-200 rounded-r overflow-hidden">
-                                 <button onClick={() => setEmailPref('gmail')} title="Use Gmail" className={`px-2 py-1.5 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>G</button>
-                                 <button onClick={() => setEmailPref('outlook')} title="Use Outlook" className={`px-2 py-1.5 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>O</button>
-                               </div>
-                             </div>
-                           )}
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  onClick={() => handleSendEmail(contentObj)}
+                                  className="inline-flex items-center gap-1.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-2xs"
+                                  title={`Send via ${emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}`}
+                                >
+                                  <Send size={12} /> Send Email
+                                </button>
+                                <button
+                                  onClick={() => handleSendAutomatedGmail(contentObj)}
+                                  className="inline-flex items-center gap-1 rounded bg-red-650 hover:bg-red-700 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-2xs animate-pulse"
+                                >
+                                  Send Automated Gmail (BETA)
+                                </button>
+                                <div className="inline-flex border border-indigo-200 rounded overflow-hidden">
+                                  <button onClick={() => { setEmailPref('gmail'); handleSendEmail(contentObj, null, 'gmail'); }} title="Send via Gmail" className={`px-2 py-1.5 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>G</button>
+                                  <button onClick={() => { setEmailPref('outlook'); handleSendEmail(contentObj, null, 'outlook'); }} title="Send via Outlook" className={`px-2 py-1.5 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>O</button>
+                                </div>
+                              </div>
+                            )}
                         </div>
 
                         {/* Editor input fields */}
                         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
                           {(typeId === "email_campaign" || typeId === "newsletter") && (
-                            <input
-                              value={contentObj.subject}
-                              onChange={(e) => {
-                                setContentByType(prev => ({
-                                  ...prev,
-                                  [typeId]: {
-                                    ...prev[typeId],
-                                    subject: e.target.value,
-                                    lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-                                  }
-                                }));
-                              }}
-                              placeholder="Email Subject"
-                              className="mb-2 w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
-                            />
+                            <>
+                              {/* To Address */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">To</label>
+                                <input
+                                  value={contentObj.toAddress || ""}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], toAddress: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="recipient@example.com, another@example.com"
+                                  className={`w-full rounded-lg bg-white px-3 py-2 text-sm outline-none ring-1 focus:ring-2 focus:ring-indigo-400 ${(contentObj.toAddress || '').split(',').map(e => e.trim()).filter(Boolean).some(e => !isEmail(e)) ? 'ring-red-300' : 'ring-slate-200'}`}
+                                />
+                                {(contentObj.toAddress || '').split(',').map(e => e.trim()).filter(Boolean).some(e => !isEmail(e)) && (
+                                  <p className="mt-0.5 text-[10px] text-red-500 font-medium">One or more email addresses are invalid.</p>
+                                )}
+                              </div>
+                              {/* CC Address */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">CC</label>
+                                <input
+                                  value={contentObj.ccAddress || ""}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], ccAddress: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="cc@example.com"
+                                  className="mb-1 w-full rounded-lg bg-white px-3 py-2 text-sm outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+                                />
+                              </div>
+                              {/* BCC Address */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">BCC</label>
+                                <input
+                                  value={contentObj.bccAddress || ""}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], bccAddress: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="bcc@example.com"
+                                  className="mb-1 w-full rounded-lg bg-white px-3 py-2 text-sm outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+                                />
+                              </div>
+                              {/* Subject */}
+                              <div className="mb-2">
+                                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Subject</label>
+                                <input
+                                  value={contentObj.subject}
+                                  onChange={(e) => {
+                                    setContentByType(prev => ({
+                                      ...prev,
+                                      [typeId]: { ...prev[typeId], subject: e.target.value, lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) }
+                                    }));
+                                  }}
+                                  placeholder="Email Subject"
+                                  className="w-full rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-900 outline-none ring-1 ring-slate-200 focus:ring-2 focus:ring-indigo-400"
+                                />
+                              </div>
+                            </>
                           )}
                           <textarea
                             value={contentObj.content}
@@ -2470,47 +3160,88 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           />
                         </div>
 
-                        {/* Email Campaign Attachments integration if applicable */}
+                        {/* Email Campaign Attachments + Email List Upload */}
                         {(typeId === "email_campaign" || typeId === "newsletter") && (
-                          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="text-sm font-semibold text-slate-950">Attachments</p>
-                              <button
-                                type="button"
-                                onClick={() => attachmentInputRef.current?.click()}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                              >
-                                + Add from computer
-                              </button>
-                            </div>
-                            {(contentObj.attachments || []).length > 0 ? (
-                              <div className="mt-2 space-y-1.5">
-                                {contentObj.attachments.map((file, idx) => (
-                                  <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
-                                    <span className="truncate text-xs font-medium text-slate-750">{file.name}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setContentByType(prev => ({
-                                          ...prev,
-                                          [typeId]: {
-                                            ...prev[typeId],
-                                            attachments: (prev[typeId]?.attachments || []).filter((_, i) => i !== idx)
-                                          }
-                                        }));
-                                      }}
-                                      className="text-xs font-bold text-red-500 hover:text-red-700 bg-transparent border-0 cursor-pointer"
-                                    >
-                                      Remove
-                                    </button>
-                                  </div>
-                                ))}
+                          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 space-y-3">
+                            {/* Attachment Upload */}
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <p className="text-sm font-semibold text-slate-950">Attachments</p>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={uploadingAttachment}
+                                    onClick={() => {
+                                      const input = document.createElement('input');
+                                      input.type = 'file';
+                                      input.multiple = true;
+                                      input.accept = '.pdf,.docx,.xlsx,.jpg,.jpeg,.png';
+                                      input.onchange = (e) => handleAttachmentUpload(typeId, e.target.files);
+                                      input.click();
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                                  >
+                                    {uploadingAttachment ? <><LoadingSpinner size="h-3 w-3" /> Uploading…</> : '+ Add Attachment'}
+                                  </button>
+                                </div>
                               </div>
-                            ) : (
-                              <p className="mt-2 text-xs text-slate-400">No attachments added.</p>
-                            )}
+                              <p className="text-[10px] text-slate-400 mb-1.5">Accepted: PDF, DOCX, XLSX, JPG, PNG (max 10 MB each)</p>
+                              {(contentObj.attachments || []).length > 0 ? (
+                                <div className="space-y-1.5">
+                                  {contentObj.attachments.map((file, idx) => (
+                                    <div key={`${file.name}-${idx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5">
+                                      <div className="min-w-0 flex-1">
+                                        <span className="block truncate text-xs font-medium text-slate-750">{file.name}</span>
+                                        {file.size && <span className="text-[10px] text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setContentByType(prev => ({
+                                            ...prev,
+                                            [typeId]: {
+                                              ...prev[typeId],
+                                              attachments: (prev[typeId]?.attachments || []).filter((_, i) => i !== idx)
+                                            }
+                                          }));
+                                        }}
+                                        className="ml-2 text-xs font-bold text-red-500 hover:text-red-700 bg-transparent border-0 cursor-pointer flex-shrink-0"
+                                      >
+                                        Remove
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-slate-400">No attachments added.</p>
+                              )}
+                            </div>
+
+                            {/* Email List Upload */}
+                            <div className="border-t border-slate-100 pt-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">Email List</p>
+                                  <p className="text-[10px] text-slate-400">Upload .csv or .xlsx to add bulk recipients</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const input = document.createElement('input');
+                                    input.type = 'file';
+                                    input.accept = '.csv,.xlsx';
+                                    input.onchange = (e) => handleEmailListUpload(e.target.files[0]);
+                                    input.click();
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 text-xs font-semibold cursor-pointer transition"
+                                >
+                                  <FileDown size={12} /> Upload Email List
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         )}
+
                         
                         {/* Publishing Workflow Buttons */}
                         <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-between">
@@ -2584,13 +3315,30 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           {/* Direct-post: copy to clipboard + open platform (no OAuth required) */}
                           <div className="flex flex-wrap gap-1.5">
                             {typeId === "linkedin_post" && (
-                              <button
-                                onClick={() => handlePostToLinkedIn(contentObj)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
-                              >
-                                Post to LinkedIn
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => handlePostToLinkedIn(contentObj)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Post to LinkedIn
+                                </button>
+                                <button
+                                  onClick={() => handleCopyHashtags(contentObj)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Copy Hashtags
+                                </button>
+                                {(typeof window !== 'undefined' && typeof window.open === 'function') && (
+                                  <button
+                                    onClick={handleOpenLinkedInComposer}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                  >
+                                    Open LinkedIn Composer
+                                  </button>
+                                )}
+                              </>
                             )}
+
                             {typeId === "instagram_post" && (
                               <button
                                 onClick={() => handlePostToInstagram(contentObj)}
@@ -2770,7 +3518,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                      <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">Subject</label>
                      <input
                        disabled={!activeRecipient}
-                       value={activeRecipient ? recipientDrafts[activeRecipient]?.subject ?? baseEmailSubject : ""}
+                       value={activeRecipient ? (recipientDrafts[activeRecipient]?.subject ?? personalizeText(baseEmailSubject, findContactForEmail(activeRecipient))) : ""}
                        onChange={(e) => updateRecipientDraft(activeRecipient, { subject: e.target.value })}
                        className="w-full rounded-lg border border-slate-300 bg-slate-55 px-4 py-2.5 text-sm outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 disabled:opacity-60"
                      />
@@ -2781,7 +3529,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                      <textarea
                        rows={12}
                        disabled={!activeRecipient}
-                       value={activeRecipient ? recipientDrafts[activeRecipient]?.body ?? baseEmailBody : ""}
+                       value={activeRecipient ? (recipientDrafts[activeRecipient]?.body ?? personalizeText(baseEmailBody, findContactForEmail(activeRecipient))) : ""}
                        onChange={(e) => updateRecipientDraft(activeRecipient, { body: e.target.value })}
                        className="w-full resize-none rounded-lg border border-slate-300 bg-slate-55 px-4 py-3 text-sm outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100 disabled:opacity-60"
                      />
@@ -2812,15 +3560,21 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                       </span>
                     </button>
                   </div>
-                </div>
-
-                <div className="mt-4 flex justify-end gap-2">
+                  <div className="mt-4 flex flex-col gap-3">
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => handleSendAutomatedGmail(activeRecipient ? { toAddress: activeRecipient } : null)}
+                      disabled={!activeRecipient || submittingPost}
+                      className="rounded-lg bg-red-650 border border-red-200 text-white hover:bg-red-700 px-5 py-2.5 text-sm font-semibold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Send size={14} /> Send Automated Gmail <span className="bg-white text-red-700 text-[8px] px-1 rounded-sm ml-1 uppercase tracking-wider font-extrabold">Beta</span>
+                    </button>
                     <button
                       onClick={() => handleSendEmail(null, activeRecipient)}
                       disabled={!activeRecipient}
                       className="rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 px-5 py-2.5 text-sm font-semibold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
                     >
-                      <Send size={14} /> Send Email to Recipient
+                      <Send size={14} /> Open Gmail/Outlook Composer
                     </button>
                     <button
                       onClick={saveDraftForRecipient}
@@ -2829,11 +3583,81 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                     >
                       {savingRecipientDraft ? "Saving..." : "Save Draft"}
                     </button>
-                 </div>
+                  </div>
+                  {!gmailConnected && (
+                    <p className="text-right text-xs text-red-650 font-bold">
+                      Please connect your Gmail account first.
+                    </p>
+                  )}
+                  {automatedGmailStatus && (
+                    <div className="text-center text-xs font-bold text-red-750 bg-red-50 border border-red-100 rounded-lg py-1.5 animate-pulse">
+                      Status: {automatedGmailStatus}
+                    </div>
+                  )}
+                </div>
+
+                {/* Email History Section */}
+                <div className="mt-6 border-t border-slate-100 pt-5">
+                  <h4 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+                    <History size={16} className="text-slate-500" />
+                    Email History
+                  </h4>
+                  {emailHistory.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic bg-slate-50 rounded-lg p-4 border border-dashed border-slate-200 text-center">
+                      No emails sent yet.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-slate-50/50">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-100/80 text-slate-500 font-bold border-b border-slate-200">
+                            <th className="p-2.5">Recipient</th>
+                            <th className="p-2.5">Subject</th>
+                            <th className="p-2.5">Sent Via</th>
+                            <th className="p-2.5">Timestamp</th>
+                            <th className="p-2.5">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {emailHistory.map((item) => (
+                            <tr key={item.id} className="border-b border-slate-150 hover:bg-slate-100/50 transition">
+                              <td className="p-2.5 font-medium text-slate-700 truncate max-w-[150px]">{item.recipient}</td>
+                              <td className="p-2.5 text-slate-650 truncate max-w-[200px]">{item.subject || "(No Subject)"}</td>
+                              <td className="p-2.5">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  item.sent_via === "Automated Gmail" 
+                                    ? "bg-red-50 text-red-750 border border-red-100" 
+                                    : "bg-indigo-50 text-indigo-750 border border-indigo-100"
+                                }`}>
+                                  {item.sent_via}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-slate-500 whitespace-nowrap">
+                                {new Date(item.sent_timestamp).toLocaleString()}
+                              </td>
+                              <td className="p-2.5">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  item.status === "Sent" 
+                                    ? "bg-emerald-50 text-emerald-700 border border-emerald-150" 
+                                    : "bg-red-50 text-red-750 border border-red-150"
+                                }`}>
+                                  {item.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+                </div>
+
               </div>
             </div>
 
-             <div className="pt-2 flex gap-3">
+             <div className="pt-2 flex flex-col gap-3">
+               <div className="flex gap-3">
                 <button
                   onClick={() => submitPostAction("send_all")}
                   disabled={submittingPost || allRecipients.length === 0}
@@ -2850,14 +3674,242 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                      <Send size={14} /> Send via {emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}
                    </button>
                    <div className="flex justify-center gap-2 pt-0.5">
-                     <button onClick={() => setEmailPref('gmail')} className={`text-xs font-semibold px-3 py-1 rounded border cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>Gmail</button>
-                     <button onClick={() => setEmailPref('outlook')} className={`text-xs font-semibold px-3 py-1 rounded border cursor-pointer transition ${emailClientPreference === 'outlook' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>Outlook</button>
+                     <button onClick={() => { setEmailPref('gmail'); handleSendEmail(null, null, 'gmail'); }} className={`text-xs font-semibold px-3 py-1 rounded border cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>Gmail</button>
+                     <button onClick={() => { setEmailPref('outlook'); handleSendEmail(null, null, 'outlook'); }} className={`text-xs font-semibold px-3 py-1 rounded border cursor-pointer transition ${emailClientPreference === 'outlook' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>Outlook</button>
                    </div>
                  </div>
+               </div>
+               
+               <div className="flex flex-col gap-2 rounded-xl border border-red-100 bg-red-50/30 p-3">
+                 <div className="flex items-center justify-between gap-3">
+                   <button
+                     onClick={() => handleSendAutomatedGmail(null)}
+                     disabled={submittingPost || allRecipients.length === 0}
+                     className="flex-1 rounded-xl bg-red-650 hover:bg-red-700 px-4 py-3 text-sm font-bold text-white shadow-md transition-all disabled:opacity-50 border-0 cursor-pointer flex items-center justify-center gap-1.5"
+                   >
+                     <Send size={14} /> Send Automated Gmail 
+                     <span className="rounded bg-white px-1.5 py-0.5 text-[9px] font-extrabold text-red-650 uppercase tracking-wider">Beta</span>
+                   </button>
+                   
+                   {!gmailConnected && (
+                     <span className="text-xs text-red-650 font-bold">
+                       Please connect your Gmail account first.
+                     </span>
+                   )}
+                 </div>
+                 {automatedGmailStatus && (
+                   <div className="text-center text-xs font-extrabold text-red-700 animate-pulse bg-red-50 border border-red-100 rounded-lg py-1.5">
+                     Status: {automatedGmailStatus}
+                   </div>
+                 )}
+               </div>
              </div>
+
           </div>
         </div>
       ) : null}
+
+      {/* Email List Upload & Contact Manager Modal */}
+      {showEmailListModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-4xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/50">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <FileDown className="h-5 w-5 text-indigo-600" /> Email List Manager
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {importedFileName ? `File: ${importedFileName}` : 'Import and manage contact email lists (CSV / XLSX up to 500 records)'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowEmailListModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Stats Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 px-6 py-4 bg-slate-50/30 border-b border-slate-100">
+              <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-xs">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Records</p>
+                <p className="text-xl font-extrabold text-slate-900 mt-0.5">{importStats.total}</p>
+                <p className="text-[10px] text-slate-400 mt-1">Max 500 records</p>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-3 shadow-xs">
+                <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider">Valid Emails</p>
+                <p className="text-xl font-extrabold text-emerald-700 mt-0.5">{importStats.valid}</p>
+                <p className="text-[10px] text-emerald-600/80 mt-1">Added to workspace</p>
+              </div>
+              <div className="rounded-xl border border-rose-200 bg-rose-50/40 p-3 shadow-xs">
+                <p className="text-[11px] font-bold text-rose-600 uppercase tracking-wider">Invalid Emails</p>
+                <p className="text-xl font-extrabold text-rose-700 mt-0.5">{importStats.invalid}</p>
+                <p className="text-[10px] text-rose-600/80 mt-1">Exportable as CSV</p>
+              </div>
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 shadow-xs flex flex-col justify-between">
+                <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider">Supabase DB</p>
+                <span className="inline-flex items-center text-xs font-semibold text-indigo-700 mt-1">
+                  {savingContacts ? <><LoadingSpinner size="h-3 w-3" /> Saving…</> : '✓ Saved to DB'}
+                </span>
+                <p className="text-[10px] text-indigo-600/80 mt-1">Persisted in Supabase</p>
+              </div>
+            </div>
+
+            {/* Truncation alert if file > 500 records */}
+            {importStats.truncated && (
+              <div className="mx-6 mt-3 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800 flex items-center justify-between">
+                <span>⚠️ Maximum upload limit is 500 records. The uploaded file was truncated to the first 500 entries.</span>
+              </div>
+            )}
+
+            {/* Toolbar Controls */}
+            <div className="px-6 py-3 border-b border-slate-100 flex flex-wrap gap-3 items-center justify-between bg-white">
+              {/* Search & Filter */}
+              <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <input
+                    value={contactSearch}
+                    onChange={(e) => { setContactSearch(e.target.value); setContactPage(1); }}
+                    placeholder="Search name, email, company…"
+                    className="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+                <select
+                  value={contactFilter}
+                  onChange={(e) => { setContactFilter(e.target.value); setContactPage(1); }}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 bg-white font-medium outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="all">All Records ({importedContacts.length})</option>
+                  <option value="valid">Valid Only ({importStats.valid})</option>
+                  <option value="invalid">Invalid Only ({importStats.invalid})</option>
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={downloadInvalidRecords}
+                  disabled={importStats.invalid === 0}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 disabled:opacity-50 disabled:cursor-not-allowed px-3 py-1.5 text-xs font-bold transition cursor-pointer"
+                >
+                  <Download size={13} /> Download Invalid ({importStats.invalid})
+                </button>
+
+                <button
+                  onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.csv,.xlsx';
+                    input.onchange = (e) => handleEmailListUpload(e.target.files[0]);
+                    input.click();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 text-xs font-semibold cursor-pointer transition"
+                >
+                  + Upload CSV/XLSX
+                </button>
+              </div>
+            </div>
+
+            {/* Paginated Table */}
+            <div className="flex-1 overflow-y-auto px-6 py-2">
+              {parsingFile ? (
+                <div className="py-12 text-center">
+                  <LoadingSpinner size="h-8 w-8 text-indigo-600 mx-auto" />
+                  <p className="mt-2 text-xs font-semibold text-slate-600">Parsing contact records…</p>
+                </div>
+              ) : filteredContacts.length === 0 ? (
+                <div className="py-12 text-center text-slate-400">
+                  <p className="text-sm font-semibold">No contacts to display.</p>
+                  <p className="text-xs text-slate-400 mt-1">Upload a CSV or XLSX file to import contact records.</p>
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs text-slate-700 border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">Name</th>
+                      <th className="py-2.5 px-3">Email Address</th>
+                      <th className="py-2.5 px-3">Company</th>
+                      <th className="py-2.5 px-3">Validation Note</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedContacts.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {c.isValid ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                              ✓ Valid
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-800">
+                              ✕ Invalid
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-semibold text-slate-900 whitespace-nowrap">{c.name}</td>
+                        <td className="py-2.5 px-3 font-mono text-slate-800 whitespace-nowrap">{c.email}</td>
+                        <td className="py-2.5 px-3 text-slate-600 whitespace-nowrap">{c.company}</td>
+                        <td className="py-2.5 px-3 text-slate-500 text-[11px]">
+                          {c.isValid ? <span className="text-emerald-600">Valid</span> : <span className="text-rose-600 font-medium">{c.reason}</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Pagination Footer */}
+            <div className="border-t border-slate-100 px-6 py-3 bg-slate-50/50 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+              <div>
+                Showing {filteredContacts.length > 0 ? (contactPage - 1) * contactPageSize + 1 : 0} to {Math.min(contactPage * contactPageSize, filteredContacts.length)} of {filteredContacts.length} contacts
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <span>Per page:</span>
+                  <select
+                    value={contactPageSize}
+                    onChange={(e) => { setContactPageSize(Number(e.target.value)); setContactPage(1); }}
+                    className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 outline-none"
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setContactPage(p => Math.max(p - 1, 1))}
+                    disabled={contactPage <= 1}
+                    className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Prev
+                  </button>
+                  <span className="px-2 font-semibold text-slate-700">
+                    Page {contactPage} of {totalContactPages || 1}
+                  </span>
+                  <button
+                    onClick={() => setContactPage(p => Math.min(p + 1, totalContactPages))}
+                    disabled={contactPage >= totalContactPages}
+                    className="rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
     </main>
+
   );
 }

@@ -24,15 +24,39 @@ export async function GET() {
       console.warn("connected_accounts table read failed or not created yet:", e);
     }
 
+    // Fetch google_integrations for gmail provider dynamically
+    let googleConn = null;
+    try {
+      const { data: gData } = await supabase
+        .from("google_integrations")
+        .select("gmail_address, connected_at, is_active")
+        .eq("user_id", session.id)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (gData) {
+        googleConn = gData;
+      }
+    } catch (e) {
+      console.warn("Failed to check google_integrations status:", e);
+    }
+
     const providers = ["linkedin", "instagram", "facebook", "outlook", "gmail"];
     const connections = {};
     providers.forEach(p => {
-      const conn = connectionsData.find(c => c.provider === p && c.connected);
-      connections[p] = {
-        connected: !!conn,
-        displayName: conn?.display_name || "",
-        emailAddress: conn?.email_address || "",
-      };
+      if (p === "gmail") {
+        connections[p] = {
+          connected: !!googleConn,
+          displayName: googleConn?.gmail_address || "",
+          emailAddress: googleConn?.gmail_address || "",
+        };
+      } else {
+        const conn = connectionsData.find(c => c.provider === p && c.connected);
+        connections[p] = {
+          connected: !!conn,
+          displayName: conn?.display_name || "",
+          emailAddress: conn?.email_address || "",
+        };
+      }
     });
 
     const configured = {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-// import { useRouter, useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
 import { 
   Building2, 
   Camera, 
@@ -83,8 +83,85 @@ export default function MyProfilePage() {
     }
   };
 
+  const [googleIntegration, setGoogleIntegration] = useState({
+    connected: false,
+    gmailAddress: "",
+    connectedSince: "",
+    status: "Disconnected",
+  });
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+
+  const loadGoogleStatus = async () => {
+    try {
+      const res = await fetch("/api/integrations/google/status");
+      const data = await res.json();
+      if (res.ok && data) {
+        setGoogleIntegration(data);
+      }
+    } catch (e) {
+      console.error("Failed to load Google status:", e);
+    }
+  };
+
+  const handleGoogleReconnect = () => {
+    signIn("google", { callbackUrl: "/my-profile" });
+  };
+
+  const handleGoogleDisconnect = async () => {
+    setDisconnecting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/integrations/google/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setGoogleIntegration({
+          connected: false,
+          gmailAddress: "",
+          connectedSince: "",
+          status: "Disconnected",
+        });
+      } else {
+        setError(data.error || "Failed to disconnect Google account.");
+      }
+    } catch (err) {
+      setError("Failed to disconnect Google account.");
+    } finally {
+      setDisconnecting(false);
+    }
+  };
+
+  const handleGoogleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/integrations/google/test-connection", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult({
+          success: true,
+          message: `Connected successfully as ${data.emailAddress}.`,
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: data.error || "Failed to establish connection.",
+        });
+      }
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: "Failed to establish connection due to a network error.",
+      });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
   useEffect(() => {
     loadProfile();
+    loadGoogleStatus();
   }, []);
 
   useEffect(() => {
@@ -566,6 +643,110 @@ export default function MyProfilePage() {
                   </div>
                   <p className="mt-1 text-xs text-slate-500 pl-6">Authenticator app configured</p>
                 </div>
+              </div>
+            </section>
+
+            {/* Google Integration Card */}
+            <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:-translate-y-[2px] hover:shadow-md">
+              <div className="absolute left-0 top-0 h-full w-1 bg-amber-500"></div>
+              <div className="mb-6 flex items-center gap-3 border-b border-slate-100 pb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
+                  <Mail size={20} />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-slate-900">Google Integration</h2>
+                  <p className="text-xs text-slate-500">Manage your connected Gmail account.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {googleIntegration.connected ? (
+                  <>
+                    <div>
+                      <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Connected Account</span>
+                      <p className="text-sm font-medium text-slate-800 mt-1 truncate">{googleIntegration.gmailAddress}</p>
+                    </div>
+
+                    <div>
+                      <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Connected Since</span>
+                      <p className="text-sm font-medium text-slate-800 mt-1">
+                        {googleIntegration.connectedSince 
+                          ? new Date(googleIntegration.connectedSince).toLocaleDateString("en-GB", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric"
+                            })
+                          : "21 Jul 2026"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <span className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">Status</span>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        {googleIntegration.status === "Connected" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-600 ring-1 ring-inset ring-emerald-600/20">
+                            <CheckCircle2 size={10} /> Connected
+                          </span>
+                        )}
+                        {googleIntegration.status === "Expired" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-600 ring-1 ring-inset ring-amber-600/20">
+                            Expired
+                          </span>
+                        )}
+                        {googleIntegration.status === "Disconnected" && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 ring-1 ring-inset ring-slate-600/20">
+                            Disconnected
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {testResult && (
+                      <div className={`text-xs p-3 rounded-lg border ${testResult.success ? "bg-emerald-50 border-emerald-100 text-emerald-800" : "bg-red-50 border-red-100 text-red-800"}`}>
+                        {testResult.message}
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-2 pt-2">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={testingConnection}
+                          onClick={handleGoogleTestConnection}
+                          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          {testingConnection ? "Testing..." : "Test Connection"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleGoogleReconnect}
+                          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer"
+                        >
+                          Reconnect
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={disconnecting}
+                        onClick={handleGoogleDisconnect}
+                        className="w-full rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 transition cursor-pointer"
+                      >
+                        {disconnecting ? "Disconnecting..." : "Disconnect"}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center py-4">
+                    <p className="text-xs text-slate-500 mb-4 font-medium">No Google account connected.</p>
+                    <button
+                      type="button"
+                      onClick={handleGoogleReconnect}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 text-xs font-semibold shadow-sm transition cursor-pointer"
+                    >
+                      Connect Gmail
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
 

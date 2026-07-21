@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
 import { setSessionCookie } from "../../../../lib/authSession";
 import { verifyPassword } from "../../../../lib/passwords";
+import { checkAndRefreshGoogleToken } from "../../../../lib/googleIntegration";
 
 export async function POST(req) {
   try {
@@ -33,6 +34,13 @@ export async function POST(req) {
 
     const ok = await verifyPassword(password, data.password);
     if (!ok) return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
+
+    // Automatically check and refresh Google integration if active
+    try {
+      await checkAndRefreshGoogleToken(data.id);
+    } catch (gErr) {
+      console.error("Login Google token refresh check failed:", gErr);
+    }
 
     await setSessionCookie({
       id: data.id,

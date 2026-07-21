@@ -1,6 +1,82 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "../../../../lib/authSession";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
+import { checkAndRefreshGoogleToken } from "../../../../lib/googleIntegration";
+
+async function buildRawEmailWithAttachments({ to, cc, bcc, subject, body, attachments, supabase }) {
+  const boundary = "AntigravityBoundary__" + Date.now().toString(16);
+  const parts = [];
+
+  if (to) parts.push(`To: ${to}`);
+  if (cc) parts.push(`Cc: ${cc}`);
+  if (bcc) parts.push(`Bcc: ${bcc}`);
+  parts.push(`Subject: ${subject}`);
+  parts.push("MIME-Version: 1.0");
+
+  if (attachments && attachments.length > 0) {
+    parts.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+    parts.push("");
+    parts.push(`--${boundary}`);
+    parts.push('Content-Type: text/plain; charset="UTF-8"');
+    parts.push("Content-Transfer-Encoding: 7bit");
+    parts.push("");
+    parts.push(body);
+
+    for (const att of attachments) {
+      if (!att.fileKey) continue;
+      try {
+        const { data: fileData, error } = await supabase.storage
+          .from("attachments")
+          .download(att.fileKey);
+
+        if (!error && fileData) {
+          const arrayBuffer = await fileData.arrayBuffer();
+          const base64Content = Buffer.from(arrayBuffer).toString("base64");
+          
+          parts.push(`--${boundary}`);
+          parts.push(`Content-Type: application/octet-stream; name="${att.name}"`);
+          parts.push(`Content-Disposition: attachment; filename="${att.name}"`);
+          parts.push("Content-Transfer-Encoding: base64");
+          parts.push("");
+          parts.push(base64Content);
+        }
+      } catch (err) {
+        console.warn("Failed to download attachment for email:", att.name, err);
+      }
+    }
+    parts.push(`--${boundary}--`);
+  } else {
+    parts.push('Content-Type: text/plain; charset="UTF-8"');
+    parts.push("Content-Transfer-Encoding: 7bit");
+    parts.push("");
+    parts.push(body);
+  }
+
+  const emailStr = parts.join("\r\n");
+  return Buffer.from(emailStr).toString("base64url");
+}
+
+
+async function refreshGoogleAccessToken(refreshToken) {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token"
+    })
+  });
+  const data = await res.json();
+  if (!res.ok || !data?.access_token) {
+    throw new Error(data?.error_description || "Failed to refresh Google access token");
+  }
+  return data.access_token;
+}
+
 
 async function getLinkedInUrn(accessToken) {
   // Try userInfo sub first
@@ -70,6 +146,114 @@ export async function POST(req) {
     const selectedTypes = Array.isArray(body?.selectedTypes) ? body.selectedTypes.filter(Boolean) : [];
     
     const supabase = getSupabaseServerClient();
+
+    if (mode === "send_gmail_api") {
+      let token = null;
+      let conn = null;
+
+      // Try reading from google_integrations first
+      try {
+        const integration = await checkAndRefreshGoogleToken(session.id);
+        if (integration && integration.access_token && integration.status !== "Expired") {
+          token = integration.access_token;
+        }
+      } catch (gErr) {
+        console.warn("Failed to get token from google_integrations:", gErr);
+      }
+
+      // Fallback to connected_accounts if needed
+      if (!token) {
+        const { data } = await supabase
+          .from("connected_accounts")
+          .select("*")
+          .eq("user_id", session.id)
+          .eq("provider", "gmail")
+          .eq("connected", true)
+          .maybeSingle();
+        conn = data;
+        if (!conn || !conn.access_token) {
+          return NextResponse.json({ error: "Gmail account is not connected." }, { status: 400 });
+        }
+        token = conn.access_token;
+      }
+
+      const sendEmailRequest = async (accessToken) => {
+        const raw = await buildRawEmailWithAttachments({
+          to: body.to || "",
+          cc: body.cc || "",
+          bcc: body.bcc || "",
+          subject: body.subject || "",
+          body: body.body || "",
+          attachments: body.attachments || [],
+          supabase
+        });
+        return fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ raw })
+        });
+      };
+
+      let resSend = await sendEmailRequest(token);
+
+      // Handle fallback token refresh if we used connected_accounts
+      if (resSend.status === 401 && conn && conn.refresh_token) {
+        try {
+          token = await refreshGoogleAccessToken(conn.refresh_token);
+          await supabase
+            .from("connected_accounts")
+            .update({ access_token: token, connected_at: new Date().toISOString() })
+            .eq("id", conn.id);
+          resSend = await sendEmailRequest(token);
+        } catch (refreshErr) {
+          console.error("Gmail refresh token error:", refreshErr);
+        }
+      }
+
+      const campaignId = body.campaignId || `CAMP-GMAIL-${Date.now()}`;
+      const sendStatus = resSend.ok ? "Sent" : "Failed";
+
+      // Save email history to Supabase campaign_emails
+      try {
+        await supabase.from("campaign_emails").insert({
+          user_id: session.id,
+          campaign_id: campaignId,
+          recipient_email: body.to || "",
+          recipient_name: (body.to || "").split("@")[0],
+          company: "",
+          subject: body.subject || "",
+          body: body.body || "",
+          send_status: sendStatus,
+        });
+      } catch (dbErr) {
+        console.warn("Failed to log campaign_emails history:", dbErr);
+      }
+
+      // Save to create_post_email_history table
+      try {
+        await supabase.from("create_post_email_history").insert({
+          user_id: session.id,
+          recipient: body.to || "",
+          subject: body.subject || "",
+          status: sendStatus,
+          sent_via: "Automated Gmail",
+          sent_timestamp: new Date().toISOString()
+        });
+      } catch (dbErr) {
+        console.warn("Failed to log create_post_email_history:", dbErr);
+      }
+
+      if (!resSend.ok) {
+        const errText = await resSend.text();
+        throw new Error(`Gmail API send failed: ${errText}`);
+      }
+
+
+      return NextResponse.json({ success: true, message: "Email sent successfully via Gmail API." });
+    }
 
     if (mode === "post_linkedin") {
       // Find connected LinkedIn account

@@ -20,6 +20,13 @@ export async function POST(req) {
         .delete()
         .eq("user_id", session.id)
         .eq("provider", provider);
+
+      if (provider === "gmail") {
+        await supabase
+          .from("google_integrations")
+          .update({ is_active: false })
+          .eq("user_id", session.id);
+      }
     } catch (e) {
       console.error("Failed to delete from connected_accounts table:", e);
     }

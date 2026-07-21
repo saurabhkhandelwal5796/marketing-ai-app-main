@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
 import { clearSessionCookie, getSessionFromCookies, setSessionCookie } from "../../../../lib/authSession";
 import { getSupabaseServerClient } from "../../../../lib/supabaseServer";
+import { checkAndRefreshGoogleToken } from "../../../../lib/googleIntegration";
 
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ user: null }, { status: 401 });
   try {
+    // Automatically check and refresh Google integration if active
+    try {
+      await checkAndRefreshGoogleToken(session.id);
+    } catch (gErr) {
+      console.error("Session Google token refresh check failed:", gErr);
+    }
+
     const supabase = getSupabaseServerClient();
     const { data, error } = await supabase
       .from("users")
