@@ -123,7 +123,7 @@ export default function LearningPage() {
   const [showMiniPlayer, setShowMiniPlayer] = useState(false);
   const [miniPlayerVideo, setMiniPlayerVideo] = useState(null);
 
-  // Navigation tabs (portal | dashboard | team | chat)
+  // Navigation tabs (portal | dashboard | team)
   const [activeTab, setActiveTab] = useState("portal");
 
   // Portal lists, filters, bookmarks, history
@@ -132,16 +132,6 @@ export default function LearningPage() {
   const [historyList, setHistoryList] = useState([]);
   const [claimedCert, setClaimedCert] = useState(null);
 
-  // AI Assistant Chat States
-  const [threads, setThreads] = useState([]);
-  const [activeThreadId, setActiveThreadId] = useState(null);
-  const [searchChatQuery, setSearchChatQuery] = useState("");
-  const [chatInput, setChatInput] = useState("");
-  const [chatLoading, setChatLoading] = useState(false);
-  const [editingThreadId, setEditingThreadId] = useState(null);
-  const [editingTitle, setEditingTitle] = useState("");
-
-  const assistantChatBottomRef = useRef(null);
   const videoRailRef = useRef(null);
 
   // Fetch all real database records
@@ -239,14 +229,6 @@ export default function LearningPage() {
       const storedHistory = localStorage.getItem("learning_history");
       if (storedHistory) setHistoryList(JSON.parse(storedHistory));
 
-      const storedThreads = localStorage.getItem("learning_chat_threads");
-      if (storedThreads) {
-        const parsed = JSON.parse(storedThreads);
-        setThreads(parsed);
-        if (parsed.length > 0) {
-          setActiveThreadId(parsed[0].id);
-        }
-      }
     } catch {}
   }, []);
 
@@ -283,13 +265,7 @@ export default function LearningPage() {
     return () => clearInterval(timer);
   }, [postTimeSpentTick]);
 
-  // Auto-scroll chat area
-  const activeThread = threads.find(t => t.id === activeThreadId);
-  useEffect(() => {
-    if (assistantChatBottomRef.current) {
-      assistantChatBottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [activeThread?.messages, chatLoading]);
+
 
   // Real Database-Derived Calculations
   const getTodayLogs = () => {

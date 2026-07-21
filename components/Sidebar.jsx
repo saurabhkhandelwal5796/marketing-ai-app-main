@@ -33,6 +33,7 @@ const navItems = [
   { href: "/my-tasks", label: "My Tasks", icon: ClipboardList },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/target-audience", label: "Target Audience", icon: Users },
+  { href: "/ai-assistant", label: "AI Assistant", icon: Sparkles },
   { href: "/users", label: "Users", icon: UsersRound, adminOnly: true },
   { href: "/my-profile", label: "My Profile", icon: UserCircle2 },
 ];
@@ -83,7 +84,7 @@ export default function Sidebar({
 
           <button
             onClick={onToggleCollapsed}
-            className="rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all duration-200 focus:outline-none"
+            className="rounded-xl border border-slate-200 dark:border-slate-700 p-2 text-slate-500 hover:bg-slate-55 dark:hover:bg-slate-800 transition-all duration-200 focus:outline-none"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
             style={{ outline: "none" }}
@@ -98,33 +99,38 @@ export default function Sidebar({
             .map((item) => {
               const Icon = item.icon;
               const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const renderDivider = item.href === "/ai-assistant";
               return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  title={collapsed ? item.label : undefined}
-                  className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ease-in-out focus:outline-none ${
-                    active
-                      ? "bg-blue-50 dark:bg-blue-900/20 font-bold text-blue-600 dark:text-blue-400"
-                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                  }`}
-                  style={{ outline: "none" }}
-                >
-                  <div
-                    className={`absolute left-0 top-1/2 h-[50%] w-[3px] -translate-y-1/2 rounded-r-full transition-all duration-200 ${
-                      active ? "bg-blue-600 dark:bg-blue-400" : "bg-transparent opacity-0"
+                <div key={item.href} className="w-full">
+                  {renderDivider && (
+                    <div className="my-2 border-t border-slate-200 dark:border-slate-800 mx-2" />
+                  )}
+                  <Link
+                    href={item.href}
+                    title={collapsed ? item.label : undefined}
+                    className={`group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 ease-in-out focus:outline-none ${
+                      active
+                        ? "bg-blue-50 dark:bg-blue-900/20 font-bold text-blue-600 dark:text-blue-400"
+                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
                     }`}
-                    aria-hidden="true"
-                  />
-                  <Icon 
-                    size={16} 
-                    strokeWidth={active ? 2.5 : 1.8} 
-                    className={`transition-all duration-200 ${
-                      active ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white"
-                    }`}
-                  />
-                  <span className={collapsed ? "hidden" : "inline text-xs font-semibold tracking-wide"}>{item.label}</span>
-                </Link>
+                    style={{ outline: "none" }}
+                  >
+                    <div
+                      className={`absolute left-0 top-1/2 h-[50%] w-[3px] -translate-y-1/2 rounded-r-full transition-all duration-200 ${
+                        active ? "bg-blue-600 dark:bg-blue-400" : "bg-transparent opacity-0"
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <Icon 
+                      size={16} 
+                      strokeWidth={active ? 2.5 : 1.8} 
+                      className={`transition-all duration-200 ${
+                        active ? "text-blue-600 dark:text-blue-400" : "text-slate-400 dark:text-slate-500 group-hover:text-slate-900 dark:group-hover:text-white"
+                      }`}
+                    />
+                    <span className={collapsed ? "hidden" : "inline text-xs font-semibold tracking-wide"}>{item.label}</span>
+                  </Link>
+                </div>
               );
             })}
         </nav>
