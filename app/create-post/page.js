@@ -106,7 +106,82 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [linkedinConnectedAccount, setLinkedinConnectedAccount] = useState("");
   const [checkingLinkedinStatus, setCheckingLinkedinStatus] = useState(false);
   const [instagramConnected, setInstagramConnected] = useState(false);
+  const [instagramConnectedAccount, setInstagramConnectedAccount] = useState("");
   const [facebookConnected, setFacebookConnected] = useState(false);
+  const [facebookConnectedAccount, setFacebookConnectedAccount] = useState("");
+  const [outlookConnected, setOutlookConnected] = useState(false);
+  const [outlookConnectedAccount, setOutlookConnectedAccount] = useState("");
+  const [gmailConnected, setGmailConnected] = useState(false);
+  const [gmailConnectedAccount, setGmailConnectedAccount] = useState("");
+  const [configuredProviders, setConfiguredProviders] = useState({});
+
+  const formatAccountLabel = (val) => {
+    if (!val) return "";
+    if (val.includes("@")) {
+      const [local, domain] = val.split("@");
+      if (local.length > 5) {
+        return `${local.slice(0, 5)}...@${domain}`;
+      }
+    }
+    if (val.length > 15) {
+      return val.slice(0, 15) + "...";
+    }
+    return val;
+  };
+
+  const loadIntegrationsStatus = async () => {
+    try {
+      const res = await fetch("/api/integrations/status");
+      const data = await res.json();
+      if (data && !data.error) {
+        setLinkedinConnected(!!data.connections.linkedin?.connected);
+        setLinkedinConnectedAccount(data.connections.linkedin?.displayName || data.connections.linkedin?.emailAddress || "");
+        
+        setInstagramConnected(!!data.connections.instagram?.connected);
+        setInstagramConnectedAccount(data.connections.instagram?.displayName || "");
+        
+        setFacebookConnected(!!data.connections.facebook?.connected);
+        setFacebookConnectedAccount(data.connections.facebook?.displayName || data.connections.facebook?.emailAddress || "");
+        
+        setOutlookConnected(!!data.connections.outlook?.connected);
+        setOutlookConnectedAccount(data.connections.outlook?.displayName || data.connections.outlook?.emailAddress || "");
+        
+        setGmailConnected(!!data.connections.gmail?.connected);
+        setGmailConnectedAccount(data.connections.gmail?.displayName || data.connections.gmail?.emailAddress || "");
+        
+        setConfiguredProviders(data.configured || {});
+      }
+    } catch (e) {
+      console.error("Failed to load integrations status:", e);
+    }
+  };
+
+  const handleConnectProvider = (provider) => {
+    if (!configuredProviders[provider]) {
+      setMessage("Integration Not Configured");
+      return;
+    }
+    window.location.href = `/api/integrations/connect?provider=${provider}`;
+  };
+
+  const handleDisconnectProvider = async (provider) => {
+    try {
+      const res = await fetch("/api/integrations/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        await loadIntegrationsStatus();
+        setMessage(`${provider.charAt(0).toUpperCase() + provider.slice(1)} account disconnected successfully.`);
+      } else {
+        setMessage(data?.error || `Failed to disconnect ${provider}.`);
+      }
+    } catch (e) {
+      setMessage(e.message || `Failed to disconnect ${provider}.`);
+    }
+  };
   //Added below 7 lines
   const [useTemplate, setUseTemplate] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -414,25 +489,31 @@ useEffect(() => {
 
   useEffect(() => {
     let mounted = true;
-    const loadLinkedinStatus = async () => {
-      setCheckingLinkedinStatus(true);
-      try {
-        const res = await fetch("/api/linkedin/status");
-        const data = await res.json();
-        if (mounted) {
-          setLinkedinConnected(!!data?.connected);
-          setLinkedinConnectedAccount(String(data?.connectedAccount || ""));
+    
+    const initStatus = async () => {
+      await loadIntegrationsStatus();
+      
+      if (mounted) {
+        const params = new URLSearchParams(window.location.search);
+        const connectedProvider = params.get("connected");
+        const errorMsg = params.get("error");
+
+        if (connectedProvider) {
+          setMessage(`${connectedProvider.charAt(0).toUpperCase() + connectedProvider.slice(1)} account connected successfully.`);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } else if (errorMsg) {
+          if (errorMsg === "not_configured") {
+            setMessage("Integration Not Configured");
+          } else {
+            setMessage(`Connection failed: ${decodeURIComponent(errorMsg)}`);
+          }
+          window.history.replaceState({}, document.title, window.location.pathname);
         }
-      } catch {
-        if (mounted) {
-          setLinkedinConnected(false);
-          setLinkedinConnectedAccount("");
-        }
-      } finally {
-        if (mounted) setCheckingLinkedinStatus(false);
       }
     };
-    loadLinkedinStatus();
+
+    initStatus();
+    
     return () => {
       mounted = false;
     };
@@ -962,8 +1043,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
   };
 
   const handleLinkedinConnect = () => {
-    if (linkedinConnected) return;
-    window.location.href = "/api/linkedin/connect";
+    handleConnectProvider("linkedin");
   };
 
   return (
@@ -976,50 +1056,118 @@ if (useTemplate && emailSelected && selectedTemplateId) {
         </div>
         
         {/* Connected Accounts indicator bar */}
-        <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 p-2 shadow-2xs">
+        <div className="flex items-center flex-wrap gap-2 bg-white rounded-xl border border-slate-200 p-2 shadow-2xs">
           <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider px-2">Integrations:</span>
           
-          {/* LinkedIn Integration Status */}
-          <button
-            onClick={handleLinkedinConnect}
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
-              linkedinConnected 
-                ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100" 
-                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
-            }`}
-          >
-            LinkedIn {linkedinConnected ? "✓" : "Connect"}
-          </button>
-          
-          {/* Instagram Integration Status */}
-          <button
-            onClick={() => {
-              if (instagramConnected) return;
-              setMessage("Instagram API Integration: Coming Soon.");
-            }}
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
-              instagramConnected 
-                ? "bg-pink-50 border-pink-200 text-pink-700" 
-                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
-            }`}
-          >
-            Instagram {instagramConnected ? "✓" : "Connect"}
-          </button>
-          
-          {/* Facebook Integration Status */}
-          <button
-            onClick={() => {
-              if (facebookConnected) return;
-              setMessage("Facebook API Integration: Coming Soon.");
-            }}
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
-              facebookConnected 
-                ? "bg-indigo-50 border-indigo-200 text-indigo-700" 
-                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
-            }`}
-          >
-            Facebook {facebookConnected ? "✓" : "Connect"}
-          </button>
+          {/* LinkedIn */}
+          {linkedinConnected ? (
+            <div className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold divide-x divide-blue-200 shadow-2xs">
+              <span className="px-2.5 py-1">
+                LinkedIn ({formatAccountLabel(linkedinConnectedAccount)})
+              </span>
+              <button
+                onClick={() => handleDisconnectProvider("linkedin")}
+                className="px-2 py-1 hover:bg-blue-100 hover:text-blue-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleConnectProvider("linkedin")}
+              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
+            >
+              Connect LinkedIn
+            </button>
+          )}
+
+          {/* Instagram */}
+          {instagramConnected ? (
+            <div className="inline-flex items-center rounded-lg border border-pink-200 bg-pink-50 text-pink-700 text-xs font-bold divide-x divide-pink-200 shadow-2xs">
+              <span className="px-2.5 py-1">
+                Instagram ({formatAccountLabel(instagramConnectedAccount)})
+              </span>
+              <button
+                onClick={() => handleDisconnectProvider("instagram")}
+                className="px-2 py-1 hover:bg-pink-100 hover:text-pink-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleConnectProvider("instagram")}
+              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
+            >
+              Connect Instagram
+            </button>
+          )}
+
+          {/* Facebook */}
+          {facebookConnected ? (
+            <div className="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold divide-x divide-indigo-200 shadow-2xs">
+              <span className="px-2.5 py-1">
+                Facebook ({formatAccountLabel(facebookConnectedAccount)})
+              </span>
+              <button
+                onClick={() => handleDisconnectProvider("facebook")}
+                className="px-2 py-1 hover:bg-indigo-100 hover:text-indigo-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleConnectProvider("facebook")}
+              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
+            >
+              Connect Facebook
+            </button>
+          )}
+
+          {/* Outlook */}
+          {outlookConnected ? (
+            <div className="inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 text-xs font-bold divide-x divide-sky-200 shadow-2xs">
+              <span className="px-2.5 py-1">
+                Outlook ({formatAccountLabel(outlookConnectedAccount)})
+              </span>
+              <button
+                onClick={() => handleDisconnectProvider("outlook")}
+                className="px-2 py-1 hover:bg-sky-100 hover:text-sky-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleConnectProvider("outlook")}
+              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
+            >
+              Connect Outlook
+            </button>
+          )}
+
+          {/* Gmail */}
+          {gmailConnected ? (
+            <div className="inline-flex items-center rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-bold divide-x divide-red-200 shadow-2xs">
+              <span className="px-2.5 py-1">
+                Gmail ({formatAccountLabel(gmailConnectedAccount)})
+              </span>
+              <button
+                onClick={() => handleDisconnectProvider("gmail")}
+                className="px-2 py-1 hover:bg-red-100 hover:text-red-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleConnectProvider("gmail")}
+              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
+            >
+              Connect Gmail
+            </button>
+          )}
         </div>
       </div>
       {message && (
@@ -1945,10 +2093,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             )}
                             {typeId === "instagram_post" && !instagramConnected && (
                               <button
-                                onClick={() => {
-                                  setInstagramConnected(true);
-                                  setMessage("Instagram account connected (Simulation).");
-                                }}
+                                onClick={() => handleConnectProvider("instagram")}
                                 className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-white text-pink-700 hover:bg-pink-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
                               >
                                 Connect Instagram
@@ -2211,10 +2356,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             )}
                             {typeId === "instagram_post" && !instagramConnected && (
                               <button
-                                onClick={() => {
-                                  setInstagramConnected(true);
-                                  setMessage("Instagram account connected (Simulation).");
-                                }}
+                                onClick={() => handleConnectProvider("instagram")}
                                 className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-white text-pink-700 hover:bg-pink-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
                               >
                                 Connect Instagram
