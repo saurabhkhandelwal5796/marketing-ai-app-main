@@ -117,6 +117,13 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [gmailConnected, setGmailConnected] = useState(false);
   const [gmailConnectedAccount, setGmailConnectedAccount] = useState("");
   const [configuredProviders, setConfiguredProviders] = useState({});
+  const [emailClientPreference, setEmailClientPreference] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cp_email_client') || 'gmail';
+    }
+    return 'gmail';
+  });
+
 
   const formatAccountLabel = (val) => {
     if (!val) return "";
@@ -186,6 +193,82 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     }
   };
 
+  // Show a brief auto-dismiss toast (re-uses message state with auto-clear)
+  const showToast = (msg) => {
+    setMessage(msg);
+    setTimeout(() => setMessage(prev => (prev === msg ? '' : prev)), 4000);
+  };
+
+  // Save preferred email client to localStorage
+  const setEmailPref = (pref) => {
+    setEmailClientPreference(pref);
+    if (typeof window !== 'undefined') localStorage.setItem('cp_email_client', pref);
+  };
+
+  // Log to history table (best-effort)
+  const logHistoryEvent = async (platform, content, subject, status = 'Draft') => {
+    try {
+      await fetch('/api/create-post/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, content, subject, status })
+      });
+    } catch (e) {
+      // History logging is non-critical
+    }
+  };
+
+  // Log to audit for Recent Activity
+  const logAuditAction = async (actionName, details) => {
+    try {
+      await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser?.id || 'anonymous',
+          event_type: 'action',
+          page_name: 'Create & Post',
+          action_name: actionName,
+          details: JSON.stringify({ ...details, timestamp: new Date().toISOString() }),
+          session_id: getCurrentSessionId()
+        })
+      });
+      fetchRecentActivity();
+    } catch (e) {
+      // non-critical
+    }
+  };
+
+  // Post to LinkedIn: copy + open (no OAuth needed)
+  const handlePostToLinkedIn = (contentObj) => {
+    const text = contentObj?.content || '';
+    navigator.clipboard.writeText(text).catch(() => {});
+    showToast('LinkedIn content copied to clipboard! Paste and publish in the new tab.');
+    logHistoryEvent('LinkedIn', text, '', 'Copied');
+    logAuditAction('Generated Content Archive', { typeId: 'linkedin_post', typeLabel: 'LinkedIn', content: text, subject: '', action: 'copied_posted' });
+    window.open('https://www.linkedin.com/feed/', '_blank');
+  };
+
+  // Post to Instagram: copy caption + hashtags + open (no OAuth needed)
+  const handlePostToInstagram = (contentObj) => {
+    const text = contentObj?.content || '';
+    navigator.clipboard.writeText(text).catch(() => {});
+    showToast('Instagram caption copied to clipboard! Paste it in the app that opened.');
+    logHistoryEvent('Instagram', text, '', 'Copied');
+    logAuditAction('Generated Content Archive', { typeId: 'instagram_post', typeLabel: 'Instagram', content: text, subject: '', action: 'copied_posted' });
+    window.open('https://www.instagram.com/', '_blank');
+  };
+
+  // Post to Facebook: copy + open (no OAuth needed)
+  const handlePostToFacebook = (contentObj) => {
+    const text = contentObj?.content || '';
+    navigator.clipboard.writeText(text).catch(() => {});
+    showToast('Facebook content copied to clipboard! Paste and publish in the new tab.');
+    logHistoryEvent('Facebook', text, '', 'Copied');
+    logAuditAction('Generated Content Archive', { typeId: 'facebook_post', typeLabel: 'Facebook', content: text, subject: '', action: 'copied_posted' });
+    window.open('https://www.facebook.com/', '_blank');
+  };
+
   const handleSendEmail = (contentObj, recipientEmail = null) => {
     let toVal = "";
     let subjectVal = "";
@@ -215,7 +298,18 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}&body=${body}`;
       window.open(url, "_blank");
     } else {
-      setMessage("Please connect Outlook or Gmail.");
+      // No OAuth connection — use preferred client deeplink (user is already logged in browser)
+      const pref = emailClientPreference || (typeof window !== 'undefined' ? localStorage.getItem('cp_email_client') : null) || 'gmail';
+      const subject = encodeURIComponent(subjectVal);
+      const body = encodeURIComponent(bodyVal);
+      const to = encodeURIComponent(toVal);
+      if (pref === 'outlook') {
+        const url = `https://outlook.office.com/mail/deeplink/compose?to=${to}&subject=${subject}&body=${body}`;
+        window.open(url, '_blank');
+      } else {
+        const url = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${subject}&body=${body}`;
+        window.open(url, '_blank');
+      }
     }
   };
 
@@ -424,6 +518,8 @@ useEffect(() => {
       if (data?.success) {
         await loadDraftsFromDb();
         setMessage(`Draft "${defaultName}" saved successfully!`);
+        logHistoryEvent(PLATFORM_META[typeId]?.label || typeId, contentObj.content || '', contentObj.subject || '', 'Draft');
+        logAuditAction('Generated Content Archive', { typeId, typeLabel: PLATFORM_META[typeId]?.label || typeId, content: contentObj.content || '', subject: contentObj.subject || '', action: 'draft_saved' });
       } else {
         setMessage(data?.error || "Failed to save draft.");
       }
@@ -507,16 +603,48 @@ useEffect(() => {
   };
 
   const handleDownloadTxt = (typeId, contentObj) => {
-    const text = typeId === "email_campaign" || typeId === "newsletter"
-      ? `Subject: ${contentObj.subject || ""}\n\n${contentObj.content || ""}`
-      : contentObj.content || "";
-    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const meta = PLATFORM_META[typeId] || { label: typeId };
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const author = currentUser?.name || currentUser?.email || 'Unknown';
+    const wordCount = (contentObj.content || '').trim().split(/s+/).filter(Boolean).length;
+
+    let text = '';
+    text += `=== ${meta.label} Content ===
+`;
+    text += `Platform:    ${meta.label}
+`;
+    text += `Created By:  ${author}
+`;
+    text += `Date:        ${dateStr} at ${timeStr}
+`;
+    text += `Word Count:  ${wordCount} words
+`;
+    if (typeId === 'email_campaign' || typeId === 'newsletter') {
+      text += `Subject:     ${contentObj.subject || ''}
+`;
+    }
+    text += `
+--- Content ---
+
+`;
+    text += (contentObj.content || '');
+    text += `
+
+--- End of File ---
+`;
+
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    const link = document.createElement('a');
     link.href = url;
-    link.download = `${typeId}_content.txt`;
+    link.download = `${meta.label.toLowerCase().replace(/s+/g, '_')}_content_${now.toISOString().split('T')[0]}.txt`;
     link.click();
     URL.revokeObjectURL(url);
+    showToast(`${meta.label} content downloaded as TXT.`);
+    logHistoryEvent(meta.label, contentObj.content || '', contentObj.subject || '', 'Downloaded');
+    logAuditAction('Generated Content Archive', { typeId, typeLabel: meta.label, content: contentObj.content || '', subject: contentObj.subject || '', action: 'downloaded' });
   };
 
   const generateImageWithPreset = async (presetType) => {
@@ -1931,8 +2059,10 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                 const textToCopy = (typeId === "email_campaign" || typeId === "newsletter") && subject
                                   ? `Subject: ${subject}\n\n${body}`
                                   : body;
-                                navigator.clipboard.writeText(textToCopy);
-                                setMessage("Copied content to clipboard.");
+                                navigator.clipboard.writeText(textToCopy).catch(() => {});
+                                showToast("✓ Content copied to clipboard!");
+                                logHistoryEvent(PLATFORM_META[typeId]?.label || typeId, textToCopy, contentObj?.subject || '', 'Copied');
+                                logAuditAction('Generated Content Archive', { typeId, typeLabel: PLATFORM_META[typeId]?.label || typeId, content: textToCopy, subject: contentObj?.subject || '', action: 'copied' });
                               }}
                               className="inline-flex items-center gap-1 rounded bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 text-[11px] font-bold cursor-pointer transition"
                               title="Copy"
@@ -1961,14 +2091,20 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                               <Download size={11} /> Download TXT
                             </button>
                             {(typeId === "email_campaign" || typeId === "newsletter") && (
-                              <button
-                                onClick={() => handleSendEmail(contentObj)}
-                                className="inline-flex items-center gap-1 rounded bg-indigo-600 hover:bg-indigo-750 border border-indigo-650 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
-                                title="Send Email"
-                              >
-                                <Send size={11} /> Send Email
-                              </button>
-                            )}
+                               <div className="inline-flex items-center">
+                                 <button
+                                   onClick={() => handleSendEmail(contentObj)}
+                                   className="inline-flex items-center gap-1 rounded-l bg-indigo-600 hover:bg-indigo-700 border border-indigo-600 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
+                                   title={`Send via ${emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}`}
+                                 >
+                                   <Send size={11} /> Send Email
+                                 </button>
+                                 <div className="inline-flex border-y border-r border-indigo-200 rounded-r overflow-hidden">
+                                   <button onClick={() => setEmailPref('gmail')} title="Use Gmail" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>G</button>
+                                   <button onClick={() => setEmailPref('outlook')} title="Use Outlook" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>O</button>
+                                 </div>
+                               </div>
+                             )}
                           </div>
                         </div>
                         {/* Real Metadata bar */}
@@ -2154,22 +2290,30 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             )}
                           </div>
 
-                          {/* Social Connections Status buttons inside the card */}
+                          {/* Direct-post: copy to clipboard + open platform (no OAuth required) */}
                           <div className="flex flex-wrap gap-1.5">
-                            {typeId === "linkedin_post" && !linkedinConnected && (
+                            {typeId === "linkedin_post" && (
                               <button
-                                onClick={handleLinkedinConnect}
-                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                onClick={() => handlePostToLinkedIn(contentObj)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
                               >
-                                Connect LinkedIn
+                                Post to LinkedIn
                               </button>
                             )}
-                            {typeId === "instagram_post" && !instagramConnected && (
+                            {typeId === "instagram_post" && (
                               <button
-                                onClick={() => handleConnectProvider("instagram")}
-                                className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-white text-pink-700 hover:bg-pink-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                onClick={() => handlePostToInstagram(contentObj)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-pink-50 text-pink-700 hover:bg-pink-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
                               >
-                                Connect Instagram
+                                Post to Instagram
+                              </button>
+                            )}
+                            {typeId === "facebook_post" && (
+                              <button
+                                onClick={() => handlePostToFacebook(contentObj)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                              >
+                                Post to Facebook
                               </button>
                             )}
                           </div>
@@ -2242,8 +2386,10 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                               const textToCopy = (typeId === "email_campaign" || typeId === "newsletter") && subject
                                 ? `Subject: ${subject}\n\n${body}`
                                 : body;
-                              navigator.clipboard.writeText(textToCopy);
-                              setMessage("Copied content to clipboard.");
+                              navigator.clipboard.writeText(textToCopy).catch(() => {});
+                              showToast("✓ Content copied to clipboard!");
+                              logHistoryEvent(PLATFORM_META[typeId]?.label || typeId, textToCopy, contentObj?.subject || '', 'Copied');
+                              logAuditAction('Generated Content Archive', { typeId, typeLabel: PLATFORM_META[typeId]?.label || typeId, content: textToCopy, subject: contentObj?.subject || '', action: 'copied' });
                             }}
                             className="inline-flex items-center gap-1 rounded bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 px-3 py-1.5 text-xs font-bold cursor-pointer transition"
                             title="Copy"
@@ -2272,14 +2418,20 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             <Download size={12} /> Download TXT
                           </button>
                           {(typeId === "email_campaign" || typeId === "newsletter") && (
-                            <button
-                              onClick={() => handleSendEmail(contentObj)}
-                              className="inline-flex items-center gap-1.5 rounded bg-indigo-600 hover:bg-indigo-755 border border-indigo-650 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-2xs"
-                              title="Send Email"
-                            >
-                              <Send size={12} /> Send Email
-                            </button>
-                          )}
+                             <div className="inline-flex items-center">
+                               <button
+                                 onClick={() => handleSendEmail(contentObj)}
+                                 className="inline-flex items-center gap-1.5 rounded-l bg-indigo-600 hover:bg-indigo-700 border border-indigo-600 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-2xs"
+                                 title={`Send via ${emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}`}
+                               >
+                                 <Send size={12} /> Send Email
+                               </button>
+                               <div className="inline-flex border-y border-r border-indigo-200 rounded-r overflow-hidden">
+                                 <button onClick={() => setEmailPref('gmail')} title="Use Gmail" className={`px-2 py-1.5 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>G</button>
+                                 <button onClick={() => setEmailPref('outlook')} title="Use Outlook" className={`px-2 py-1.5 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>O</button>
+                               </div>
+                             </div>
+                           )}
                         </div>
 
                         {/* Editor input fields */}
@@ -2429,22 +2581,30 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             )}
                           </div>
 
-                          {/* Social Connections Status buttons inside the card */}
+                          {/* Direct-post: copy to clipboard + open platform (no OAuth required) */}
                           <div className="flex flex-wrap gap-1.5">
-                            {typeId === "linkedin_post" && !linkedinConnected && (
+                            {typeId === "linkedin_post" && (
                               <button
-                                onClick={handleLinkedinConnect}
-                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                onClick={() => handlePostToLinkedIn(contentObj)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
                               >
-                                Connect LinkedIn
+                                Post to LinkedIn
                               </button>
                             )}
-                            {typeId === "instagram_post" && !instagramConnected && (
+                            {typeId === "instagram_post" && (
                               <button
-                                onClick={() => handleConnectProvider("instagram")}
-                                className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-white text-pink-700 hover:bg-pink-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                                onClick={() => handlePostToInstagram(contentObj)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-pink-50 text-pink-700 hover:bg-pink-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
                               >
-                                Connect Instagram
+                                Post to Instagram
+                              </button>
+                            )}
+                            {typeId === "facebook_post" && (
+                              <button
+                                onClick={() => handlePostToFacebook(contentObj)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                              >
+                                Post to Facebook
                               </button>
                             )}
                           </div>
@@ -2681,13 +2841,19 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                 >
                   {submittingPost ? "Sending Campaign..." : `Send to ${allRecipients.length} Recipient${allRecipients.length !== 1 ? 's' : ''}`}
                 </button>
-                <button
-                  onClick={() => handleSendEmail(null)}
-                  disabled={allRecipients.length === 0}
-                  className="flex-1 rounded-xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[0.99] hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50 border-0 cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Send size={14} /> Send Email (Outlook/Gmail)
-                </button>
+                <div className="flex-1 flex flex-col gap-1.5">
+                   <button
+                     onClick={() => handleSendEmail(null)}
+                     disabled={allRecipients.length === 0}
+                     className="w-full rounded-xl bg-indigo-600 px-4 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:scale-[0.99] hover:bg-indigo-700 hover:shadow-lg disabled:opacity-50 border-0 cursor-pointer flex items-center justify-center gap-1.5"
+                   >
+                     <Send size={14} /> Send via {emailClientPreference === 'outlook' ? 'Outlook' : 'Gmail'}
+                   </button>
+                   <div className="flex justify-center gap-2 pt-0.5">
+                     <button onClick={() => setEmailPref('gmail')} className={`text-xs font-semibold px-3 py-1 rounded border cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>Gmail</button>
+                     <button onClick={() => setEmailPref('outlook')} className={`text-xs font-semibold px-3 py-1 rounded border cursor-pointer transition ${emailClientPreference === 'outlook' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>Outlook</button>
+                   </div>
+                 </div>
              </div>
           </div>
         </div>
