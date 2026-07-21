@@ -307,11 +307,11 @@ export default function LearningPage() {
 
   // 2. Today's Completed Videos
   const todayVideosLogs = todayLogs.filter(r => r.event_type === "action" && r.action_name === "Started Learning Video");
-  const todayVideosCount = new Set(todayVideosLogs.map(r => r.details)).size;
+  const todayVideosCount = new Set(todayVideosLogs.map(r => r.details || "")).size;
 
   // 3. Today's Completed Articles
   const todayArticlesLogs = todayLogs.filter(r => r.event_type === "action" && r.action_name === "Opened Article");
-  const todayArticlesCount = new Set(todayArticlesLogs.map(r => r.details)).size;
+  const todayArticlesCount = new Set(todayArticlesLogs.map(r => r.details || "")).size;
 
   // Daily target bounds
   const timeProgress = Math.min(100, Math.round((todayMinutes / 30) * 100));
@@ -355,11 +355,11 @@ export default function LearningPage() {
   const getCumulativeStats = () => {
     // Total Videos Watched
     const videoLogs = userLogs.filter(r => r.event_type === "action" && r.action_name === "Started Learning Video");
-    const totalVideos = new Set(videoLogs.map(r => r.details)).size;
+    const totalVideos = new Set(videoLogs.map(r => r.details || "")).size;
 
     // Total Articles Opened
     const articleLogs = userLogs.filter(r => r.event_type === "action" && r.action_name === "Opened Article");
-    const totalArticles = new Set(articleLogs.map(r => r.details)).size;
+    const totalArticles = new Set(articleLogs.map(r => r.details || "")).size;
 
     // Total Minutes Learned
     const visitLogs = userLogs.filter(r => r.event_type === "page_visit" && r.page_name === "Learning" && r.time_spent_ms);
@@ -434,15 +434,15 @@ export default function LearningPage() {
   const getBadgesState = () => {
     const chatLogs = userLogs.filter(r => r.action_name === "Sent AI Chat query");
     const allOpenedItems = [...new Set([
-      ...userLogs.filter(r => r.event_type === "action" && r.action_name === "Started Learning Video").map(r => r.details),
-      ...userLogs.filter(r => r.event_type === "action" && r.action_name === "Opened Article").map(r => r.details)
+      ...userLogs.filter(r => r.event_type === "action" && r.action_name === "Started Learning Video").map(r => r.details || ""),
+      ...userLogs.filter(r => r.event_type === "action" && r.action_name === "Opened Article").map(r => r.details || "")
     ])];
 
     const marketingExpert = dbStats.totalArticles >= 5;
     const salesChampion = dbStats.totalVideos >= 5;
     const aiMaster = chatLogs.length >= 5;
     
-    const linkedinCount = allOpenedItems.filter(title => title.toLowerCase().includes("linkedin")).length;
+    const linkedinCount = allOpenedItems.filter(title => (title || "").toLowerCase().includes("linkedin")).length;
     const linkedinPro = linkedinCount >= 3;
 
     const starterChips = [
@@ -453,7 +453,7 @@ export default function LearningPage() {
       "Generate 5 SaaS campaign ideas.",
       "Generate 10 blog content ideas."
     ];
-    const customChatsCount = chatLogs.filter(r => !starterChips.includes(r.details)).length;
+    const customChatsCount = chatLogs.filter(r => !starterChips.includes(r.details || "")).length;
     const promptEngineer = customChatsCount >= 3;
 
     return [
@@ -593,7 +593,7 @@ export default function LearningPage() {
     const counts = {};
     userLogs.forEach(r => {
       if (r.event_type === "action" && (r.action_name === "Opened Article" || r.action_name === "Started Learning Video")) {
-        const title = r.details.replace("Read: ", "").replace("Watched: ", "");
+        const title = (r.details || "").replace("Read: ", "").replace("Watched: ", "");
         counts[title] = (counts[title] || 0) + 1;
       }
     });
@@ -602,7 +602,7 @@ export default function LearningPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4)
       .map(([title, count]) => {
-        const isVideo = userLogs.some(r => r.details.includes(title) && r.action_name === "Started Learning Video");
+        const isVideo = userLogs.some(r => (r.details || "").includes(title) && r.action_name === "Started Learning Video");
         return {
           title,
           category: isVideo ? "Video" : "Article",
