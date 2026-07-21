@@ -20,7 +20,13 @@ import {
   TrendingUp,
   RotateCcw,
   User,
-  Users
+  Users,
+  Pin,
+  Copy,
+  FileText,
+  Trash2,
+  Edit3,
+  Send
 } from "lucide-react";
 import { getCurrentSessionId, getCurrentUserId } from "../../lib/getCurrentUserId";
 
@@ -291,7 +297,7 @@ const TRENDING_CONTENT = [
     title: "Cold Email Outreaches that Booked Fortune 500 Clients",
     url: "https://www.youtube.com/watch?v=mD0kY8S9d14",
     type: "video",
-    takeaway: "Step-by-step review of real cold emails that converted enterprise decision makers.",
+    takeaway: "Step-by-step review of real cold emails that converted B2B accounts.",
     category: "Lead Generation",
     views: "35K views",
     likes: "2.8K saves",
@@ -375,7 +381,7 @@ export default function LearningPage() {
   const [miniPlayerVideo, setMiniPlayerVideo] = useState(null);
   const [completedModules, setCompletedModules] = useState(() => new Set());
 
-  // Navigation state (portal | dashboard | team)
+  // Navigation tab (portal | dashboard | team | chat)
   const [activeTab, setActiveTab] = useState("portal");
 
   // Portal lists & filters
@@ -395,6 +401,17 @@ export default function LearningPage() {
   const [totalVideos, setTotalVideos] = useState(0);
   const [streakDays, setStreakDays] = useState(0);
   const [dailyLogs, setDailyLogs] = useState([]);
+
+  // AI Assistant Chat States
+  const [threads, setThreads] = useState([]);
+  const [activeThreadId, setActiveThreadId] = useState(null);
+  const [searchChatQuery, setSearchChatQuery] = useState("");
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [editingThreadId, setEditingThreadId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  const assistantChatBottomRef = useRef(null);
 
   // Load cumulative stats
   const loadCumulativeStats = () => {
@@ -453,7 +470,6 @@ export default function LearningPage() {
         localStorage.setItem("learning_stats_total_videos", String(total));
       }
       
-      // Update streak and active date
       checkStreak();
       
       // Update daily logs list
@@ -502,6 +518,16 @@ export default function LearningPage() {
         localStorage.setItem("learning_videos_today", "0");
       }
       
+      // Load AI Assistant Chat Threads
+      const storedThreads = localStorage.getItem("learning_chat_threads");
+      if (storedThreads) {
+        const parsed = JSON.parse(storedThreads);
+        setThreads(parsed);
+        if (parsed.length > 0) {
+          setActiveThreadId(parsed[0].id);
+        }
+      }
+      
       loadCumulativeStats();
     } catch (e) {
       console.error("Failed to load local storage state:", e);
@@ -541,30 +567,13 @@ export default function LearningPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Pre-existing unmount audit tracking event
+  // Auto-scroll inside chat area
+  const activeThread = threads.find(t => t.id === activeThreadId);
   useEffect(() => {
-    const startTime = Date.now();
-    return () => {
-      const timeSpent = Date.now() - startTime;
-      if (timeSpent > 10000) {
-        (async () => {
-          const currentUserId = await getCurrentUserId();
-          fetch("/api/audit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              user_id: currentUserId || "anonymous",
-              event_type: "page_visit",
-              page_name: "Learning",
-              time_spent_ms: timeSpent,
-              details: `Spent ${Math.round(timeSpent / 1000)} seconds on Learning page`,
-              session_id: getCurrentSessionId(),
-            }),
-          }).catch(() => {});
-        })();
-      }
-    };
-  }, []);
+    if (assistantChatBottomRef.current) {
+      assistantChatBottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [activeThread?.messages, chatLoading]);
 
   const loadContent = useCallback(async () => {
     setLoading(true);
@@ -824,10 +833,10 @@ export default function LearningPage() {
 
   const monthlyData = getMonthlyReportData();
 
-  // Completion percentage (average of goal achievements)
+  // Completion percentage
   const averageCompletion = Math.round((timeProgress + articlesProgress + videosProgress) / 3);
 
-  // Leaderboard data (dynamically incorporates user's live values)
+  // Leaderboard data
   const teamMembers = [
     { name: "Sarah Connor", videos: 15, articles: 18, hours: 12.0, streak: 10, avatar: "SC", isUser: false },
     { name: "John Doe (You)", videos: totalVideos, articles: totalArticles, hours: parseFloat((totalTime / 3600).toFixed(1)), streak: streakDays, avatar: "JD", isUser: true },
@@ -836,11 +845,160 @@ export default function LearningPage() {
     { name: "Emily Watson", videos: 3, articles: 2, hours: 2.0, streak: 1, avatar: "EW", isUser: false },
   ].sort((a, b) => b.hours - a.hours);
 
-  // Manager metrics calcs
   const totalTeamHours = teamMembers.reduce((acc, m) => acc + m.hours, 0).toFixed(1);
   const avgTeamStreak = Math.round(teamMembers.reduce((acc, m) => acc + m.streak, 0) / teamMembers.length);
   const topLearner = teamMembers[0];
   const leastActive = teamMembers[teamMembers.length - 1];
+
+  // AI Assistant Methods
+  const createNewThread = () => {
+    const newThread = {
+      id: `thread-${Date.now()}`,
+      title: "New Conversation",
+      pinned: false,
+      createdAt: new Date().toISOString(),
+      messages: []
+    };
+    const updated = [newThread, ...threads];
+    setThreads(updated);
+    setActiveThreadId(newThread.id);
+    try {
+      localStorage.setItem("learning_chat_threads", JSON.stringify(updated));
+    } catch {}
+  };
+
+  const deleteThread = (id, e) => {
+    e.stopPropagation();
+    const conf = window.confirm("Are you sure you want to delete this conversation?");
+    if (!conf) return;
+    const updated = threads.filter(t => t.id !== id);
+    setThreads(updated);
+    try {
+      localStorage.setItem("learning_chat_threads", JSON.stringify(updated));
+    } catch {}
+    if (activeThreadId === id) {
+      if (updated.length > 0) {
+        setActiveThreadId(updated[0].id);
+      } else {
+        setActiveThreadId(null);
+      }
+    }
+  };
+
+  const renameThread = (id, newTitle) => {
+    const updated = threads.map(t => {
+      if (t.id === id) {
+        return { ...t, title: newTitle.trim() || "Untitled" };
+      }
+      return t;
+    });
+    setThreads(updated);
+    try {
+      localStorage.setItem("learning_chat_threads", JSON.stringify(updated));
+    } catch {}
+  };
+
+  const togglePinThread = (id, e) => {
+    e.stopPropagation();
+    const updated = threads.map(t => {
+      if (t.id === id) {
+        return { ...t, pinned: !t.pinned };
+      }
+      return t;
+    });
+    setThreads(updated);
+    try {
+      localStorage.setItem("learning_chat_threads", JSON.stringify(updated));
+    } catch {}
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    alert("Response copied to clipboard!");
+  };
+
+  const exportChat = (thread) => {
+    if (!thread || thread.messages.length === 0) return;
+    const text = thread.messages
+      .map(m => `[${m.role.toUpperCase()}]\n${m.content}\n`)
+      .join("\n");
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${thread.title.replace(/\s+/g, "_")}_transcript.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSendChatMessage = async (overridePrompt = "") => {
+    const text = (overridePrompt || chatInput).trim();
+    if (!text || chatLoading || !activeThreadId) return;
+
+    setChatInput("");
+    
+    const userMsg = { role: "user", content: text };
+    const currentThread = threads.find(t => t.id === activeThreadId);
+    const updatedMessages = [...currentThread.messages, userMsg];
+    
+    const updatedThreads = threads.map(t => {
+      if (t.id === activeThreadId) {
+        const title = t.title === "New Conversation" ? (text.slice(0, 30) + (text.length > 30 ? "..." : "")) : t.title;
+        return { ...t, title, messages: updatedMessages };
+      }
+      return t;
+    });
+    setThreads(updatedThreads);
+    try {
+      localStorage.setItem("learning_chat_threads", JSON.stringify(updatedThreads));
+    } catch {}
+
+    setChatLoading(true);
+
+    try {
+      const res = await fetch("/api/learning/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: updatedMessages })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Query failed");
+      
+      const assistantMsg = { role: "assistant", content: data.reply };
+      
+      const finalThreads = updatedThreads.map(t => {
+        if (t.id === activeThreadId) {
+          return { ...t, messages: [...updatedMessages, assistantMsg] };
+        }
+        return t;
+      });
+      setThreads(finalThreads);
+      try {
+        localStorage.setItem("learning_chat_threads", JSON.stringify(finalThreads));
+      } catch {}
+    } catch (e) {
+      alert("Error: " + e.message);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  // Sort and filter threads
+  const getSortedThreads = () => {
+    return [...threads].sort((a, b) => {
+      if (a.pinned && !b.pinned) return -1;
+      if (!a.pinned && b.pinned) return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+  };
+
+  const sortedThreadsList = getSortedThreads();
+
+  const filteredThreadsList = sortedThreadsList.filter(t => {
+    const q = searchChatQuery.toLowerCase().trim();
+    if (!q) return true;
+    return t.title.toLowerCase().includes(q) || t.messages.some(m => m.content.toLowerCase().includes(q));
+  });
 
   return (
     <main className="min-h-screen space-y-6 bg-slate-950 p-6 text-white custom-sidebar-scroll overflow-y-auto">
@@ -897,6 +1055,17 @@ export default function LearningPage() {
           }`}
         >
           Team & Leaderboard
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab("chat");
+            if (threads.length === 0) createNewThread();
+          }}
+          className={`pb-1 border-b-2 transition-all ${
+            activeTab === "chat" ? "border-blue-500 text-white font-bold" : "border-transparent text-slate-400 hover:text-white"
+          }`}
+        >
+          AI Assistant
         </button>
       </div>
 
@@ -1100,7 +1269,7 @@ export default function LearningPage() {
                     <div
                       key={`${article.url}-${index}`}
                       onClick={() => handleArticleClick(article)}
-                      className="p-4 rounded-xl border border-slate-850 bg-slate-900/30 hover:bg-slate-900/70 hover:border-slate-700/60 transition cursor-pointer flex flex-col justify-between relative group"
+                      className="p-4 rounded-xl border border-slate-855 bg-slate-900/30 hover:bg-slate-900/70 hover:border-slate-700/60 transition cursor-pointer flex flex-col justify-between relative group"
                     >
                       <button
                         onClick={(e) => toggleBookmark(e, article, "article")}
@@ -1143,7 +1312,7 @@ export default function LearningPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-white">Trending Content</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Top trending assets inside the growth marketing network.</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Top trending B2B assets inside the growth marketing network.</p>
                 </div>
               </div>
 
@@ -1182,7 +1351,7 @@ export default function LearningPage() {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={(e) => toggleBookmark(e, item, item.type)}
-                            className="rounded-lg border border-slate-800 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition"
+                            className="rounded-lg border border-slate-800 p-1.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition bg-transparent border-0 cursor-pointer"
                           >
                             <Bookmark size={12} className={isBookmarked ? "fill-amber-400 text-amber-400" : ""} />
                           </button>
@@ -1214,7 +1383,7 @@ export default function LearningPage() {
                 <button
                   type="button"
                   onClick={resetDailyGoals}
-                  className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition"
+                  className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition bg-transparent cursor-pointer"
                   title="Reset progress metrics"
                 >
                   <RotateCcw size={12} />
@@ -1302,7 +1471,7 @@ export default function LearningPage() {
                     <div>
                       <h4 className="text-xs font-bold text-amber-400">All Goals Completed!</h4>
                       <p className="text-[10px] text-slate-400 leading-normal">
-                        Excellent job. You have completed all of your daily B2B learning objectives!
+                        Excellent job. You have completed all of your daily objectives!
                       </p>
                     </div>
                   </div>
@@ -1312,7 +1481,7 @@ export default function LearningPage() {
                     <div>
                       <h4 className="text-xs font-bold text-slate-300">In Progress</h4>
                       <p className="text-[10px] text-slate-400 leading-normal">
-                        Continue reading and learning to achieve your daily skills target.
+                        Continue reading and learning to achieve your daily targets.
                       </p>
                     </div>
                   </div>
@@ -1427,70 +1596,6 @@ export default function LearningPage() {
               )}
             </section>
 
-            {/* Action Plan */}
-            {content && content.actionPlan && content.actionPlan.length > 0 && (
-              <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
-                <div className="mb-4 flex items-center gap-2">
-                  <div className="rounded-lg bg-indigo-500/10 p-2 text-indigo-400">
-                    <CheckCircle2 size={16} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-white">Daily Action Plan</h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">B2B skills execution guidelines from the AI Coach.</p>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  {content.actionPlan.map((step, index) => {
-                    const moduleName = String(step || `Module ${index + 1}`);
-                    const key = `${index}-${moduleName}`;
-                    const isCompleted = completedModules.has(key);
-                    return (
-                      <div
-                        key={key}
-                        className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-855 bg-slate-900/40 text-xs text-slate-200"
-                      >
-                        <span className={`mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
-                          isCompleted ? "bg-emerald-500/20 text-emerald-400" : "bg-slate-800 text-slate-400"
-                        }`}>
-                          {index + 1}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <p className={`leading-relaxed font-semibold ${isCompleted ? "line-through text-slate-500" : ""}`}>{step}</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isCompleted) return;
-                              setCompletedModules((prev) => new Set([...prev, key]));
-                              (async () => {
-                                const currentUserId = await getCurrentUserId();
-                                fetch("/api/audit", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    user_id: currentUserId || "anonymous",
-                                    event_type: "action",
-                                    page_name: "Learning",
-                                    action_name: "Completed Learning Module",
-                                    details: `Completed: ${moduleName}`,
-                                    session_id: getCurrentSessionId(),
-                                  }),
-                                }).catch(() => {});
-                              })();
-                            }}
-                            className="mt-2 rounded bg-slate-800 hover:bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-300 disabled:opacity-50 border-0 cursor-pointer"
-                            disabled={isCompleted}
-                          >
-                            {isCompleted ? "Completed" : "Mark Done"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
-
           </div>
         </div>
       )}
@@ -1499,7 +1604,6 @@ export default function LearningPage() {
       {activeTab === "dashboard" && (
         <div className="space-y-6 animate-fadeIn">
           
-          {/* Main Stat metrics Row */}
           <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="rounded-2xl border border-slate-850 bg-slate-900/40 p-4 text-center shadow-md relative overflow-hidden">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Learning Streak</p>
@@ -1531,7 +1635,6 @@ export default function LearningPage() {
             </div>
           </section>
 
-          {/* Reports Grid */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             
             {/* Weekly Report Graph */}
@@ -1544,22 +1647,18 @@ export default function LearningPage() {
                 <p className="text-[11px] text-slate-400 mt-0.5">Daily learning minutes logged during the past 7 days.</p>
               </div>
 
-              {/* Bar Chart Container */}
               <div className="mt-8 h-48 flex items-end justify-between px-2.5 border-b border-slate-800 pb-2">
                 {weeklyData.map((day, idx) => {
-                  // Max height base is 60 minutes
                   const heightPercent = Math.min(100, Math.round((day.minutes / 60) * 100));
                   return (
                     <div key={idx} className="flex flex-col items-center flex-1 group relative">
-                      {/* Tooltip on Hover */}
                       <div className="absolute bottom-full mb-2 bg-slate-900 border border-slate-800 rounded-lg p-2 text-[10px] opacity-0 group-hover:opacity-100 transition duration-150 pointer-events-none z-10 w-28 text-center shadow-xl">
                         <p className="font-bold text-white">{day.dateLabel}</p>
                         <p className="mt-0.5 text-blue-400">{day.minutes} mins spent</p>
                         <p className="text-slate-500">{day.videos} vids • {day.articles} arts</p>
                       </div>
 
-                      {/* Bar Fill */}
-                      <div className="w-6 sm:w-8 bg-slate-800 rounded-t-md overflow-hidden h-36 flex items-end">
+                      <div className="w-6 sm:w-8 bg-slate-850 rounded-t-md overflow-hidden h-36 flex items-end">
                         <div
                           style={{ height: `${heightPercent}%` }}
                           className="w-full bg-gradient-to-t from-blue-600 to-indigo-500 rounded-t-md transition-all duration-500 group-hover:brightness-110"
@@ -1577,8 +1676,8 @@ export default function LearningPage() {
               </div>
             </section>
 
-            {/* Monthly Report progress bars */}
-            <section className="md:col-span-5 rounded-2xl border border-slate-850 bg-slate-900/30 p-5 shadow-lg flex flex-col justify-between">
+            {/* Monthly Report Progress bars */}
+            <section className="md:col-span-5 rounded-2xl border border-slate-855 bg-slate-900/30 p-5 shadow-lg flex flex-col justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-1.5">
                   <TrendingUp size={15} className="text-purple-400" />
@@ -1589,7 +1688,6 @@ export default function LearningPage() {
 
               <div className="mt-6 space-y-4 flex-1 flex flex-col justify-center">
                 {monthlyData.map((week, idx) => {
-                  // Max base is 300 minutes per week
                   const pct = Math.min(100, Math.round((week.minutes / 300) * 100));
                   return (
                     <div key={idx}>
@@ -1626,7 +1724,6 @@ export default function LearningPage() {
       {/* TAB 3: Team Leaderboard & Manager View */}
       {activeTab === "team" && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start animate-fadeIn">
-          
           {/* Left Column (Team Leaderboard) */}
           <section className="lg:col-span-7 rounded-2xl border border-slate-800 bg-slate-900/20 p-5 shadow-lg">
             <div className="mb-4">
@@ -1643,18 +1740,16 @@ export default function LearningPage() {
                 return (
                   <div
                     key={member.name}
-                    className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition duration-150 ${
+                    className={`p-3 rounded-xl border flex items-center justify-between gap-4 transition duration-155 ${
                       member.isUser
                         ? "border-blue-500/50 bg-blue-950/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]"
                         : "border-slate-850 bg-slate-900/40 hover:bg-slate-900/80"
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      {/* Rank Indicator */}
                       <span className={`w-5 font-black text-sm text-center shrink-0 ${rankColor}`}>
                         {idx + 1}
                       </span>
-                      {/* Avatar */}
                       <div className={`h-8 w-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
                         member.isUser ? "bg-blue-600 text-white" : "bg-slate-800 text-slate-200"
                       }`}>
@@ -1673,7 +1768,6 @@ export default function LearningPage() {
                         </p>
                       </div>
                     </div>
-                    {/* Total Hours Badge */}
                     <div className="text-right shrink-0">
                       <span className="inline-flex rounded-lg bg-slate-800 border border-slate-700 px-2.5 py-1 text-xs font-bold text-white shadow-sm">
                         {member.hours.toFixed(1)} Hrs
@@ -1695,7 +1789,6 @@ export default function LearningPage() {
               <p className="text-[11px] text-slate-400 mt-0.5">Analytics overview of team B2B learning engagement.</p>
             </div>
 
-            {/* Team Stats Cards */}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl border border-slate-850 bg-slate-900/40 p-3 text-center">
                 <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wide">Team Hours Learned</p>
@@ -1707,10 +1800,7 @@ export default function LearningPage() {
               </div>
             </div>
 
-            {/* Actionable Manager Cards */}
             <div className="space-y-4 pt-2 border-t border-slate-800/80">
-              
-              {/* Top Learner Card */}
               <div>
                 <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-2">Top Learner</span>
                 <div className="p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 flex items-center gap-3">
@@ -1726,11 +1816,10 @@ export default function LearningPage() {
                 </div>
               </div>
 
-              {/* Least Active Card */}
               <div>
                 <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-2">Needs Encouragement</span>
                 <div className="p-3 rounded-xl border border-red-500/20 bg-red-500/5 flex items-center gap-3">
-                  <div className="h-8 w-8 rounded-full bg-red-950/60 text-red-400 flex items-center justify-center text-xs font-bold shrink-0 border border-red-900/50">
+                  <div className="h-8 w-8 rounded-full bg-red-955/60 text-red-400 flex items-center justify-center text-xs font-bold shrink-0 border border-red-900/50">
                     {leastActive.avatar}
                   </div>
                   <div className="min-w-0">
@@ -1741,10 +1830,8 @@ export default function LearningPage() {
                   </div>
                 </div>
               </div>
-
             </div>
 
-            {/* Team Statistics list */}
             <div className="pt-4 border-t border-slate-800/80">
               <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-3">Team Engagement Audit</span>
               <div className="space-y-2 text-xs">
@@ -1762,8 +1849,277 @@ export default function LearningPage() {
                 </div>
               </div>
             </div>
-
           </section>
+        </div>
+      )}
+
+      {/* TAB 4: ChatGPT-like AI Assistant */}
+      {activeTab === "chat" && (
+        <div className="flex flex-col md:flex-row rounded-2xl border border-slate-800 bg-slate-900/10 min-h-[500px] h-[65vh] overflow-hidden animate-fadeIn">
+          
+          {/* Left Panel: Conversations Sidebar */}
+          <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-slate-800 bg-slate-950/40 p-4 flex flex-col justify-between shrink-0">
+            <div className="space-y-3 min-h-0 flex-1 flex flex-col">
+              <button
+                onClick={createNewThread}
+                className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 py-2 text-xs font-bold text-white transition active:scale-95 shadow-md"
+              >
+                + New Chat
+              </button>
+
+              {/* Search Box */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchChatQuery}
+                  onChange={(e) => setSearchChatQuery(e.target.value)}
+                  placeholder="Search chats..."
+                  className="w-full rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-1.5 text-xs text-white outline-none focus:border-slate-700 placeholder-slate-500"
+                />
+              </div>
+
+              {/* Threads list */}
+              <div className="flex-1 overflow-y-auto space-y-1.5 custom-sidebar-scroll pr-1">
+                {filteredThreadsList.length === 0 ? (
+                  <p className="text-[11px] text-slate-600 italic text-center py-4">No conversations found</p>
+                ) : (
+                  filteredThreadsList.map((thread) => {
+                    const isActive = thread.id === activeThreadId;
+                    const isEditing = thread.id === editingThreadId;
+                    return (
+                      <div
+                        key={thread.id}
+                        onClick={() => {
+                          if (!isEditing) setActiveThreadId(thread.id);
+                        }}
+                        className={`p-2.5 rounded-xl flex items-center justify-between gap-2 cursor-pointer transition ${
+                          isActive
+                            ? "bg-slate-800/80 border border-slate-750 text-white"
+                            : "border border-transparent text-slate-400 hover:bg-slate-900/50 hover:text-white"
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          {thread.pinned ? (
+                            <Pin size={11} className="text-amber-500 fill-amber-500 shrink-0 rotation-45" />
+                          ) : (
+                            <BookOpen size={11} className="text-slate-500 shrink-0" />
+                          )}
+                          
+                          {isEditing ? (
+                            <input
+                              type="text"
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onBlur={() => {
+                                renameThread(thread.id, editingTitle);
+                                setEditingThreadId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  renameThread(thread.id, editingTitle);
+                                  setEditingThreadId(null);
+                                }
+                              }}
+                              autoFocus
+                              className="bg-slate-900 border border-slate-700 text-xs text-white px-1.5 py-0.5 rounded outline-none w-full"
+                            />
+                          ) : (
+                            <span
+                              onDoubleClick={() => {
+                                setEditingThreadId(thread.id);
+                                setEditingTitle(thread.title);
+                              }}
+                              className="text-xs font-semibold truncate select-none"
+                              title="Double click to rename"
+                            >
+                              {thread.title}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 hover:opacity-100 transition-opacity focus-within:opacity-100">
+                          <button
+                            onClick={(e) => togglePinThread(thread.id, e)}
+                            className="text-slate-500 hover:text-amber-400 p-0.5 bg-transparent border-0 cursor-pointer"
+                            title={thread.pinned ? "Unpin chat" : "Pin chat"}
+                          >
+                            <Pin size={10} className={thread.pinned ? "fill-amber-500 text-amber-500" : ""} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingThreadId(thread.id);
+                              setEditingTitle(thread.title);
+                            }}
+                            className="text-slate-500 hover:text-blue-400 p-0.5 bg-transparent border-0 cursor-pointer"
+                            title="Rename chat"
+                          >
+                            <Edit3 size={10} />
+                          </button>
+                          <button
+                            onClick={(e) => deleteThread(thread.id, e)}
+                            className="text-slate-500 hover:text-red-400 p-0.5 bg-transparent border-0 cursor-pointer"
+                            title="Delete chat"
+                          >
+                            <Trash2 size={10} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            
+            <div className="pt-3 border-t border-slate-900 text-center">
+              <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">AI Co-Pilot Beta</span>
+            </div>
+          </div>
+
+          {/* Right Panel: Active Chat Room */}
+          {activeThread ? (
+            <div className="flex-1 bg-slate-900/10 flex flex-col justify-between overflow-hidden relative">
+              
+              {/* Chat Panel Header */}
+              <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3 bg-slate-950/20">
+                <div className="min-w-0">
+                  <h3 className="text-xs font-bold text-white truncate">{activeThread.title}</h3>
+                  <p className="text-[9px] text-slate-500 uppercase tracking-widest font-semibold mt-0.5">Active Session</p>
+                </div>
+                
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={(e) => togglePinThread(activeThread.id, e)}
+                    className={`rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 hover:text-amber-400 transition cursor-pointer ${
+                      activeThread.pinned ? "text-amber-500" : "text-slate-400"
+                    }`}
+                    title={activeThread.pinned ? "Unpin chat" : "Pin chat"}
+                  >
+                    <Pin size={12} className={activeThread.pinned ? "fill-amber-500" : ""} />
+                  </button>
+                  <button
+                    onClick={() => exportChat(activeThread)}
+                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-blue-400 transition cursor-pointer"
+                    title="Export transcript"
+                  >
+                    <FileText size={12} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingThreadId(activeThread.id);
+                      setEditingTitle(activeThread.title);
+                    }}
+                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-blue-400 transition cursor-pointer"
+                    title="Rename chat"
+                  >
+                    <Edit3 size={12} />
+                  </button>
+                  <button
+                    onClick={(e) => deleteThread(activeThread.id, e)}
+                    className="rounded-lg border border-slate-800 bg-slate-900/50 p-1.5 text-slate-400 hover:text-red-400 transition cursor-pointer"
+                    title="Delete chat"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Chat Messages scroll area */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 [scrollbar-width:thin] bg-slate-950/10">
+                {activeThread.messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center text-center h-full max-w-lg mx-auto py-8">
+                    <Sparkles size={36} className="text-blue-500 animate-pulse mb-2" />
+                    <h4 className="text-sm font-bold text-white">How can I help you today?</h4>
+                    <p className="text-xs text-slate-400 mt-1">Ask questions, outline cold email campaigns, write LinkedIn followups, or generate sales cold scripts.</p>
+                    
+                    {/* Prompt suggestions grid */}
+                    <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+                      {[
+                        "Generate a cold email for real estate.",
+                        "Explain B2B lead generation.",
+                        "Create 10 LinkedIn outreach messages.",
+                        "Generate a B2B cold call script.",
+                        "Generate 5 SaaS campaign ideas.",
+                        "Generate 10 blog content ideas."
+                      ].map((promptText) => (
+                        <button
+                          key={promptText}
+                          onClick={() => handleSendChatMessage(promptText)}
+                          className="p-3 text-left rounded-xl border border-slate-850 bg-slate-900/50 hover:bg-slate-900 text-[11px] text-slate-300 hover:text-white font-semibold transition leading-relaxed"
+                        >
+                          &ldquo;{promptText}&rdquo;
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  activeThread.messages.map((msg, index) => (
+                    <div
+                      key={index}
+                      className={`flex flex-col max-w-[85%] rounded-2xl px-4 py-2.5 text-xs shadow-md leading-relaxed ${
+                        msg.role === "user"
+                          ? "bg-blue-600 text-white self-end ml-auto rounded-tr-none"
+                          : "bg-slate-900/80 text-slate-200 mr-auto rounded-tl-none border border-slate-800 relative group"
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold uppercase tracking-widest opacity-60 mb-0.5">
+                        {msg.role === "user" ? "You" : "AI Assistant"}
+                      </span>
+                      <p className="whitespace-pre-line font-medium">{msg.content}</p>
+                      
+                      {msg.role === "assistant" && (
+                        <button
+                          onClick={() => copyToClipboard(msg.content)}
+                          className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 hover:opacity-100 transition p-1 rounded bg-slate-950 border border-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                          title="Copy response"
+                        >
+                          <Copy size={11} />
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+                {chatLoading && (
+                  <div className="bg-slate-900/80 text-slate-200 mr-auto rounded-2xl rounded-tl-none px-4 py-3 text-xs max-w-[85%] border border-slate-855 flex items-center gap-2">
+                    <RefreshCw className="animate-spin text-blue-500 shrink-0" size={13} />
+                    <span className="font-semibold text-slate-400">Assistant is writing...</span>
+                  </div>
+                )}
+                <div ref={assistantChatBottomRef} />
+              </div>
+
+              {/* Chat Input panel */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendChatMessage();
+                }}
+                className="border-t border-slate-800 p-4 bg-slate-950/20 flex gap-2"
+              >
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Ask the AI Assistant..."
+                  disabled={chatLoading}
+                  className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-xs text-white outline-none focus:border-slate-700 disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={chatLoading || !chatInput.trim()}
+                  className="rounded-xl bg-blue-600 hover:bg-blue-500 px-4 text-white transition disabled:opacity-55 active:scale-95 flex items-center justify-center cursor-pointer border-0"
+                >
+                  <Send size={13} />
+                </button>
+              </form>
+
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-slate-500">
+              <p className="text-xs font-semibold">Select or create a conversation to start chat</p>
+            </div>
+          )}
+
         </div>
       )}
 
