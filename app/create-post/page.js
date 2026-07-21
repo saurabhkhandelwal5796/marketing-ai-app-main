@@ -105,6 +105,8 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const [linkedinConnectedAccount, setLinkedinConnectedAccount] = useState("");
   const [checkingLinkedinStatus, setCheckingLinkedinStatus] = useState(false);
+  const [instagramConnected, setInstagramConnected] = useState(false);
+  const [facebookConnected, setFacebookConnected] = useState(false);
   //Added below 7 lines
   const [useTemplate, setUseTemplate] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -903,9 +905,24 @@ if (useTemplate && emailSelected && selectedTemplateId) {
     }
   };
 
+  const updateWorkflowStatus = (typeId, newStatus) => {
+    setContentByType(prev => {
+      if (!prev[typeId]) return prev;
+      return {
+        ...prev,
+        [typeId]: {
+          ...prev[typeId],
+          workflowStatus: newStatus,
+          lastModified: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+        }
+      };
+    });
+  };
+
   const submitPostAction = async (mode) => {
     setSubmittingPost(true);
     setMessage("");
+    const typeId = mode === "post_linkedin" ? "linkedin_post" : mode === "post_instagram" ? "instagram_post" : "";
     try {
       const res = await fetch("/api/create-post/publish", {
         method: "POST",
@@ -927,9 +944,17 @@ if (useTemplate && emailSelected && selectedTemplateId) {
         }
         throw new Error(data?.error || "Action failed.");
       }
-      if (mode === "post_linkedin") setLinkedinConnected(true);
+      if (mode === "post_linkedin") {
+        setLinkedinConnected(true);
+        updateWorkflowStatus("linkedin_post", "Published");
+      } else if (typeId) {
+        updateWorkflowStatus(typeId, "Published");
+      }
       setMessage(data.message || "Done.");
     } catch (e) {
+      if (typeId) {
+        updateWorkflowStatus(typeId, "Failed");
+      }
       setMessage(e?.message || "Failed to process request.");
     } finally {
       setSubmittingPost(false);
@@ -943,6 +968,60 @@ if (useTemplate && emailSelected && selectedTemplateId) {
 
   return (
     <main className="min-h-full bg-[#F8FAFC] p-6 lg:p-8">
+      {/* Page Header with Omnichannel Integrations Status */}
+      <div className="mx-auto max-w-[1400px] mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Create & Post</h1>
+          <p className="text-xs text-slate-500 font-medium">Compose, optimize, approve, and schedule your omnichannel marketing content.</p>
+        </div>
+        
+        {/* Connected Accounts indicator bar */}
+        <div className="flex items-center gap-2 bg-white rounded-xl border border-slate-200 p-2 shadow-2xs">
+          <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider px-2">Integrations:</span>
+          
+          {/* LinkedIn Integration Status */}
+          <button
+            onClick={handleLinkedinConnect}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+              linkedinConnected 
+                ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100" 
+                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}
+          >
+            LinkedIn {linkedinConnected ? "✓" : "Connect"}
+          </button>
+          
+          {/* Instagram Integration Status */}
+          <button
+            onClick={() => {
+              if (instagramConnected) return;
+              setMessage("Instagram API Integration: Coming Soon.");
+            }}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+              instagramConnected 
+                ? "bg-pink-50 border-pink-200 text-pink-700" 
+                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}
+          >
+            Instagram {instagramConnected ? "✓" : "Connect"}
+          </button>
+          
+          {/* Facebook Integration Status */}
+          <button
+            onClick={() => {
+              if (facebookConnected) return;
+              setMessage("Facebook API Integration: Coming Soon.");
+            }}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition border cursor-pointer ${
+              facebookConnected 
+                ? "bg-indigo-50 border-indigo-200 text-indigo-700" 
+                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+            }`}
+          >
+            Facebook {facebookConnected ? "✓" : "Connect"}
+          </button>
+        </div>
+      </div>
       {message && (
         <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 shadow-sm transition-all flex items-center justify-between">
           <span>{message}</span>
@@ -1674,9 +1753,8 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                             </button>
                           </div>
                         </div>
-
                         {/* Real Metadata bar */}
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 border border-slate-150 rounded-xl p-3 mb-4 text-xs font-semibold">
+                        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 bg-slate-50 border border-slate-150 rounded-xl p-3 mb-4 text-xs font-semibold">
                           <div className="flex flex-col">
                             <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Content Type</span>
                             <span className="font-bold text-slate-800 mt-0.5">{meta.label} Post</span>
@@ -1696,6 +1774,18 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           <div className="flex flex-col">
                             <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Last Modified</span>
                             <span className="font-bold text-slate-800 mt-0.5">{lastModified}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Status</span>
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold mt-0.5 justify-center ${
+                              (contentObj.workflowStatus || "Draft") === "Draft" ? "bg-slate-100 text-slate-700" :
+                              (contentObj.workflowStatus || "Draft") === "Pending Approval" ? "bg-amber-50 text-amber-700 ring-1 ring-amber-150" :
+                              (contentObj.workflowStatus || "Draft") === "Approved" ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-150" :
+                              (contentObj.workflowStatus || "Draft") === "Published" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" :
+                              "bg-red-50 text-red-700 ring-1 ring-red-150"
+                            }`}>
+                              {contentObj.workflowStatus || "Draft"}
+                            </span>
                           </div>
                         </div>
 
@@ -1777,59 +1867,94 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           </div>
                         )}
                         
-                        {/* Quick action buttons for individual stacked cards */}
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
-                          {typeId === "linkedin_post" && (
-                            <>
+                        {/* Publishing Workflow Buttons */}
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-between">
+                          <div className="flex flex-wrap gap-1.5">
+                            {/* Draft or Failed: Submit for Approval */}
+                            {((contentObj.workflowStatus || "Draft") === "Draft" || (contentObj.workflowStatus || "Draft") === "Failed") && (
                               <button
-                                onClick={() => submitPostAction("post_linkedin")}
-                                disabled={submittingPost || checkingLinkedinStatus || !linkedinConnected}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+                                onClick={() => updateWorkflowStatus(typeId, "Pending Approval")}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
                               >
-                                <Send size={12} /> Post on LinkedIn
+                                Submit for Approval
                               </button>
-                              <button
-                                onClick={handleLinkedinConnect}
-                                disabled={checkingLinkedinStatus || linkedinConnected}
-                                className={`inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-xs font-semibold transition disabled:opacity-50 cursor-pointer ${
-                                  linkedinConnected ? "border-emerald-250 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                                }`}
-                              >
-                                <BriefcaseBusiness size={12} /> {linkedinConnected ? "Connected" : "Connect LinkedIn"}
-                              </button>
-                            </>
-                          )}
-                          {typeId === "instagram_post" && (
-                            <button
-                              onClick={() => submitPostAction("post_instagram")}
-                              disabled={submittingPost}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-pink-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-pink-700 disabled:opacity-50 cursor-pointer"
-                            >
-                              <Send size={12} /> Post on Instagram
-                            </button>
-                          )}
-                          {(typeId === "email_campaign" || typeId === "newsletter") && (
-                            <>
-                              <button
-                                onClick={openEmailPopup}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 cursor-pointer"
-                              >
-                                <Mail size={12} /> Setup Email Campaign
-                              </button>
+                            )}
+
+                            {/* Pending Approval: Approve or Reject */}
+                            {(contentObj.workflowStatus || "Draft") === "Pending Approval" && (
+                              <>
+                                <button
+                                  onClick={() => updateWorkflowStatus(typeId, "Approved")}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => updateWorkflowStatus(typeId, "Draft")}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-205 bg-red-50 hover:bg-red-100 text-red-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+
+                            {/* Approved or Draft: Publish button */}
+                            {((contentObj.workflowStatus || "Draft") === "Approved" || (contentObj.workflowStatus || "Draft") === "Draft") && (
                               <button
                                 onClick={() => {
-                                  const subject = contentObj.subject || "";
-                                  const body = contentObj.content || "";
-                                  const to = allRecipients.join(',');
-                                  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                                  window.open(gmailUrl, '_blank');
+                                  if (typeId === "linkedin_post") {
+                                    if (!linkedinConnected) {
+                                      setMessage("Please connect your LinkedIn account first.");
+                                      return;
+                                    }
+                                    submitPostAction("post_linkedin");
+                                  } else if (typeId === "instagram_post") {
+                                    if (!instagramConnected) {
+                                      setMessage("Please connect your Instagram account first.");
+                                      return;
+                                    }
+                                    setMessage("Instagram API Integration: Coming Soon.");
+                                  } else {
+                                    setMessage(`${meta.label} API Integration: Coming Soon.`);
+                                  }
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 px-4 py-2 text-xs font-semibold transition hover:bg-slate-50 cursor-pointer"
+                                disabled={submittingPost}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-650 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
                               >
-                                <Mail size={12} /> Send via Gmail
+                                <Send size={11} /> Publish
                               </button>
-                            </>
-                          )}
+                            )}
+
+                            {/* Published: Done indicator */}
+                            {(contentObj.workflowStatus || "Draft") === "Published" && (
+                              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                                ✓ Published successfully
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Social Connections Status buttons inside the card */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {typeId === "linkedin_post" && !linkedinConnected && (
+                              <button
+                                onClick={handleLinkedinConnect}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                              >
+                                Connect LinkedIn
+                              </button>
+                            )}
+                            {typeId === "instagram_post" && !instagramConnected && (
+                              <button
+                                onClick={() => {
+                                  setInstagramConnected(true);
+                                  setMessage("Instagram account connected (Simulation).");
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-white text-pink-700 hover:bg-pink-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                              >
+                                Connect Instagram
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1855,7 +1980,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                       <div className="border border-slate-200 rounded-2xl p-5 bg-white shadow-xs">
                         
                         {/* Metadata bar */}
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 border border-slate-150 rounded-xl p-3 mb-4 text-xs font-semibold">
+                        <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 bg-slate-50 border border-slate-150 rounded-xl p-3 mb-4 text-xs font-semibold">
                           <div className="flex flex-col">
                             <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Content Type</span>
                             <span className="font-bold text-slate-800 mt-0.5">{meta.label} Post</span>
@@ -1875,6 +2000,18 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           <div className="flex flex-col">
                             <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Last Modified</span>
                             <span className="font-bold text-slate-800 mt-0.5">{lastModified}</span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-slate-400 uppercase tracking-wider text-[9px]">Status</span>
+                            <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold mt-0.5 justify-center ${
+                              (contentObj.workflowStatus || "Draft") === "Draft" ? "bg-slate-100 text-slate-700" :
+                              (contentObj.workflowStatus || "Draft") === "Pending Approval" ? "bg-amber-50 text-amber-700 ring-1 ring-amber-150" :
+                              (contentObj.workflowStatus || "Draft") === "Approved" ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-150" :
+                              (contentObj.workflowStatus || "Draft") === "Published" ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200" :
+                              "bg-red-50 text-red-700 ring-1 ring-red-150"
+                            }`}>
+                              {contentObj.workflowStatus || "Draft"}
+                            </span>
                           </div>
                         </div>
 
@@ -1996,59 +2133,94 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                           </div>
                         )}
                         
-                        {/* Publish/Post triggers */}
-                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
-                          {typeId === "linkedin_post" && (
-                            <>
+                        {/* Publishing Workflow Buttons */}
+                        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-between">
+                          <div className="flex flex-wrap gap-1.5">
+                            {/* Draft or Failed: Submit for Approval */}
+                            {((contentObj.workflowStatus || "Draft") === "Draft" || (contentObj.workflowStatus || "Draft") === "Failed") && (
                               <button
-                                onClick={() => submitPostAction("post_linkedin")}
-                                disabled={submittingPost || checkingLinkedinStatus || !linkedinConnected}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+                                onClick={() => updateWorkflowStatus(typeId, "Pending Approval")}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
                               >
-                                <Send size={12} /> Post on LinkedIn
+                                Submit for Approval
                               </button>
-                              <button
-                                onClick={handleLinkedinConnect}
-                                disabled={checkingLinkedinStatus || linkedinConnected}
-                                className={`inline-flex items-center gap-1.5 rounded-lg border px-4 py-2 text-xs font-semibold transition disabled:opacity-50 cursor-pointer ${
-                                  linkedinConnected ? "border-emerald-250 bg-emerald-50 text-emerald-700" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-55"
-                                }`}
-                              >
-                                <BriefcaseBusiness size={12} /> {linkedinConnected ? "Connected" : "Connect LinkedIn"}
-                              </button>
-                            </>
-                          )}
-                          {typeId === "instagram_post" && (
-                            <button
-                              onClick={() => submitPostAction("post_instagram")}
-                              disabled={submittingPost}
-                              className="inline-flex items-center gap-1.5 rounded-lg bg-pink-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-pink-700 disabled:opacity-50 cursor-pointer"
-                            >
-                              <Send size={12} /> Post on Instagram
-                            </button>
-                          )}
-                          {(typeId === "email_campaign" || typeId === "newsletter") && (
-                            <>
-                              <button
-                                onClick={openEmailPopup}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 cursor-pointer"
-                              >
-                                <Mail size={12} /> Setup Email Campaign
-                              </button>
+                            )}
+
+                            {/* Pending Approval: Approve or Reject */}
+                            {(contentObj.workflowStatus || "Draft") === "Pending Approval" && (
+                              <>
+                                <button
+                                  onClick={() => updateWorkflowStatus(typeId, "Approved")}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => updateWorkflowStatus(typeId, "Draft")}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-205 bg-red-50 hover:bg-red-100 text-red-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </>
+                            )}
+
+                            {/* Approved or Draft: Publish button */}
+                            {((contentObj.workflowStatus || "Draft") === "Approved" || (contentObj.workflowStatus || "Draft") === "Draft") && (
                               <button
                                 onClick={() => {
-                                  const subject = contentObj.subject || "";
-                                  const body = contentObj.content || "";
-                                  const to = allRecipients.join(',');
-                                  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${to}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-                                  window.open(gmailUrl, '_blank');
+                                  if (typeId === "linkedin_post") {
+                                    if (!linkedinConnected) {
+                                      setMessage("Please connect your LinkedIn account first.");
+                                      return;
+                                    }
+                                    submitPostAction("post_linkedin");
+                                  } else if (typeId === "instagram_post") {
+                                    if (!instagramConnected) {
+                                      setMessage("Please connect your Instagram account first.");
+                                      return;
+                                    }
+                                    setMessage("Instagram API Integration: Coming Soon.");
+                                  } else {
+                                    setMessage(`${meta.label} API Integration: Coming Soon.`);
+                                  }
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 px-4 py-2 text-xs font-semibold transition hover:bg-slate-50 cursor-pointer"
+                                disabled={submittingPost}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-650 px-4 py-1.5 text-xs font-bold text-white transition hover:bg-indigo-700 disabled:opacity-50 cursor-pointer"
                               >
-                                <Mail size={12} /> Send via Gmail
+                                <Send size={11} /> Publish
                               </button>
-                            </>
-                          )}
+                            )}
+
+                            {/* Published: Done indicator */}
+                            {(contentObj.workflowStatus || "Draft") === "Published" && (
+                              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                                ✓ Published successfully
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Social Connections Status buttons inside the card */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {typeId === "linkedin_post" && !linkedinConnected && (
+                              <button
+                                onClick={handleLinkedinConnect}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-white text-blue-700 hover:bg-blue-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                              >
+                                Connect LinkedIn
+                              </button>
+                            )}
+                            {typeId === "instagram_post" && !instagramConnected && (
+                              <button
+                                onClick={() => {
+                                  setInstagramConnected(true);
+                                  setMessage("Instagram account connected (Simulation).");
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-pink-300 bg-white text-pink-700 hover:bg-pink-50 px-3 py-1 text-xs font-bold transition cursor-pointer"
+                              >
+                                Connect Instagram
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                       </div>
