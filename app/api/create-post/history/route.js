@@ -13,6 +13,7 @@ export async function GET(req) {
     const status = url.searchParams.get("status") || "";
     const sortBy = url.searchParams.get("sortBy") || "created_at";
     const sortOrder = url.searchParams.get("sortOrder") || "desc";
+    const all = url.searchParams.get("all") === "true";
     const page = parseInt(url.searchParams.get("page") || "1", 10);
     const limit = parseInt(url.searchParams.get("limit") || "10", 10);
 
@@ -31,19 +32,26 @@ export async function GET(req) {
       query = query.eq("status", status);
     }
     if (search) {
-      query = query.or(`content.ilike.%${search}%,subject.ilike.%${search}%,created_by.ilike.%${search}%,platform.ilike.%${search}%`);
+      query = query.or(`content.ilike.%${search}%,subject.ilike.%${search}%,platform.ilike.%${search}%`);
     }
 
     // Apply Sorting
     const isAscending = sortOrder === "asc";
     query = query.order(sortBy, { ascending: isAscending });
 
-    // Apply Pagination
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-    query = query.range(from, to);
+    // Apply Pagination if not loading all
+    if (!all) {
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+      query = query.range(from, to);
+    }
 
     const { data, count, error } = await query;
+
+    console.log("Logged User ID:", session.id);
+    console.log("Records Retrieved:", data ? data.length : 0);
+    console.log("Supabase Query Result:", JSON.stringify(data || []));
+
     if (error) {
       console.warn("create_post_history select failed, table might not exist yet:", error.message);
       return NextResponse.json({ records: [], totalCount: 0 });
@@ -51,7 +59,7 @@ export async function GET(req) {
 
     return NextResponse.json({
       records: data || [],
-      totalCount: count || 0,
+      totalCount: count != null ? count : (data ? data.length : 0),
       page,
       limit
     });
@@ -68,26 +76,34 @@ export async function POST(req) {
     const body = await req.json().catch(() => ({}));
     const {
       id,
+      type,
       platform,
       content,
       subject,
-      status
+      status,
+      recipient,
+      recipient_name,
+      company,
+      sent_via
     } = body;
 
     if (!platform) {
       return NextResponse.json({ error: "Platform is required." }, { status: 400 });
     }
 
-    const wordCount = content ? content.trim().split(/\s+/).filter(Boolean).length : 0;
     const supabase = getSupabaseServerClient();
 
     const row = {
       user_id: session.id,
+      type: type || null,
       platform,
       content: content || "",
       subject: subject || "",
-      word_count: wordCount,
       status: status || "Draft",
+      recipient: recipient || null,
+      recipient_name: recipient_name || null,
+      company: company || null,
+      sent_via: sent_via || null,
       updated_at: new Date().toISOString()
     };
 
@@ -109,7 +125,6 @@ export async function POST(req) {
       result = data;
     } else {
       row.created_at = new Date().toISOString();
-      row.created_by = session.name || session.email;
       
       const { data, error } = await supabase
         .from("create_post_history")
@@ -126,3 +141,4 @@ export async function POST(req) {
     return NextResponse.json({ error: e?.message || "Failed to save history record." }, { status: 500 });
   }
 }
+

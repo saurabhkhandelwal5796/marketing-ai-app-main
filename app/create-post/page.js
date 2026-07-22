@@ -937,6 +937,24 @@ useEffect(() => {
     });
 
     try {
+      // 1. Save to create_post_history
+      await fetch("/api/create-post/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "email_campaign",
+          platform: newRecord.sent_via.toLowerCase().includes("outlook") ? "Outlook" : "Gmail",
+          subject: newRecord.subject,
+          content: newRecord.email_body,
+          status: newRecord.status,
+          recipient: newRecord.recipient,
+          recipient_name: newRecord.recipient_name,
+          company: newRecord.company,
+          sent_via: newRecord.sent_via
+        })
+      });
+
+      // 2. Save to create_post_email_history for backward compatibility
       fetch("/api/create-post/email-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -947,78 +965,72 @@ useEffect(() => {
     }
   };
 
-  // Fetch Sent Email History from local storage + API + Campaign Emails
-  const fetchEmailHistory = useCallback(async () => {
+  // Unified campaign and post history loader
+  const fetchCampaignAndPostHistory = useCallback(async () => {
     setLoadingEmailHistory(true);
+    setLoadingRecentActivity(true);
     try {
-      let records = [];
-
-      // 1. Load local cached history first
-      if (typeof window !== 'undefined') {
-        try {
-          const stored = localStorage.getItem('cp_email_history_v2');
-          if (stored) {
-            records = JSON.parse(stored);
-          }
-        } catch (e) {}
-      }
-
-      // 2. Fetch from DB API
-      const res = await fetch("/api/create-post/email-history");
+      const res = await fetch("/api/create-post/history?all=true");
       const data = await res.json();
       
-      if (res.ok && Array.isArray(data.history) && data.history.length > 0) {
-        const mergedMap = new Map();
-        records.forEach(r => mergedMap.set(r.recipient + "_" + r.sent_timestamp, r));
-        data.history.forEach(r => mergedMap.set(r.recipient + "_" + (r.sent_timestamp || r.created_at), {
+      const records = data.records || [];
+      
+      console.log("Logged User ID:", currentUser?.id || "unknown");
+      console.log("Records Retrieved:", records.length);
+      console.log("Supabase Query Result:", JSON.stringify(records));
+
+      // 1. Map email campaign records
+      const emails = records
+        .filter(r => r.type === "email_campaign" || r.type === "newsletter" || r.platform === "Gmail" || r.platform === "Outlook")
+        .map(r => ({
           id: r.id,
-          recipient: r.recipient,
+          recipient: r.recipient || "",
           recipient_name: r.recipient_name || "",
           company: r.company || "",
           subject: r.subject || "",
-          email_body: r.email_body || r.body || "",
+          email_body: r.content || "",
           status: r.status || "Sent",
-          sent_via: r.sent_via || "Automated Gmail",
-          sent_timestamp: r.sent_timestamp || r.created_at || new Date().toISOString()
+          sent_via: r.sent_via || r.platform || "Automated Gmail",
+          sent_timestamp: r.created_at || new Date().toISOString()
         }));
-        records = Array.from(mergedMap.values());
-      } else {
-        // Fallback: check campaign emails API
-        const cRes = await fetch("/api/create-post/campaign-emails");
-        const cData = await cRes.json();
-        if (cRes.ok && Array.isArray(cData.emails) && cData.emails.length > 0) {
-          const cMapped = cData.emails.map(e => ({
-            id: e.id,
-            recipient: e.recipient_email,
-            recipient_name: e.recipient_name || "",
-            company: e.company || "",
-            subject: e.subject || "",
-            email_body: e.body || "",
-            status: e.send_status || "Sent",
-            sent_via: "Automated Campaign",
-            sent_timestamp: e.created_at || e.updated_at || new Date().toISOString()
-          }));
-          const mergedMap = new Map();
-          records.forEach(r => mergedMap.set(r.recipient + "_" + r.sent_timestamp, r));
-          cMapped.forEach(r => mergedMap.set(r.recipient + "_" + r.sent_timestamp, r));
-          records = Array.from(mergedMap.values());
-        }
-      }
 
-      records.sort((a, b) => new Date(b.sent_timestamp || 0) - new Date(a.sent_timestamp || 0));
-      setEmailHistoryList(records);
+      // Sort DESC
+      emails.sort((a, b) => new Date(b.sent_timestamp) - new Date(a.sent_timestamp));
+      setEmailHistoryList(emails);
 
-      if (typeof window !== 'undefined' && records.length > 0) {
+      // Save to local cache as local fallback
+      if (typeof window !== 'undefined' && emails.length > 0) {
         try {
-          localStorage.setItem('cp_email_history_v2', JSON.stringify(records.slice(0, 100)));
+          localStorage.setItem('cp_email_history_v2', JSON.stringify(emails.slice(0, 100)));
         } catch (e) {}
       }
+
+      // 2. Map social generated content records
+      const socials = records
+        .filter(r => r.type !== "email_campaign" && r.type !== "newsletter" && r.platform !== "Gmail" && r.platform !== "Outlook")
+        .map(r => ({
+          id: r.id,
+          typeId: r.type,
+          typeLabel: r.platform,
+          content: r.content,
+          subject: r.subject || "",
+          timestamp: r.created_at || new Date().toISOString()
+        }))
+        .slice(0, 10); // Keep top 10 for recent activity panel
+      
+      setRecentActivity(socials);
+
     } catch (e) {
-      console.warn("Failed to fetch email history:", e);
+      console.warn("Failed to fetch campaign and post history:", e);
     } finally {
       setLoadingEmailHistory(false);
+      setLoadingRecentActivity(false);
     }
-  }, []);
+  }, [currentUser]);
+
+  // Fetch Sent Email History from local storage + API + Campaign Emails
+  const fetchEmailHistory = fetchCampaignAndPostHistory;
+
 
   // Real-Time Inbox Messages (No dummy data)
   const fetchInboxMessages = useCallback(async () => {
@@ -1246,35 +1258,7 @@ useEffect(() => {
     setEmailWorkspaceTab("history");
   };
 
-  const fetchRecentActivity = useCallback(async () => {
-    setLoadingRecentActivity(true);
-    try {
-      const res = await fetch("/api/audit?limit=200");
-      const data = await res.json();
-      if (res.ok && Array.isArray(data.records)) {
-        const filtered = data.records
-          .filter(r => r.page_name === "Create & Post" && r.action_name === "Generated Content Archive")
-          .map(r => {
-            try {
-              return {
-                id: r.id,
-                timestamp: r.created_at,
-                ...JSON.parse(r.details)
-              };
-            } catch {
-              return null;
-            }
-          })
-          .filter(Boolean)
-          .slice(0, 10);
-        setRecentActivity(filtered);
-      }
-    } catch (e) {
-      console.error("Failed to fetch recent activity:", e);
-    } finally {
-      setLoadingRecentActivity(false);
-    }
-  }, []);
+  const fetchRecentActivity = fetchCampaignAndPostHistory;
 
   useEffect(() => {
     fetchRecentActivity();
@@ -1283,6 +1267,21 @@ useEffect(() => {
   const logGeneratedContentToDb = async (typeId, typeLabel, content, subject) => {
     try {
       const currentUserId = currentUser?.id || await getCurrentUserId();
+      
+      // 1. Save to create_post_history
+      await fetch("/api/create-post/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: typeId,
+          platform: typeLabel,
+          content,
+          subject,
+          status: "Generated"
+        })
+      });
+
+      // 2. Also log to audit logs for backward compatibility
       await fetch("/api/audit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1301,7 +1300,7 @@ useEffect(() => {
           session_id: getCurrentSessionId()
         })
       });
-      fetchRecentActivity();
+      fetchCampaignAndPostHistory();
     } catch (e) {
       console.error("Failed to log generated content:", e);
     }
