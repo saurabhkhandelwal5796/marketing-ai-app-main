@@ -2210,81 +2210,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
         </div>
       )}
 
-      {/* Automated Email Dispatching Progress Banner / Card (0% to 100%) */}
-      {(sendingAutomated || sendProgress.status === "sending" || sendingSuccessMessage) && (
-        <div className="mx-auto max-w-[1400px] mb-4">
-          <div className={`rounded-2xl border p-4 shadow-md transition-all duration-300 ${
-            sendingSuccessMessage
-              ? "border-emerald-200 bg-emerald-50/90 text-emerald-900"
-              : "border-indigo-200 bg-white"
-          }`}>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
-              <div className="flex items-center gap-3">
-                <div className={`flex h-9 w-9 items-center justify-center rounded-xl font-bold ${
-                  sendingSuccessMessage ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-600 animate-pulse"
-                }`}>
-                  {sendingSuccessMessage ? <CheckCircle2 size={20} /> : <Send size={18} />}
-                </div>
-                <div>
-                  <h3 className="text-xs font-extrabold text-slate-900">
-                    {sendingSuccessMessage ? "Email Campaign Dispatched Successfully!" : "Sending Automated Bulk Emails..."}
-                  </h3>
-                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                    {sendingSuccessMessage
-                      ? sendingSuccessMessage
-                      : `Sending email ${sendProgress.current} of ${sendProgress.total} to ${sendProgress.recipient}...`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-bold">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-emerald-700">
-                    ✓ {sendProgress.sentCount} Sent
-                  </span>
-                  {sendProgress.failCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-rose-700">
-                      ✕ {sendProgress.failCount} Failed
-                    </span>
-                  )}
-                </div>
-
-                {sendingSuccessMessage && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSendingSuccessMessage("");
-                      setShowHistoryModal(true);
-                    }}
-                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
-                  >
-                    <History size={12} /> View Sent History
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Progress Bar (0% to 100%) */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-[10px] font-extrabold text-slate-600">
-                <span>Sending Progress</span>
-                <span>{sendProgress.total > 0 ? Math.round((sendProgress.current / sendProgress.total) * 100) : 0}%</span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200">
-                <div
-                  className={`h-full transition-all duration-300 ease-out ${
-                    sendingSuccessMessage ? "bg-emerald-500" : "bg-gradient-to-r from-indigo-500 to-indigo-600"
-                  }`}
-                  style={{
-                    width: `${sendProgress.total > 0 ? Math.min(100, Math.round((sendProgress.current / sendProgress.total) * 100)) : 0}%`
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Main Campaign Strategy Section (Full Width) */}
       <div className="mx-auto flex max-w-[1400px] flex-col gap-4 w-full">
         <div className="flex w-full flex-col gap-4">
@@ -4727,28 +4652,17 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                   </div>
                 )}
 
-                {/* Modal Footer Action Buttons */}
-                <div className="flex items-center gap-3 mt-6">
+                {/* Modal Footer Action Buttons: Centered Okay Button */}
+                <div className="flex items-center justify-center gap-3 mt-6">
                   <button
                     type="button"
                     onClick={() => {
                       setShowPreSendReviewModal(false);
                       setSendingSuccessMessage("");
                     }}
-                    className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 text-xs font-bold transition shadow-xs cursor-pointer border-0"
+                    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-2.5 text-xs font-black transition shadow-md cursor-pointer border-0"
                   >
-                    Done & Close
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowPreSendReviewModal(false);
-                      setSendingSuccessMessage("");
-                      setShowHistoryModal(true);
-                    }}
-                    className="rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-5 py-2.5 text-xs font-bold transition cursor-pointer"
-                  >
-                    <History size={13} className="inline mr-1" /> View Sent History
+                    Okay
                   </button>
                 </div>
               </div>
