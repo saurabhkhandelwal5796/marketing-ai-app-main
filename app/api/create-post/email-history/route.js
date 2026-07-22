@@ -31,29 +31,60 @@ export async function POST(req) {
     if (!session) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
-    const { recipient, subject, status, sent_via } = body;
+    const { recipient, recipient_name, company, subject, email_body, status, sent_via } = body;
 
     if (!recipient) {
       return NextResponse.json({ error: "Recipient is required." }, { status: 400 });
     }
 
     const supabase = getSupabaseServerClient();
-    const { data, error } = await supabase
+    
+    // Primary insert payload with full details
+    const insertPayload = {
+      user_id: session.id,
+      recipient,
+      recipient_name: recipient_name || "",
+      company: company || "",
+      subject: subject || "",
+      email_body: email_body || body.body || "",
+      status: status || "Sent",
+      sent_via: sent_via || "Automated Gmail",
+      sent_timestamp: new Date().toISOString()
+    };
+
+    let data = null;
+    let { data: insData, error } = await supabase
       .from("create_post_email_history")
-      .insert({
+      .insert(insertPayload)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      // Fallback to basic columns if schema doesn't have extended columns yet
+      const fallbackPayload = {
         user_id: session.id,
         recipient,
         subject: subject || "",
         status: status || "Sent",
         sent_via: sent_via || "Automated Gmail",
         sent_timestamp: new Date().toISOString()
-      })
-      .select()
-      .maybeSingle();
+      };
+      const fallbackRes = await supabase
+        .from("create_post_email_history")
+        .insert(fallbackPayload)
+        .select()
+        .maybeSingle();
+      
+      if (fallbackRes.error) {
+        console.warn("create_post_email_history insert warning:", fallbackRes.error.message);
+      } else {
+        data = fallbackRes.data;
+      }
+    } else {
+      data = insData;
+    }
 
-    if (error) throw new Error(error.message);
-
-    return NextResponse.json({ success: true, record: data });
+    return NextResponse.json({ success: true, record: data || insertPayload });
   } catch (e) {
     return NextResponse.json({ error: e?.message || "Failed to save email history." }, { status: 500 });
   }

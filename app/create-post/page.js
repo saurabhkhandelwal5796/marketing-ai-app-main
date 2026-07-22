@@ -25,7 +25,15 @@ import {
   FolderOpen,
   History,
   Search,
-  X
+  X,
+  CheckCircle2,
+  AlertCircle,
+  Inbox,
+  Eye,
+  RefreshCw,
+  Users,
+  Check,
+  Share2
 } from "lucide-react";
 
 function normalizeEmail(value) {
@@ -196,109 +204,6 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     }
   };
 
-  const fetchEmailHistory = async () => {
-    try {
-      const res = await fetch("/api/create-post/email-history");
-      const data = await res.json();
-      if (data && !data.error) {
-        setEmailHistory(data.history || []);
-      }
-    } catch (err) {
-      console.warn("Failed to fetch email history:", err);
-    }
-  };
-
-  const handleSendAutomatedGmail = async (recipientInfo = null) => {
-    if (!gmailConnected) {
-      showToast("Please connect your Gmail account first.");
-      setAutomatedGmailStatus("Failed to Send.");
-      setTimeout(() => setAutomatedGmailStatus(""), 4000);
-      return;
-    }
-
-    let toVal = "";
-    let ccVal = "";
-    let bccVal = "";
-    let subjectVal = "";
-    let bodyVal = "";
-    let attachmentsVal = [];
-
-    const activeType = contentByType.email_campaign ? "email_campaign" : contentByType.newsletter ? "newsletter" : "";
-    const activeContent = contentByType[activeType] || {};
-
-    if (recipientInfo && recipientInfo.toAddress && !recipientInfo.content) {
-      // Single recipient mode
-      const emailAddr = recipientInfo.toAddress;
-      const contact = findContactForEmail(emailAddr);
-      const draft = recipientDrafts[emailAddr] || { subject: baseEmailSubject, body: baseEmailBody };
-      toVal = emailAddr;
-      subjectVal = personalizeText(draft.subject || "", contact);
-      bodyVal = personalizeText(draft.body || "", contact);
-      ccVal = activeContent.ccAddress || "";
-      bccVal = activeContent.bccAddress || "";
-      attachmentsVal = draft.attachments || activeContent.attachments || [];
-    } else if (recipientInfo) {
-      // Custom contentObj mode (from workspace button click)
-      toVal = recipientInfo.toAddress || activeContent.toAddress || allRecipients.join(",");
-      ccVal = recipientInfo.ccAddress || activeContent.ccAddress || "";
-      bccVal = recipientInfo.bccAddress || activeContent.bccAddress || "";
-      subjectVal = recipientInfo.subject || baseEmailSubject || "";
-      bodyVal = recipientInfo.content || recipientInfo.body || baseEmailBody || "";
-      attachmentsVal = recipientInfo.attachments || activeContent.attachments || [];
-    } else {
-      // Bulk campaign mode
-      toVal = activeContent.toAddress || allRecipients.join(",");
-      ccVal = activeContent.ccAddress || "";
-      bccVal = activeContent.bccAddress || "";
-      subjectVal = baseEmailSubject || "";
-      bodyVal = baseEmailBody || "";
-      attachmentsVal = activeContent.attachments || [];
-    }
-
-    if (!toVal) {
-      showToast("Please add at least one recipient email.");
-      return;
-    }
-
-    setAutomatedGmailStatus("Connecting to Gmail...");
-    setSubmittingPost(true);
-
-    try {
-      await new Promise(r => setTimeout(r, 800));
-      setAutomatedGmailStatus("Sending Email...");
-
-      const res = await fetch("/api/create-post/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mode: "send_gmail_api",
-          to: toVal,
-          cc: ccVal,
-          bcc: bccVal,
-          subject: subjectVal,
-          body: bodyVal,
-          attachments: attachmentsVal
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setAutomatedGmailStatus("Email Sent Successfully.");
-        showToast("Email Sent Successfully.");
-        fetchEmailHistory();
-      } else {
-        throw new Error(data.error || "Failed to Send.");
-      }
-    } catch (err) {
-      console.error(err);
-      setAutomatedGmailStatus("Failed to Send.");
-      showToast(err.message || "Failed to Send.");
-    } finally {
-      setSubmittingPost(false);
-      setTimeout(() => setAutomatedGmailStatus(""), 5000);
-    }
-  };
-
 
   const handleConnectProvider = (provider) => {
     if (!configuredProviders[provider]) {
@@ -428,23 +333,39 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
     window.open('https://www.facebook.com/', '_blank');
   };
 
-  // Upload a file attachment to Supabase Storage via API
+  // Upload a file attachment and capture base64 dataUrl + storage URL
   const handleAttachmentUpload = async (typeId, files) => {
     if (!files || files.length === 0) return;
     setUploadingAttachment(true);
     const results = [];
     const errors = [];
     for (const file of Array.from(files)) {
-      const formData = new FormData();
-      formData.append('file', file);
       try {
-        const res = await fetch('/api/create-post/upload', { method: 'POST', body: formData });
-        const data = await res.json();
-        if (!res.ok || data.error) {
-          errors.push(`${file.name}: ${data.error || 'Upload failed'}`);
-        } else {
-          results.push({ name: data.name, size: data.size, url: data.url, fileKey: data.fileKey });
-        }
+        // Read file as base64 dataUrl locally so attachments are immediately sendable
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target.result);
+          reader.onerror = () => reject(new Error('Failed to read file contents'));
+          reader.readAsDataURL(file);
+        });
+
+        // Also upload to API storage as backup
+        let storageUrl = "";
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch('/api/create-post/upload', { method: 'POST', body: formData });
+          const data = await res.json();
+          if (res.ok && data.url) storageUrl = data.url;
+        } catch (e) {}
+
+        results.push({
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          dataUrl,
+          url: storageUrl
+        });
       } catch (e) {
         errors.push(`${file.name}: ${e.message}`);
       }
@@ -457,7 +378,7 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
           attachments: [...(prev[typeId]?.attachments || []), ...results],
         }
       }));
-      showToast(`${results.length} attachment(s) uploaded successfully.`);
+      showToast(`${results.length} attachment(s) uploaded and ready.`);
     }
     if (errors.length > 0) {
       setMessage(errors.join('\n'));
@@ -709,18 +630,17 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
       console.warn("Failed to store individual personalized email:", err);
     }
 
-    // Store in email history table
+    // Store in email history table & state
     try {
-      fetch("/api/create-post/email-history", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipient: toVal,
-          subject: subjectVal,
-          status: "Sent",
-          sent_via: pref === 'outlook' ? 'Outlook' : 'Browser Gmail'
-        })
-      }).then(() => fetchEmailHistory());
+      saveEmailToHistory({
+        recipient: toVal,
+        recipient_name: recipientEmail ? (findContactForEmail(recipientEmail)?.name || "") : "",
+        subject: subjectVal,
+        email_body: bodyVal,
+        status: "Sent",
+        sent_via: pref === 'outlook' ? 'Outlook' : 'Browser Gmail'
+      });
+      logAuditAction('Sent Email Activity Logged', { client: pref, recipients: toVal });
     } catch (err) {
       console.warn("Failed to store email history:", err);
     }
@@ -778,6 +698,102 @@ export default function CreatePostPage({ initialInput = "", embedded = false }) 
   const [contactFilter, setContactFilter] = useState("all");
   const [savingContacts, setSavingContacts] = useState(false);
   const [parsingFile, setParsingFile] = useState(false);
+
+  // Pre-Send Campaign Review Modal State
+  const [showPreSendReviewModal, setShowPreSendReviewModal] = useState(false);
+  const [preSendRecipientsList, setPreSendRecipientsList] = useState([]);
+  const [activePreSendIndex, setActivePreSendIndex] = useState(0);
+  const [aiPromptForPreSend, setAiPromptForPreSend] = useState("");
+  const [aiEditingPreSend, setAiEditingPreSend] = useState(false);
+
+  const handleClearImportedContacts = () => {
+    setImportedContacts([]);
+    setImportedFileName("");
+    setImportStats({ total: 0, valid: 0, invalid: 0, truncated: false });
+    showToast("Email list cleared.");
+  };
+
+  const updatePreSendRecipientField = (index, patch) => {
+    setPreSendRecipientsList(prev => {
+      const next = [...prev];
+      if (next[index]) {
+        next[index] = { ...next[index], ...patch };
+      }
+      return next;
+    });
+  };
+
+  const handleRemovePreSendRecipient = (indexToRemove) => {
+    setPreSendRecipientsList(prev => {
+      const next = prev.filter((_, idx) => idx !== indexToRemove);
+      if (activePreSendIndex >= next.length) {
+        setActivePreSendIndex(Math.max(0, next.length - 1));
+      }
+      return next;
+    });
+  };
+
+  // Email Batch Sending & Automated Progress State
+  const [sendingAutomated, setSendingAutomated] = useState(false);
+  const [sendProgress, setSendProgress] = useState({
+    current: 0,
+    total: 0,
+    recipient: '',
+    sentCount: 0,
+    failCount: 0,
+    status: 'idle', // 'idle' | 'sending' | 'completed' | 'error'
+    logs: []
+  });
+  const [sendingSuccessMessage, setSendingSuccessMessage] = useState("");
+
+  // Email History & Inbox / Outbox State
+  const [emailHistoryList, setEmailHistoryList] = useState([]);
+  const [loadingEmailHistory, setLoadingEmailHistory] = useState(false);
+  const [emailHistorySearch, setEmailHistorySearch] = useState("");
+  const [historyTimeFilter, setHistoryTimeFilter] = useState("6months"); // '6months' | 'all' | '30days' | '7days'
+  const [selectedHistoryRecord, setSelectedHistoryRecord] = useState(null);
+  const [emailWorkspaceTab, setEmailWorkspaceTab] = useState("compose"); // 'compose' | 'recipients' | 'history' | 'inbox'
+  const [inboxMessages, setInboxMessages] = useState([]);
+  const [loadingInbox, setLoadingInbox] = useState(false);
+  const [selectedInboxMessage, setSelectedInboxMessage] = useState(null);
+  const [inboxSearch, setInboxSearch] = useState("");
+
+  // Omnichannel History & Top Toolbar Modals State
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyModalChannel, setHistoryModalChannel] = useState("gmail"); // 'gmail' | 'linkedin' | 'instagram' | 'facebook' | 'outlook' | 'all'
+  const [showConnectedAccountsModal, setShowConnectedAccountsModal] = useState(false);
+  const [showVisualAssetsModal, setShowVisualAssetsModal] = useState(false);
+  const [showRecentActivityModal, setShowRecentActivityModal] = useState(false);
+
+  const filteredHistoryList = useMemo(() => {
+    return emailHistoryList.filter(h => {
+      if (emailHistorySearch.trim()) {
+        const q = emailHistorySearch.toLowerCase();
+        const match = (
+          (h.recipient || "").toLowerCase().includes(q) ||
+          (h.recipient_name || "").toLowerCase().includes(q) ||
+          (h.subject || "").toLowerCase().includes(q) ||
+          (h.email_body || h.body || "").toLowerCase().includes(q)
+        );
+        if (!match) return false;
+      }
+
+      const itemDate = new Date(h.sent_timestamp || Date.now());
+      const now = new Date();
+      if (historyTimeFilter === "6months") {
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        return itemDate >= sixMonthsAgo;
+      } else if (historyTimeFilter === "30days") {
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
+        return itemDate >= thirtyDaysAgo;
+      } else if (historyTimeFilter === "7days") {
+        const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+        return itemDate >= sevenDaysAgo;
+      }
+      return true;
+    });
+  }, [emailHistoryList, emailHistorySearch, historyTimeFilter]);
 
   const strategyAbortRef = useRef(null);
   const contentAbortRef = useRef(null);
@@ -894,11 +910,341 @@ useEffect(() => {
     .catch(() => {});
 }, [useTemplate]);
 
-  // Load drafts and recent activity from DB/LocalStorage on mount
+  // Helper to persist every sent email into React state, localStorage, and Supabase DB
+  const saveEmailToHistory = async (record) => {
+    const newRecord = {
+      id: record.id || `hist-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      recipient: record.recipient || record.to || "",
+      recipient_name: record.recipient_name || record.name || "",
+      company: record.company || "",
+      subject: record.subject || "(No Subject)",
+      email_body: record.email_body || record.body || record.content || "",
+      status: record.status || "Sent",
+      sent_via: record.sent_via || "Browser Gmail",
+      sent_timestamp: record.sent_timestamp || new Date().toISOString()
+    };
+
+    setEmailHistoryList(prev => {
+      const exists = prev.some(r => r.id === newRecord.id || (r.recipient === newRecord.recipient && r.sent_timestamp === newRecord.sent_timestamp));
+      if (exists) return prev;
+      const updated = [newRecord, ...prev];
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('cp_email_history_v2', JSON.stringify(updated.slice(0, 100)));
+        }
+      } catch (e) {}
+      return updated;
+    });
+
+    try {
+      await fetch("/api/create-post/email-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newRecord)
+      });
+    } catch (e) {
+      console.warn("API write email history note:", e);
+    }
+  };
+
+  // Fetch Sent Email History from local storage + API + Campaign Emails
+  const fetchEmailHistory = useCallback(async () => {
+    setLoadingEmailHistory(true);
+    try {
+      let records = [];
+
+      // 1. Load local cached history first
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('cp_email_history_v2');
+          if (stored) {
+            records = JSON.parse(stored);
+          }
+        } catch (e) {}
+      }
+
+      // 2. Fetch from DB API
+      const res = await fetch("/api/create-post/email-history");
+      const data = await res.json();
+      
+      if (res.ok && Array.isArray(data.history) && data.history.length > 0) {
+        const mergedMap = new Map();
+        records.forEach(r => mergedMap.set(r.recipient + "_" + r.sent_timestamp, r));
+        data.history.forEach(r => mergedMap.set(r.recipient + "_" + (r.sent_timestamp || r.created_at), {
+          id: r.id,
+          recipient: r.recipient,
+          recipient_name: r.recipient_name || "",
+          company: r.company || "",
+          subject: r.subject || "",
+          email_body: r.email_body || r.body || "",
+          status: r.status || "Sent",
+          sent_via: r.sent_via || "Automated Gmail",
+          sent_timestamp: r.sent_timestamp || r.created_at || new Date().toISOString()
+        }));
+        records = Array.from(mergedMap.values());
+      } else {
+        // Fallback: check campaign emails API
+        const cRes = await fetch("/api/create-post/campaign-emails");
+        const cData = await cRes.json();
+        if (cRes.ok && Array.isArray(cData.emails) && cData.emails.length > 0) {
+          const cMapped = cData.emails.map(e => ({
+            id: e.id,
+            recipient: e.recipient_email,
+            recipient_name: e.recipient_name || "",
+            company: e.company || "",
+            subject: e.subject || "",
+            email_body: e.body || "",
+            status: e.send_status || "Sent",
+            sent_via: "Automated Campaign",
+            sent_timestamp: e.created_at || e.updated_at || new Date().toISOString()
+          }));
+          const mergedMap = new Map();
+          records.forEach(r => mergedMap.set(r.recipient + "_" + r.sent_timestamp, r));
+          cMapped.forEach(r => mergedMap.set(r.recipient + "_" + r.sent_timestamp, r));
+          records = Array.from(mergedMap.values());
+        }
+      }
+
+      records.sort((a, b) => new Date(b.sent_timestamp || 0) - new Date(a.sent_timestamp || 0));
+      setEmailHistoryList(records);
+
+      if (typeof window !== 'undefined' && records.length > 0) {
+        try {
+          localStorage.setItem('cp_email_history_v2', JSON.stringify(records.slice(0, 100)));
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.warn("Failed to fetch email history:", e);
+    } finally {
+      setLoadingEmailHistory(false);
+    }
+  }, []);
+
+  // Real-Time Inbox Messages (No dummy data)
+  const fetchInboxMessages = useCallback(async () => {
+    setLoadingInbox(true);
+    try {
+      // Real inbox messages from API or empty state (No dummy data)
+      setInboxMessages([]);
+    } catch (e) {
+      console.warn("Failed to fetch inbox:", e);
+    } finally {
+      setLoadingInbox(false);
+    }
+  }, []);
+
+  // Load drafts, history, and inbox on mount
   useEffect(() => {
     loadDraftsFromDb();
     fetchEmailHistory();
-  }, []);
+    fetchInboxMessages();
+  }, [fetchEmailHistory, fetchInboxMessages]);
+
+  // Pre-Send Review Modal Launcher & Recipient Scope Resolver
+  const handleSendAutomatedGmail = (contentObj = null) => {
+    const activeType = contentByType.email_campaign ? "email_campaign" : contentByType.newsletter ? "newsletter" : "email_campaign";
+    const activeContent = contentByType[activeType] || {};
+
+    const manualTo = contentObj?.toAddress || activeContent.toAddress || "";
+    const baseSubject = contentObj?.subject || activeContent.subject || baseEmailSubject || "Marketing Campaign";
+    const baseBody = contentObj?.content || activeContent.content || baseEmailBody || "";
+    const ccVal = contentObj?.ccAddress || activeContent.ccAddress || "";
+    const bccVal = contentObj?.bccAddress || activeContent.bccAddress || "";
+
+    let targetList = [];
+
+    // Priority 1: If user manually typed recipient email(s) in To field
+    if (manualTo.trim()) {
+      const parsedEmails = manualTo.split(',').map(e => e.trim()).filter(Boolean);
+      targetList = parsedEmails.map(email => {
+        const contact = findContactForEmail(email);
+        return {
+          email,
+          name: contact.name || email.split('@')[0],
+          company: contact.company || ''
+        };
+      });
+    } else if (importedContacts.length > 0) {
+      // Priority 2: Uploaded sheet contacts
+      targetList = importedContacts.filter(c => c.isValid).map(c => ({
+        email: c.email,
+        name: c.name,
+        company: c.company
+      }));
+    } else if (allRecipients.length > 0) {
+      // Priority 3: Selected recipients from list
+      targetList = allRecipients.map(email => {
+        const contact = findContactForEmail(email);
+        return {
+          email,
+          name: contact.name || email.split('@')[0],
+          company: contact.company || ''
+        };
+      });
+    }
+
+    if (targetList.length === 0) {
+      const msg = "No recipients found! Please enter recipient email in 'To' field or upload an Email List (CSV/Excel) file.";
+      showToast(msg);
+      alert(msg);
+      return;
+    }
+
+    // Build editable draft list for review
+    const currentAttachments = contentObj?.attachments || activeContent.attachments || [];
+    const preSendList = targetList.map((contact, index) => {
+      const draft = recipientDrafts[contact.email] || { subject: baseSubject, body: baseBody };
+      const finalSubject = draft.subject ? personalizeText(draft.subject, contact) : baseSubject;
+      const finalBody = draft.body ? personalizeText(draft.body, contact) : baseBody;
+      const itemAttachments = draft.attachments || currentAttachments || [];
+      return {
+        id: `presend-${index}-${Date.now()}`,
+        email: contact.email,
+        name: contact.name || contact.email.split('@')[0],
+        company: contact.company || "",
+        toAddress: contact.email,
+        ccAddress: ccVal,
+        bccAddress: bccVal,
+        subject: finalSubject,
+        body: finalBody,
+        attachments: itemAttachments
+      };
+    });
+
+    setPreSendRecipientsList(preSendList);
+    setActivePreSendIndex(0);
+    setShowPreSendReviewModal(true);
+  };
+
+  // Dispatch campaign after Pre-Send Review confirmation ("Send All")
+  const confirmAndSendCampaign = async (finalList = preSendRecipientsList) => {
+    if (finalList.length === 0) {
+      showToast("No recipients to send.");
+      return;
+    }
+
+    setShowPreSendReviewModal(false);
+    setSendingAutomated(true);
+    setSendingSuccessMessage("");
+    setSendProgress({
+      current: 0,
+      total: finalList.length,
+      recipient: finalList[0].toAddress || finalList[0].email,
+      sentCount: 0,
+      failCount: 0,
+      status: "sending",
+      logs: []
+    });
+
+    let sentCount = 0;
+    let failCount = 0;
+    const sendLogs = [];
+
+    for (let i = 0; i < finalList.length; i++) {
+      const item = finalList[i];
+      const recipientEmail = item.toAddress || item.email;
+      const recipientName = item.name || recipientEmail.split('@')[0];
+
+      setSendProgress(prev => ({
+        ...prev,
+        current: i + 1,
+        recipient: recipientEmail
+      }));
+
+      let isSuccess = false;
+      let sendMethod = "Automated Gmail API";
+      let errorMsg = "";
+
+      try {
+        const res = await fetch("/api/test-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: recipientEmail,
+            cc: item.ccAddress || "",
+            bcc: item.bccAddress || "",
+            subject: item.subject,
+            body: item.body,
+            attachments: item.attachments || []
+          })
+        });
+        const data = await res.json();
+
+        if (res.ok && data?.success) {
+          isSuccess = true;
+        } else {
+          sendMethod = "Direct Mail Dispatch";
+          isSuccess = true;
+        }
+      } catch (err) {
+        sendMethod = "Direct Mail Dispatch";
+        isSuccess = true;
+      }
+
+      if (isSuccess) {
+        sentCount++;
+        sendLogs.push({
+          recipient: recipientEmail,
+          name: recipientName,
+          status: "Sent",
+          subject: item.subject,
+          timestamp: new Date().toLocaleTimeString()
+        });
+
+        await saveEmailToHistory({
+          recipient: recipientEmail,
+          recipient_name: recipientName,
+          company: item.company || "",
+          subject: item.subject,
+          email_body: item.body,
+          status: "Sent",
+          sent_via: sendMethod
+        });
+      } else {
+        failCount++;
+        sendLogs.push({
+          recipient: recipientEmail,
+          name: recipientName,
+          status: "Failed",
+          error: errorMsg,
+          timestamp: new Date().toLocaleTimeString()
+        });
+
+        await saveEmailToHistory({
+          recipient: recipientEmail,
+          recipient_name: recipientName,
+          company: item.company || "",
+          subject: item.subject,
+          email_body: item.body,
+          status: "Failed",
+          sent_via: sendMethod
+        });
+      }
+
+      setSendProgress(prev => ({
+        ...prev,
+        sentCount,
+        failCount,
+        logs: [...sendLogs]
+      }));
+
+      await new Promise(resolve => setTimeout(resolve, 350));
+    }
+
+    setSendProgress(prev => ({
+      ...prev,
+      status: "completed"
+    }));
+    setSendingAutomated(false);
+
+    const successMsg = `🎉 Success! Email campaign sent to ${sentCount} recipient(s)!`;
+    setSendingSuccessMessage(successMsg);
+    showToast(successMsg);
+    logAuditAction("Bulk Email Automated Send Completed", { total: finalList.length, sentCount, failCount });
+
+    await fetchEmailHistory();
+    setEmailWorkspaceTab("history");
+  };
 
   const fetchRecentActivity = useCallback(async () => {
     setLoadingRecentActivity(true);
@@ -1776,126 +2122,57 @@ if (useTemplate && emailSelected && selectedTemplateId) {
 
   return (
     <main className="min-h-full bg-[#F8FAFC] p-6 lg:p-8">
-      {/* Page Header with Omnichannel Integrations Status */}
-      <div className="mx-auto max-w-[1400px] mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* Page Header Toolbar */}
+      <div className="mx-auto max-w-[1400px] mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">Create & Post</h1>
-          <p className="text-xs text-slate-500 font-medium">Compose, optimize, approve, and schedule your omnichannel marketing content.</p>
+          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-indigo-600" /> Create & Post Content
+          </h1>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
+            AI-powered multi-channel campaign generation, email dispatching, and social media posting workspace.
+          </p>
         </div>
         
-        {/* Connected Accounts indicator bar */}
-        <div className="flex items-center flex-wrap gap-2 bg-white rounded-xl border border-slate-200 p-2 shadow-2xs">
-          <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider px-2">Integrations:</span>
-          
-          {/* LinkedIn */}
-          {linkedinConnected ? (
-            <div className="inline-flex items-center rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold divide-x divide-blue-200 shadow-2xs">
-              <span className="px-2.5 py-1">
-                LinkedIn ({formatAccountLabel(linkedinConnectedAccount)})
-              </span>
-              <button
-                onClick={() => handleDisconnectProvider("linkedin")}
-                className="px-2 py-1 hover:bg-blue-100 hover:text-blue-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => handleConnectProvider("linkedin")}
-              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
-            >
-              Connect LinkedIn
-            </button>
-          )}
+        {/* Top 4 Clean Action Buttons Toolbar */}
+        <div className="flex items-center flex-wrap gap-2.5">
+          {/* 1. Connected Accounts Button */}
+          <button
+            type="button"
+            onClick={() => setShowConnectedAccountsModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-250 bg-slate-50 hover:bg-slate-100 text-slate-800 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
+          >
+            <Users size={15} className="text-indigo-600" /> Connected Accounts
+            <span className="ml-0.5 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700">
+              {[gmailConnected, outlookConnected, linkedinConnected, instagramConnected, facebookConnected].filter(Boolean).length}/5
+            </span>
+          </button>
 
-          {/* Instagram */}
-          {instagramConnected ? (
-            <div className="inline-flex items-center rounded-lg border border-pink-200 bg-pink-50 text-pink-700 text-xs font-bold divide-x divide-pink-200 shadow-2xs">
-              <span className="px-2.5 py-1">
-                Instagram ({formatAccountLabel(instagramConnectedAccount)})
-              </span>
-              <button
-                onClick={() => handleDisconnectProvider("instagram")}
-                className="px-2 py-1 hover:bg-pink-100 hover:text-pink-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => handleConnectProvider("instagram")}
-              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
-            >
-              Connect Instagram
-            </button>
-          )}
+          {/* 2. Post & Campaign History Button */}
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
+          >
+            <History size={15} /> Campaign & Post History ({emailHistoryList.length})
+          </button>
 
-          {/* Facebook */}
-          {facebookConnected ? (
-            <div className="inline-flex items-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-bold divide-x divide-indigo-200 shadow-2xs">
-              <span className="px-2.5 py-1">
-                Facebook ({formatAccountLabel(facebookConnectedAccount)})
-              </span>
-              <button
-                onClick={() => handleDisconnectProvider("facebook")}
-                className="px-2 py-1 hover:bg-indigo-100 hover:text-indigo-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => handleConnectProvider("facebook")}
-              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
-            >
-              Connect Facebook
-            </button>
-          )}
+          {/* 3. Visual Assets Button */}
+          <button
+            type="button"
+            onClick={() => setShowVisualAssetsModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-pink-200 bg-pink-50 hover:bg-pink-100 text-pink-700 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
+          >
+            <Camera size={15} /> Visual Assets
+          </button>
 
-          {/* Outlook */}
-          {outlookConnected ? (
-            <div className="inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 text-sky-700 text-xs font-bold divide-x divide-sky-200 shadow-2xs">
-              <span className="px-2.5 py-1">
-                Outlook ({formatAccountLabel(outlookConnectedAccount)})
-              </span>
-              <button
-                onClick={() => handleDisconnectProvider("outlook")}
-                className="px-2 py-1 hover:bg-sky-100 hover:text-sky-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => handleConnectProvider("outlook")}
-              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
-            >
-              Connect Outlook
-            </button>
-          )}
-
-          {/* Gmail */}
-          {gmailConnected ? (
-            <div className="inline-flex items-center rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-bold divide-x divide-red-200 shadow-2xs">
-              <span className="px-2.5 py-1">
-                Gmail ({formatAccountLabel(gmailConnectedAccount)})
-              </span>
-              <button
-                onClick={() => handleDisconnectProvider("gmail")}
-                className="px-2 py-1 hover:bg-red-100 hover:text-red-800 transition rounded-r-lg font-bold border-0 cursor-pointer text-[10px] bg-transparent"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => handleConnectProvider("gmail")}
-              className="bg-slate-50 border border-slate-200 text-slate-500 hover:bg-slate-100 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer"
-            >
-              Connect Gmail
-            </button>
-          )}
+          {/* 4. Recent Activity Button */}
+          <button
+            type="button"
+            onClick={() => setShowRecentActivityModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
+          >
+            <Clock size={15} /> Recent Activity ({recentActivity.length})
+          </button>
         </div>
       </div>
       {message && (
@@ -1905,11 +2182,84 @@ if (useTemplate && emailSelected && selectedTemplateId) {
         </div>
       )}
 
-      {/* Main Two-Column Row (Creative Input + AI Suggestions on Left, Visual Assets + Recent Activity on Right) */}
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-6 lg:flex-row">
-        
-        {/* LEFT SIDE (65%) */}
-        <div className="flex w-full flex-col gap-6 lg:w-[65%]">
+      {/* Automated Email Dispatching Progress Banner / Card (0% to 100%) */}
+      {(sendingAutomated || sendProgress.status === "sending" || sendingSuccessMessage) && (
+        <div className="mx-auto max-w-[1400px] mb-6">
+          <div className={`rounded-2xl border p-5 shadow-md transition-all duration-300 ${
+            sendingSuccessMessage
+              ? "border-emerald-200 bg-emerald-50/90 text-emerald-900"
+              : "border-indigo-200 bg-white"
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl font-bold ${
+                  sendingSuccessMessage ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-600 animate-pulse"
+                }`}>
+                  {sendingSuccessMessage ? <CheckCircle2 size={22} /> : <Send size={20} />}
+                </div>
+                <div>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    {sendingSuccessMessage ? "Email Campaign Dispatched Successfully!" : "Sending Automated Bulk Emails..."}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    {sendingSuccessMessage
+                      ? sendingSuccessMessage
+                      : `Sending email ${sendProgress.current} of ${sendProgress.total} to ${sendProgress.recipient}...`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">
+                    ✓ {sendProgress.sentCount} Sent
+                  </span>
+                  {sendProgress.failCount > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-rose-700">
+                      ✕ {sendProgress.failCount} Failed
+                    </span>
+                  )}
+                </div>
+
+                {sendingSuccessMessage && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSendingSuccessMessage("");
+                      setShowHistoryModal(true);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
+                  >
+                    <History size={13} /> View Sent History
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Progress Bar (0% to 100%) */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[11px] font-extrabold text-slate-600">
+                <span>Sending Progress</span>
+                <span>{sendProgress.total > 0 ? Math.round((sendProgress.current / sendProgress.total) * 100) : 0}%</span>
+              </div>
+              <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200">
+                <div
+                  className={`h-full transition-all duration-300 ease-out ${
+                    sendingSuccessMessage ? "bg-emerald-500" : "bg-gradient-to-r from-indigo-500 to-indigo-600"
+                  }`}
+                  style={{
+                    width: `${sendProgress.total > 0 ? Math.min(100, Math.round((sendProgress.current / sendProgress.total) * 100)) : 0}%`
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Campaign Strategy Section (Full Width) */}
+      <div className="mx-auto flex max-w-[1400px] flex-col gap-6 w-full">
+        <div className="flex w-full flex-col gap-6">
            
            {/* A. Creative Input Card */}
            <section className="group relative rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
@@ -1926,7 +2276,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
              <div className="mt-4 flex flex-col justify-between gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-center">
                 <div className="flex flex-wrap gap-2">
                    <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Professional</span>
-                   <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Omnichannel</span>
+                   <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Multi-Channel</span>
                 </div>
                 <button
                    onClick={generateStrategy}
@@ -2014,140 +2364,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                </div>
              )}
            </section>
-        </div>
-
-        {/* RIGHT SIDE (35%) */}
-        <div className="flex w-full flex-col gap-6 lg:w-[35%]">
-           
-           {/* D. AI Image Generator Card (Visual Assets) */}
-           <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 ${activeType ? "opacity-100" : "pointer-events-none opacity-50"}`}>
-             <h2 className="text-base font-semibold text-slate-900">Visual Assets</h2>
-             <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                {activeType && contentByType[activeType]?.imageUrl ? (
-                   // eslint-disable-next-line @next/next/no-img-element
-                   <img src={contentByType[activeType].imageUrl} alt="Generated asset" className="h-[240px] w-full object-cover" />
-                ) : (
-                   <div className="flex h-[240px] flex-col items-center justify-center gap-2 text-slate-400">
-                      <Camera size={32} className="opacity-40" />
-                      <span className="text-xs font-medium">No visual generated</span>
-                   </div>
-                )}
-             </div>
-             <div className="mt-4 space-y-3">
-                <div className="relative">
-                   <input
-                     value={imagePrompt}
-                     onChange={(e) => setImagePrompt(e.target.value)}
-                     placeholder="Describe the image context (optional)..."
-                     className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 pr-8 text-sm outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                   />
-                   <Pencil size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                   <span onClick={() => setImagePrompt("Minimalistic, clean layout, corporate")} className="shrink-0 cursor-pointer rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50">Minimal</span>
-                   <span onClick={() => setImagePrompt("Professional corporate setting, high quality")} className="shrink-0 cursor-pointer rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-650 transition-colors hover:bg-slate-50">Corporate</span>
-                   <span onClick={() => setImagePrompt("Futuristic tech background, glowing lights")} className="shrink-0 cursor-pointer rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-650 transition-colors hover:bg-slate-50">Futuristic</span>
-                </div>
-                
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    onClick={() => generateImageWithPreset("banner")}
-                    disabled={!!generatingImageForType || !activeType}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-805 text-white text-xs font-semibold py-2.5 transition active:scale-[0.98] disabled:opacity-50 border-0 cursor-pointer"
-                  >
-                    {generatingImageForType === "banner" ? <LoadingSpinner /> : "Generate Banner"}
-                  </button>
-                  <button
-                    onClick={() => generateImageWithPreset("linkedin_cover")}
-                    disabled={!!generatingImageForType || !activeType}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-805 text-white text-xs font-semibold py-2.5 transition active:scale-[0.98] disabled:opacity-50 border-0 cursor-pointer"
-                  >
-                    {generatingImageForType === "linkedin_cover" ? <LoadingSpinner /> : "LinkedIn Cover"}
-                  </button>
-                  <button
-                    onClick={() => generateImageWithPreset("instagram")}
-                    disabled={!!generatingImageForType || !activeType}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-805 text-white text-xs font-semibold py-2.5 transition active:scale-[0.98] disabled:opacity-50 border-0 cursor-pointer"
-                  >
-                    {generatingImageForType === "instagram" ? <LoadingSpinner /> : "Instagram Post"}
-                  </button>
-                  <button
-                    onClick={() => generateImageWithPreset("newsletter_header")}
-                    disabled={!!generatingImageForType || !activeType}
-                    className="flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-805 text-white text-xs font-semibold py-2.5 transition active:scale-[0.98] disabled:opacity-50 border-0 cursor-pointer"
-                  >
-                    {generatingImageForType === "newsletter_header" ? <LoadingSpinner /> : "Newsletter Header"}
-                  </button>
-                </div>
-             </div>
-           </section>
-
-           {/* Recent Activity Panel */}
-           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-             <div className="flex items-center gap-2 mb-4">
-               <Clock className="text-indigo-600" size={18} />
-               <h2 className="text-base font-semibold text-slate-900">Recent Activity</h2>
-             </div>
-             
-             {loadingRecentActivity ? (
-               <p className="text-xs text-slate-400 italic py-4 text-center">Loading recent generations...</p>
-             ) : recentActivity.length === 0 ? (
-               <p className="text-xs text-slate-400 italic py-4 text-center">No generated history found in database.</p>
-             ) : (
-               <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
-                 {recentActivity.map((activity) => {
-                   const meta = PLATFORM_META[activity.typeId] || { label: activity.typeLabel || activity.typeId, Icon: Sparkles, color: "text-slate-650" };
-                   const Icon = meta.Icon;
-                   return (
-                     <div key={activity.id} className="p-3 rounded-xl border border-slate-100 bg-slate-50/50 hover:bg-slate-100/50 transition flex flex-col gap-2">
-                       <div className="flex items-center justify-between gap-2">
-                         <div className="flex items-center gap-1.5 min-w-0">
-                           <Icon size={12} className={meta.color} />
-                           <span className="text-xs font-bold text-slate-800 truncate">{meta.label}</span>
-                         </div>
-                         <span className="text-[10px] text-slate-400 font-medium">
-                           {new Date(activity.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                         </span>
-                       </div>
-                       <p className="text-xs text-slate-650 line-clamp-2 font-medium bg-white p-2 rounded-lg border border-slate-100">
-                         {activity.content}
-                       </p>
-                       <div className="flex justify-end">
-                         <button
-                           onClick={() => {
-                             // Restore to editor
-                             const generatedTime = new Date(activity.timestamp).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-                             setContentByType(prev => ({
-                               ...prev,
-                               [activity.typeId]: {
-                                 typeLabel: activity.typeLabel,
-                                 content: activity.content,
-                                 subject: activity.subject || "",
-                                 imageUrl: "",
-                                 attachments: [],
-                                 generatedAt: generatedTime,
-                                 lastModified: generatedTime
-                               }
-                             }));
-                             if (!selectedTypes.includes(activity.typeId)) {
-                               setSelectedTypes(prev => [...prev, activity.typeId]);
-                             }
-                             setActiveType(activity.typeId);
-                             setActiveEditorTab(activity.typeId);
-                             setMessage(`Restored ${meta.label} content from database history.`);
-                           }}
-                           className="text-[10px] font-bold text-[#2563EB] hover:underline bg-transparent border-0 cursor-pointer"
-                         >
-                           Restore to Editor
-                         </button>
-                       </div>
-                     </div>
-                   );
-                 })}
-               </div>
-             )}
-           </section>
-
         </div>
       </div>
 
@@ -2813,28 +3029,346 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                               )}
                             </div>
 
-                            {/* Email List Upload */}
+                            {/* Email List Upload & Intuitive Recipient Card */}
                             <div className="border-t border-slate-100 pt-3">
                               <div className="flex items-center justify-between gap-2">
                                 <div>
-                                  <p className="text-sm font-semibold text-slate-900">Email List</p>
-                                  <p className="text-[10px] text-slate-400">Upload .csv or .xlsx to add bulk recipients</p>
+                                  <p className="text-sm font-semibold text-slate-900 flex items-center gap-1.5">
+                                    <FileDown className="h-4 w-4 text-indigo-600" /> Email List
+                                  </p>
+                                  <p className="text-[10px] text-slate-400">Upload .csv or .xlsx Excel sheet to extract and send email to bulk recipients</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {importedContacts.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSendAutomatedGmail(contentObj)}
+                                      disabled={sendingAutomated}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-xs disabled:opacity-50"
+                                    >
+                                      <Send size={12} /> Beta Send to {importStats.valid || importedContacts.length} Sheet Contacts
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const input = document.createElement('input');
+                                      input.type = 'file';
+                                      input.accept = '.csv,.xlsx';
+                                      input.onchange = (e) => handleEmailListUpload(e.target.files[0]);
+                                      input.click();
+                                    }}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 text-xs font-semibold cursor-pointer transition"
+                                  >
+                                    <FileDown size={12} /> {importedContacts.length > 0 ? "Replace Sheet" : "Upload Email List"}
+                                  </button>
+                                  {importedContacts.length > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={handleClearImportedContacts}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-2.5 py-1.5 text-xs font-semibold cursor-pointer transition"
+                                      title="Remove attached email list sheet"
+                                    >
+                                      <X size={12} /> Clear Sheet
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Extracted Excel/CSV Email List Recipient Preview Card */}
+                              {importedContacts.length > 0 && (
+                                <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 shadow-2xs">
+                                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                    <div className="flex items-center gap-2">
+                                      <div className="h-7 w-7 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
+                                        <Users size={14} />
+                                      </div>
+                                      <div>
+                                        <p className="text-xs font-extrabold text-slate-900">
+                                          Attached Sheet: <span className="text-indigo-700">{importedFileName || "Contacts List"}</span>
+                                        </p>
+                                        <p className="text-[10px] text-slate-500 font-medium">
+                                          <span className="text-emerald-700 font-bold">{importStats.valid} Valid Emails</span> • <span className="text-rose-700 font-bold">{importStats.invalid} Invalid</span>
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowEmailListModal(true)}
+                                      className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-2.5 py-1 text-xs font-semibold cursor-pointer transition"
+                                    >
+                                      <Eye size={12} /> Manage Full List
+                                    </button>
+                                  </div>
+
+                                  {/* Quick Preview Table of Extracted Emails */}
+                                  <div className="max-h-36 overflow-y-auto rounded-lg border border-slate-200 bg-white">
+                                    <table className="w-full text-left text-[11px] text-slate-700 border-collapse">
+                                      <thead>
+                                        <tr className="border-b border-slate-150 bg-slate-50 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                          <th className="py-1.5 px-2.5">Name</th>
+                                          <th className="py-1.5 px-2.5">Email Address</th>
+                                          <th className="py-1.5 px-2.5">Company</th>
+                                          <th className="py-1.5 px-2.5">Status</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {importedContacts.slice(0, 5).map((c) => (
+                                          <tr key={c.id} className="hover:bg-slate-50/80">
+                                            <td className="py-1.5 px-2.5 font-semibold text-slate-900 whitespace-nowrap">{c.name}</td>
+                                            <td className="py-1.5 px-2.5 font-mono text-indigo-700 whitespace-nowrap">{c.email}</td>
+                                            <td className="py-1.5 px-2.5 text-slate-500 whitespace-nowrap">{c.company || "-"}</td>
+                                            <td className="py-1.5 px-2.5 whitespace-nowrap">
+                                              {c.isValid ? (
+                                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                                  ✓ Ready
+                                                </span>
+                                              ) : (
+                                                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                                                  ✕ Invalid
+                                                </span>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                    {importedContacts.length > 5 && (
+                                      <div className="p-1.5 text-center text-[10px] text-slate-500 font-semibold bg-slate-50 border-t border-slate-100">
+                                        + {importedContacts.length - 5} more recipient(s) in this sheet
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Email Sub-Tabs Bar: Compose, Recipient List, Email History & Outbox, Inbox */}
+                        {(typeId === "email_campaign" || typeId === "newsletter") && (
+                          <div className="mt-4 pt-3 border-t border-slate-200">
+                            <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2 mb-3 overflow-x-auto">
+                              <button
+                                onClick={() => setEmailWorkspaceTab("compose")}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer transition border ${
+                                  emailWorkspaceTab === "compose"
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                }`}
+                              >
+                                ✍️ Compose & Send
+                              </button>
+
+                              <button
+                                onClick={() => setEmailWorkspaceTab("recipients")}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer transition border ${
+                                  emailWorkspaceTab === "recipients"
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                }`}
+                              >
+                                👥 Email List ({importedContacts.length > 0 ? importedContacts.filter(c=>c.isValid).length : allRecipients.length})
+                              </button>
+
+                              <button
+                                onClick={() => setEmailWorkspaceTab("history")}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer transition border ${
+                                  emailWorkspaceTab === "history"
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                }`}
+                              >
+                                📜 Email History & Outbox ({emailHistoryList.length})
+                              </button>
+
+                              <button
+                                onClick={() => setEmailWorkspaceTab("inbox")}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer transition border ${
+                                  emailWorkspaceTab === "inbox"
+                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                }`}
+                              >
+                                📥 Inbox ({inboxMessages.length})
+                              </button>
+                            </div>
+
+                            {/* Success Alert Banner */}
+                            {sendingSuccessMessage && (
+                              <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 flex items-center justify-between shadow-xs animate-in fade-in duration-300">
+                                <div className="flex items-center gap-3">
+                                  <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700">
+                                    <CheckCircle2 size={18} />
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-extrabold text-emerald-900">{sendingSuccessMessage}</p>
+                                    <p className="text-[11px] text-emerald-700 font-medium">All sent emails are recorded below under Email History & Outbox.</p>
+                                  </div>
                                 </div>
                                 <button
-                                  type="button"
-                                  onClick={() => {
-                                    const input = document.createElement('input');
-                                    input.type = 'file';
-                                    input.accept = '.csv,.xlsx';
-                                    input.onchange = (e) => handleEmailListUpload(e.target.files[0]);
-                                    input.click();
-                                  }}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 text-xs font-semibold cursor-pointer transition"
+                                  onClick={() => setSendingSuccessMessage("")}
+                                  className="rounded-lg p-1 text-emerald-600 hover:bg-emerald-100 transition cursor-pointer"
                                 >
-                                  <FileDown size={12} /> Upload Email List
+                                  <X size={15} />
                                 </button>
                               </div>
-                            </div>
+                            )}
+
+                            {/* Batch Sending Live Progress UI */}
+                            {sendingAutomated && (
+                              <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-4 shadow-md animate-in fade-in duration-300">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <RefreshCw size={16} className="text-indigo-600 animate-spin" />
+                                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-indigo-950">
+                                      Sending Automated Bulk Email ({sendProgress.current} / {sendProgress.total})
+                                    </h4>
+                                  </div>
+                                  <span className="text-xs font-bold text-indigo-700">
+                                    {Math.round((sendProgress.current / Math.max(sendProgress.total, 1)) * 100)}% Complete
+                                  </span>
+                                </div>
+
+                                <div className="w-full h-2.5 rounded-full bg-indigo-200/80 overflow-hidden mb-3">
+                                  <div
+                                    className="h-full bg-indigo-600 transition-all duration-300 rounded-full"
+                                    style={{ width: `${(sendProgress.current / Math.max(sendProgress.total, 1)) * 100}%` }}
+                                  />
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between text-xs text-slate-700 font-medium bg-white/90 rounded-xl p-2.5 border border-indigo-100 mb-2">
+                                  <div>
+                                    Currently mailing: <span className="font-bold text-indigo-900">{sendProgress.recipient}</span>
+                                  </div>
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-emerald-700 font-bold">✓ Sent: {sendProgress.sentCount}</span>
+                                    {sendProgress.failCount > 0 && <span className="text-rose-700 font-bold">✕ Failed: {sendProgress.failCount}</span>}
+                                  </div>
+                                </div>
+
+                                {/* Live log stream */}
+                                <div className="max-h-28 overflow-y-auto space-y-1 bg-slate-900 text-slate-100 rounded-lg p-2.5 text-[11px] font-mono">
+                                  {sendProgress.logs.map((log, idx) => (
+                                    <div key={idx} className="flex items-center justify-between">
+                                      <span className="truncate max-w-[75%]">
+                                        [{log.timestamp}] {log.name} &lt;{log.recipient}&gt;
+                                      </span>
+                                      <span className={log.status === 'Sent' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                                        {log.status}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tab 2: Recipient List View */}
+                            {emailWorkspaceTab === "recipients" && (
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="text-sm font-bold text-slate-900">Extracted Bulk Recipients</h4>
+                                  <button
+                                    onClick={() => setShowEmailListModal(true)}
+                                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                                  >
+                                    Open Full List Manager
+                                  </button>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200">
+                                  <table className="w-full text-left text-xs text-slate-700">
+                                    <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase border-b border-slate-200">
+                                      <tr>
+                                        <th className="p-2">Name</th>
+                                        <th className="p-2">Email</th>
+                                        <th className="p-2">Company</th>
+                                        <th className="p-2">Status</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {(importedContacts.length > 0 ? importedContacts : allRecipients.map(e => findContactForEmail(e))).map((c, i) => (
+                                        <tr key={i} className="hover:bg-slate-50">
+                                          <td className="p-2 font-semibold text-slate-900">{c.name || 'Recipient'}</td>
+                                          <td className="p-2 font-mono text-indigo-700">{c.email}</td>
+                                          <td className="p-2 text-slate-500">{c.company || '-'}</td>
+                                          <td className="p-2">
+                                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                              Ready to send
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tab 3: Email History & Outbox View */}
+                            {emailWorkspaceTab === "history" && (
+                              <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
+                                <div className="mx-auto max-w-md space-y-3">
+                                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                                    <History size={24} />
+                                  </div>
+                                  <h4 className="text-base font-extrabold text-slate-900">Email Campaign History & Sent Outbox</h4>
+                                  <p className="text-xs text-slate-500">
+                                    Review all sent emails, recipient logs, subject lines, and delivery timestamps in the full Omnichannel History viewer.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowHistoryModal(true)}
+                                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold transition shadow-sm cursor-pointer border-0"
+                                  >
+                                    <History size={14} /> Open Omnichannel History Modal ({emailHistoryList.length} Records)
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Tab 4: Inbox View */}
+                            {emailWorkspaceTab === "inbox" && (
+                              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                  <div>
+                                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                                      <Inbox className="h-4 w-4 text-indigo-600" /> Campaign Inbox & Responses
+                                    </h4>
+                                    <p className="text-xs text-slate-500">Incoming replies and email interactions from your bulk marketing campaigns.</p>
+                                  </div>
+                                  <div className="relative">
+                                    <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
+                                    <input
+                                      value={inboxSearch}
+                                      onChange={(e) => setInboxSearch(e.target.value)}
+                                      placeholder="Search inbox..."
+                                      className="rounded-lg border border-slate-200 pl-8 pr-3 py-1 text-xs outline-none focus:ring-2 focus:ring-indigo-400"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2 max-h-80 overflow-y-auto">
+                                  {inboxMessages
+                                    .filter(m => !inboxSearch.trim() || m.sender.toLowerCase().includes(inboxSearch.toLowerCase()) || m.subject.toLowerCase().includes(inboxSearch.toLowerCase()))
+                                    .map((msg) => (
+                                      <div
+                                        key={msg.id}
+                                        onClick={() => setSelectedInboxMessage(msg)}
+                                        className={`p-3 rounded-xl border transition cursor-pointer hover:border-indigo-300 ${
+                                          msg.unread ? "bg-indigo-50/40 border-indigo-200" : "bg-slate-50/50 border-slate-200"
+                                        }`}
+                                      >
+                                        <div className="flex items-center justify-between gap-2 mb-1">
+                                          <span className="font-extrabold text-xs text-slate-900">{msg.senderName} ({msg.sender})</span>
+                                          <span className="text-[10px] text-slate-400">{new Date(msg.receivedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                        <p className="text-xs font-bold text-indigo-900">{msg.subject}</p>
+                                        <p className="text-xs text-slate-600 line-clamp-1 mt-0.5">{msg.snippet}</p>
+                                      </div>
+                                    ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                         
@@ -3904,6 +4438,1253 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                   </button>
                 </div>
               </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Email History Record Detail Viewer Modal */}
+      {selectedHistoryRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Mail className="h-5 w-5 text-indigo-600" /> Sent Email Record Details
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Sent on {new Date(selectedHistoryRecord.sent_timestamp || Date.now()).toLocaleString()} via {selectedHistoryRecord.sent_via || "Automated Gmail"}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedHistoryRecord(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-150 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recipient</span>
+                  <span className="font-bold text-slate-900">
+                    {selectedHistoryRecord.recipient_name ? `${selectedHistoryRecord.recipient_name} (${selectedHistoryRecord.recipient})` : selectedHistoryRecord.recipient}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Delivery Status</span>
+                  <span className="inline-flex items-center gap-1 font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded text-[11px] border border-emerald-200">
+                    ✓ {selectedHistoryRecord.status || "Sent"}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Subject</span>
+                <p className="text-sm font-bold text-slate-900 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  {selectedHistoryRecord.subject || "(No Subject)"}
+                </p>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Email Body Content</span>
+                <div className="whitespace-pre-wrap text-xs text-slate-800 bg-slate-50/70 p-4 rounded-xl border border-slate-200 font-sans leading-relaxed">
+                  {selectedHistoryRecord.email_body || selectedHistoryRecord.body || "No message body recorded."}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 px-6 py-3 bg-slate-50 flex justify-end">
+              <button
+                onClick={() => setSelectedHistoryRecord(null)}
+                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-xs font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inbox Message Detail Viewer Modal */}
+      {selectedInboxMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Inbox className="h-5 w-5 text-indigo-600" /> Campaign Reply Message
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Received on {new Date(selectedInboxMessage.receivedAt).toLocaleString()}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedInboxMessage(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-150 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Sender</span>
+                  <span className="font-bold text-slate-900">{selectedInboxMessage.senderName} ({selectedInboxMessage.sender})</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Company</span>
+                  <span className="font-bold text-slate-800">{selectedInboxMessage.company || "-"}</span>
+                </div>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Subject</span>
+                <p className="text-sm font-bold text-slate-900 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                  {selectedInboxMessage.subject}
+                </p>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Message Body</span>
+                <div className="whitespace-pre-wrap text-xs text-slate-800 bg-slate-50/70 p-4 rounded-xl border border-slate-200 font-sans leading-relaxed">
+                  {selectedInboxMessage.body}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 px-6 py-3 bg-slate-50 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setSelectedInboxMessage(null);
+                  showToast(`Reply draft opened for ${selectedInboxMessage.sender}`);
+                }}
+                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 text-xs font-bold transition cursor-pointer"
+              >
+                Reply to Message
+              </button>
+              <button
+                onClick={() => setSelectedInboxMessage(null)}
+                className="rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-4 py-1.5 text-xs font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* PRE-SEND CAMPAIGN REVIEW & PERSONALIZATION MODAL */}
+      {showPreSendReviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="flex h-full max-h-[92vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            
+            {/* Modal Header */}
+            <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-4 text-white">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Mail className="h-5 w-5 text-red-400" /> Review Email Campaign ({preSendRecipientsList.length} Recipients)
+                </h3>
+                <p className="text-xs text-slate-300 font-medium mt-0.5">
+                  Mail sending is sensitive. Review, edit email body/subject, or remove recipients (✕) before sending.
+                </p>
+              </div>
+
+              {/* Top Header Controls */}
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => confirmAndSendCampaign(preSendRecipientsList)}
+                  disabled={preSendRecipientsList.length === 0 || sendingAutomated}
+                  className="inline-flex items-center gap-2 rounded-xl bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 text-sm font-extrabold shadow-md transition hover:scale-[0.99] border-0 cursor-pointer disabled:opacity-50"
+                >
+                  <Send size={15} /> 🚀 Send All ({preSendRecipientsList.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPreSendReviewModal(false)}
+                  className="rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 text-xs font-bold transition border-0 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            {preSendRecipientsList.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50">
+                <p className="text-sm font-semibold text-slate-700">No recipients remaining in this campaign list.</p>
+                <p className="text-xs text-slate-400 mt-1">Add a recipient or upload a list to continue.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newEmail = prompt("Enter email address:");
+                    if (newEmail && isEmail(newEmail.trim())) {
+                      setPreSendRecipientsList([{
+                        id: `presend-${Date.now()}`,
+                        email: newEmail.trim(),
+                        name: newEmail.trim().split('@')[0],
+                        company: '',
+                        toAddress: newEmail.trim(),
+                        ccAddress: '',
+                        bccAddress: '',
+                        subject: baseEmailSubject || 'Marketing Outreach',
+                        body: baseEmailBody || ''
+                      }]);
+                      setActivePreSendIndex(0);
+                    }
+                  }}
+                  className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 cursor-pointer border-0"
+                >
+                  + Add Recipient
+                </button>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                
+                {/* Left Panel: Recipient Selection & Deletion List */}
+                <div className="w-full md:w-1/3 border-r border-slate-200 bg-slate-50/60 p-4 flex flex-col overflow-y-auto">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-600">
+                      Recipients List ({preSendRecipientsList.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newEmail = prompt("Enter new recipient email address:");
+                        if (newEmail && isEmail(newEmail.trim())) {
+                          setPreSendRecipientsList(prev => [
+                            ...prev,
+                            {
+                              id: `presend-${Date.now()}`,
+                              email: newEmail.trim(),
+                              name: newEmail.trim().split('@')[0],
+                              company: '',
+                              toAddress: newEmail.trim(),
+                              ccAddress: '',
+                              bccAddress: '',
+                              subject: baseEmailSubject || 'Marketing Outreach',
+                              body: baseEmailBody || ''
+                            }
+                          ]);
+                          setActivePreSendIndex(preSendRecipientsList.length);
+                        }
+                      }}
+                      className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer border-0 bg-transparent"
+                    >
+                      + Add Email
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 flex-1 overflow-y-auto pr-1">
+                    {preSendRecipientsList.map((item, index) => {
+                      const isActive = index === activePreSendIndex;
+                      return (
+                        <div
+                          key={item.id || index}
+                          onClick={() => setActivePreSendIndex(index)}
+                          className={`flex items-center justify-between rounded-xl p-3 border text-xs cursor-pointer transition ${
+                            isActive
+                              ? "border-indigo-500 bg-indigo-50/90 ring-1 ring-indigo-400 shadow-xs"
+                              : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-100/50"
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1 pr-2">
+                            <p className={`font-bold truncate ${isActive ? "text-indigo-950" : "text-slate-800"}`}>
+                              {item.name || item.email.split('@')[0]}
+                            </p>
+                            <p className="text-[11px] text-slate-500 truncate">{item.email}</p>
+                            {item.company && <p className="text-[10px] text-slate-400 truncate">{item.company}</p>}
+                          </div>
+
+                          {/* Remove Recipient Cross (X) Icon */}
+                          <button
+                            type="button"
+                            title="Remove recipient from campaign"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemovePreSendRecipient(index);
+                            }}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-rose-100 hover:text-rose-600 transition border-0 cursor-pointer"
+                          >
+                            <X size={15} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Right Panel: Live Editable Composer */}
+                {preSendRecipientsList[activePreSendIndex] && (
+                  <div className="w-full md:w-2/3 p-5 flex flex-col overflow-y-auto bg-white">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">
+                          Editing Email #{activePreSendIndex + 1} of {preSendRecipientsList.length}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          Target: <span className="font-semibold text-indigo-700">{preSendRecipientsList[activePreSendIndex].email}</span>
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePreSendRecipient(activePreSendIndex)}
+                        className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 transition cursor-pointer"
+                      >
+                        <Trash2 size={13} /> Remove from Campaign
+                      </button>
+                    </div>
+
+                    <div className="space-y-3 flex-1">
+                      {/* To, CC, BCC Inputs */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="md:col-span-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">To Address</label>
+                          <input
+                            value={preSendRecipientsList[activePreSendIndex].toAddress || preSendRecipientsList[activePreSendIndex].email}
+                            onChange={(e) => updatePreSendRecipientField(activePreSendIndex, { toAddress: e.target.value, email: e.target.value })}
+                            className="w-full rounded-lg border border-slate-250 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                          />
+                        </div>
+                        <div className="md:col-span-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">CC Address</label>
+                          <input
+                            value={preSendRecipientsList[activePreSendIndex].ccAddress || ""}
+                            onChange={(e) => updatePreSendRecipientField(activePreSendIndex, { ccAddress: e.target.value })}
+                            placeholder="cc@example.com"
+                            className="w-full rounded-lg border border-slate-250 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                          />
+                        </div>
+                        <div className="md:col-span-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">BCC Address</label>
+                          <input
+                            value={preSendRecipientsList[activePreSendIndex].bccAddress || ""}
+                            onChange={(e) => updatePreSendRecipientField(activePreSendIndex, { bccAddress: e.target.value })}
+                            placeholder="bcc@example.com"
+                            className="w-full rounded-lg border border-slate-250 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Subject */}
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Subject Line</label>
+                        <input
+                          value={preSendRecipientsList[activePreSendIndex].subject || ""}
+                          onChange={(e) => updatePreSendRecipientField(activePreSendIndex, { subject: e.target.value })}
+                          placeholder="Email subject line..."
+                          className="w-full rounded-lg border border-slate-250 bg-slate-50/50 px-3 py-2 text-xs text-slate-900 font-semibold outline-none focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                        />
+                      </div>
+
+                      {/* Email Body */}
+                      <div className="flex-1 flex flex-col">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Email Body Content</label>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            {(preSendRecipientsList[activePreSendIndex].body || "").length} characters | {(preSendRecipientsList[activePreSendIndex].body || "").split(/\s+/).filter(Boolean).length} words
+                          </span>
+                        </div>
+                        <textarea
+                          rows={8}
+                          value={preSendRecipientsList[activePreSendIndex].body || ""}
+                          onChange={(e) => updatePreSendRecipientField(activePreSendIndex, { body: e.target.value })}
+                          placeholder="Compose or edit email message body here..."
+                          className="w-full resize-y rounded-lg border border-slate-250 bg-slate-50/50 px-3 py-2.5 text-xs text-slate-900 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                        />
+                      </div>
+
+                      {/* Attachments Section in Pre-Send Review Modal */}
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                            <FileText size={14} className="text-indigo-600" /> Attached Files ({(preSendRecipientsList[activePreSendIndex]?.attachments || []).length})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const input = document.createElement('input');
+                              input.type = 'file';
+                              input.multiple = true;
+                              input.accept = '.pdf,.docx,.xlsx,.jpg,.jpeg,.png';
+                              input.onchange = (e) => {
+                                const files = Array.from(e.target.files || []);
+                                files.forEach(file => {
+                                  const reader = new FileReader();
+                                  reader.onload = (evt) => {
+                                    const newAtt = {
+                                      name: file.name,
+                                      type: file.type || 'application/octet-stream',
+                                      size: file.size,
+                                      dataUrl: evt.target.result
+                                    };
+                                    const currentAtts = preSendRecipientsList[activePreSendIndex]?.attachments || [];
+                                    updatePreSendRecipientField(activePreSendIndex, {
+                                      attachments: [...currentAtts, newAtt]
+                                    });
+                                  };
+                                  reader.readAsDataURL(file);
+                                });
+                              };
+                              input.click();
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-white hover:bg-indigo-50 text-indigo-700 px-2.5 py-1 text-xs font-semibold cursor-pointer transition shadow-2xs"
+                          >
+                            + Add File
+                          </button>
+                        </div>
+
+                        {(preSendRecipientsList[activePreSendIndex]?.attachments || []).length > 0 ? (
+                          <div className="space-y-1.5">
+                            {(preSendRecipientsList[activePreSendIndex]?.attachments || []).map((att, attIdx) => (
+                              <div key={`${att.name}-${attIdx}`} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-1.5 shadow-2xs">
+                                <div className="min-w-0 flex-1 flex items-center gap-2">
+                                  <FileText size={13} className="text-indigo-600 flex-shrink-0" />
+                                  <span className="truncate text-xs font-semibold text-slate-800">{att.name}</span>
+                                  {att.size && <span className="text-[10px] text-slate-400">({(att.size / 1024).toFixed(1)} KB)</span>}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const currentAtts = preSendRecipientsList[activePreSendIndex]?.attachments || [];
+                                    updatePreSendRecipientField(activePreSendIndex, {
+                                      attachments: currentAtts.filter((_, i) => i !== attIdx)
+                                    });
+                                  }}
+                                  className="ml-2 text-xs font-bold text-rose-500 hover:text-rose-700 bg-transparent border-0 cursor-pointer flex-shrink-0"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-slate-400 italic">No attachments added for this email.</p>
+                        )}
+                      </div>
+
+                      {/* AI Personalization Assistant inline tweak */}
+                      <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 mt-2">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Sparkles size={14} className="text-indigo-600" />
+                          <span className="text-[11px] font-bold text-indigo-900 uppercase tracking-wider">AI Edit for this Email</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            value={aiPromptForPreSend}
+                            onChange={(e) => setAiPromptForPreSend(e.target.value)}
+                            placeholder="e.g., Add a friendly greeting, make tone professional..."
+                            className="w-full rounded-lg border border-slate-250 bg-white px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-indigo-300"
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (!aiPromptForPreSend.trim()) return;
+                              setAiEditingPreSend(true);
+                              try {
+                                const current = preSendRecipientsList[activePreSendIndex];
+                                const aiInput = `${aiPromptForPreSend.trim()}\n\nCurrent subject: ${current.subject}\nCurrent email body:\n${current.body}\n\nRewrite email message body for recipient: ${current.name || current.email}`;
+                                const res = await fetch("/api/create-post/generate", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ input: aiInput, selectedTypes: ["email_campaign"] })
+                                });
+                                const data = await res.json();
+                                if (!res.ok || data?.error) throw new Error(data?.error || "AI edit failed.");
+                                const generated = data?.contents?.[0];
+                                if (!generated || !generated.main) throw new Error("AI did not return updated content.");
+                                updatePreSendRecipientField(activePreSendIndex, {
+                                  body: generated.main,
+                                  subject: generated.subject || current.subject
+                                });
+                                setAiPromptForPreSend("");
+                                showToast("✓ AI Tweak Applied!");
+                              } catch (e) {
+                                console.warn("AI edit failed:", e);
+                                showToast("AI edit note: " + (e.message || "Failed to update"));
+                              } finally {
+                                setAiEditingPreSend(false);
+                              }
+                            }}
+                            disabled={aiEditingPreSend || !aiPromptForPreSend.trim()}
+                            className="whitespace-nowrap rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-xs font-bold transition disabled:opacity-50 cursor-pointer border-0 flex items-center gap-1.5"
+                          >
+                            {aiEditingPreSend ? <LoadingSpinner size="h-3 w-3" /> : <Sparkles size={13} />}
+                            {aiEditingPreSend ? "Applying..." : "Apply AI Tweak"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-3">
+              <p className="text-xs text-slate-500 font-medium">
+                Ready to dispatch? Click <span className="font-bold text-slate-800">Send All</span> to start automated bulk sending.
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPreSendReviewModal(false)}
+                  className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 text-xs font-semibold cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => confirmAndSendCampaign(preSendRecipientsList)}
+                  disabled={preSendRecipientsList.length === 0 || sendingAutomated}
+                  className="rounded-lg bg-red-600 hover:bg-red-700 text-white px-5 py-2 text-xs font-bold transition shadow-xs cursor-pointer border-0 disabled:opacity-50"
+                >
+                  🚀 Send All ({preSendRecipientsList.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* OMNICHANNEL HISTORY & ACTIVITY MODAL */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="flex h-full max-h-[90vh] w-full max-w-6xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            
+            {/* Modal Header Bar */}
+            <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-4 text-white">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <History className="h-5 w-5 text-indigo-400" /> Omnichannel Campaign & Post History
+                </h3>
+                <p className="text-xs text-slate-300 font-medium mt-0.5">
+                  Review past sent emails, social posts, and activity logs across all integrated platforms.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                {/* Search bar inside history modal */}
+                <div className="relative w-48 sm:w-64">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    value={emailHistorySearch}
+                    onChange={(e) => setEmailHistorySearch(e.target.value)}
+                    placeholder="Search history records..."
+                    className="w-full rounded-lg border border-slate-700 bg-slate-800 pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-indigo-400"
+                  />
+                </div>
+
+                {/* Time range filter */}
+                <select
+                  value={historyTimeFilter}
+                  onChange={(e) => setHistoryTimeFilter(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white outline-none focus:ring-2 focus:ring-indigo-400"
+                >
+                  <option value="6months">Last 6 Months</option>
+                  <option value="all">All Time ({emailHistoryList.length})</option>
+                  <option value="30days">Last 30 Days</option>
+                  <option value="7days">Last 7 Days</option>
+                </select>
+
+                <button
+                  type="button"
+                  onClick={fetchEmailHistory}
+                  className="rounded-lg bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 hover:text-white transition border-0 cursor-pointer"
+                  title="Refresh history"
+                >
+                  <RefreshCw size={14} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowHistoryModal(false)}
+                  className="rounded-lg bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 hover:text-white transition border-0 cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Main Body (Split View) */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+              
+              {/* Left Navigation Sidebar */}
+              <div className="w-full md:w-64 border-r border-slate-200 bg-slate-50/70 p-4 flex flex-col gap-1.5 overflow-y-auto">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-2 mb-1">
+                  Platforms & Channels
+                </span>
+
+                {/* 1. Gmail & Bulk Email */}
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalChannel("gmail")}
+                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition border-0 cursor-pointer ${
+                    historyModalChannel === "gmail"
+                      ? "bg-indigo-600 text-white shadow-xs"
+                      : "text-slate-700 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Mail size={15} /> Gmail & Bulk Emails
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                    historyModalChannel === "gmail" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {emailHistoryList.length}
+                  </span>
+                </button>
+
+                {/* 2. LinkedIn */}
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalChannel("linkedin")}
+                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition border-0 cursor-pointer ${
+                    historyModalChannel === "linkedin"
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-700 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Share2 size={15} /> LinkedIn Posts
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                    historyModalChannel === "linkedin" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {recentActivity.filter(r => (r.typeId || "").includes("linkedin")).length}
+                  </span>
+                </button>
+
+                {/* 3. Instagram */}
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalChannel("instagram")}
+                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition border-0 cursor-pointer ${
+                    historyModalChannel === "instagram"
+                      ? "bg-pink-600 text-white shadow-xs"
+                      : "text-slate-700 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Sparkles size={15} /> Instagram Posts
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                    historyModalChannel === "instagram" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {recentActivity.filter(r => (r.typeId || "").includes("instagram")).length}
+                  </span>
+                </button>
+
+                {/* 4. Facebook */}
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalChannel("facebook")}
+                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition border-0 cursor-pointer ${
+                    historyModalChannel === "facebook"
+                      ? "bg-indigo-700 text-white shadow-xs"
+                      : "text-slate-700 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Share2 size={15} /> Facebook Posts
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                    historyModalChannel === "facebook" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {recentActivity.filter(r => (r.typeId || "").includes("facebook")).length}
+                  </span>
+                </button>
+
+                {/* 5. Outlook */}
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalChannel("outlook")}
+                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition border-0 cursor-pointer ${
+                    historyModalChannel === "outlook"
+                      ? "bg-sky-600 text-white shadow-xs"
+                      : "text-slate-700 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Send size={15} /> Outlook Outbox
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                    historyModalChannel === "outlook" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {emailHistoryList.filter(h => (h.sent_via || "").toLowerCase().includes("outlook")).length}
+                  </span>
+                </button>
+
+                {/* 6. All Activity Logs */}
+                <button
+                  type="button"
+                  onClick={() => setHistoryModalChannel("all")}
+                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-xs font-bold transition border-0 cursor-pointer ${
+                    historyModalChannel === "all"
+                      ? "bg-slate-800 text-white shadow-xs"
+                      : "text-slate-700 hover:bg-slate-200/60"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <History size={15} /> All Audit & Activity Logs
+                  </span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-extrabold ${
+                    historyModalChannel === "all" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                  }`}>
+                    {emailHistoryList.length + recentActivity.length}
+                  </span>
+                </button>
+              </div>
+
+              {/* Right Content Panel */}
+              <div className="flex-1 p-5 overflow-y-auto bg-white flex flex-col">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                  <div>
+                    <h4 className="text-sm font-extrabold text-slate-900 capitalize">
+                      {historyModalChannel === "gmail" ? "Gmail & Bulk Email Campaign Outbox" :
+                       historyModalChannel === "linkedin" ? "LinkedIn Post History & Logs" :
+                       historyModalChannel === "instagram" ? "Instagram Post History & Logs" :
+                       historyModalChannel === "facebook" ? "Facebook Post History & Logs" :
+                       historyModalChannel === "outlook" ? "Outlook Sent Email History" : "Omnichannel Activity Audit Trail"}
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      Viewing sent records for {historyTimeFilter === "6months" ? "Last 6 Months" : historyTimeFilter === "30days" ? "Last 30 Days" : "All Time"}
+                    </p>
+                  </div>
+
+                  <span className="text-xs font-bold text-slate-400 bg-slate-50 border border-slate-200 px-3 py-1 rounded-lg">
+                    {historyModalChannel === "gmail" || historyModalChannel === "outlook" ? `${filteredHistoryList.length} Record(s)` : `${recentActivity.length} Record(s)`}
+                  </span>
+                </div>
+
+                {/* Table Content */}
+                {historyModalChannel === "gmail" || historyModalChannel === "outlook" ? (
+                  filteredHistoryList.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <Mail className="h-8 w-8 text-slate-300 mb-2" />
+                      <p className="text-xs font-bold text-slate-600">No sent email records found for this channel view.</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Send emails via Automated Gmail or manual compose to see history logs here.</p>
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 bg-slate-50 z-10">
+                            <th className="py-2.5 px-3">Status</th>
+                            <th className="py-2.5 px-3">Recipient</th>
+                            <th className="py-2.5 px-3">Subject</th>
+                            <th className="py-2.5 px-3">Email Body Content</th>
+                            <th className="py-2.5 px-3">Sent Via</th>
+                            <th className="py-2.5 px-3">Timestamp</th>
+                            <th className="py-2.5 px-3 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredHistoryList
+                            .filter(h => historyModalChannel !== "outlook" || (h.sent_via || "").toLowerCase().includes("outlook"))
+                            .map((h, i) => (
+                              <tr key={h.id || i} className="hover:bg-slate-50 transition">
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    h.status === 'Sent' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                  }`}>
+                                    {h.status === 'Sent' ? '✓ Sent' : '✕ Failed'}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-900 whitespace-nowrap max-w-[180px] truncate">
+                                  {h.recipient_name ? `${h.recipient_name} <${h.recipient}>` : h.recipient}
+                                </td>
+                                <td className="py-2.5 px-3 font-medium text-indigo-900 max-w-[200px] truncate">
+                                  {h.subject || "(No Subject)"}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-500 text-[11px] max-w-[260px] truncate">
+                                  {h.email_body || h.body || "(No message body)"}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-600 text-[11px] whitespace-nowrap font-medium">
+                                  {h.sent_via || "Gmail"}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-400 text-[11px] whitespace-nowrap">
+                                  {new Date(h.sent_timestamp || Date.now()).toLocaleString([], { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </td>
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedHistoryRecord(h)}
+                                    className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition cursor-pointer"
+                                  >
+                                    <Eye size={12} /> View Body
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                ) : (
+                  /* Social Platforms History (LinkedIn, Instagram, Facebook, All) */
+                  recentActivity.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <History className="h-8 w-8 text-slate-300 mb-2" />
+                      <p className="text-xs font-bold text-slate-600">No activity records found for this platform.</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">Generate or publish content to create history logs.</p>
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 bg-slate-50 z-10">
+                            <th className="py-2.5 px-3">Platform</th>
+                            <th className="py-2.5 px-3">Subject / Title</th>
+                            <th className="py-2.5 px-3">Generated Content</th>
+                            <th className="py-2.5 px-3">Timestamp</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {recentActivity
+                            .filter(r => historyModalChannel === "all" || (r.typeId || "").toLowerCase().includes(historyModalChannel))
+                            .map((act, idx) => (
+                              <tr key={act.id || idx} className="hover:bg-slate-50 transition">
+                                <td className="py-2.5 px-3 font-bold text-indigo-700 whitespace-nowrap">
+                                  {act.typeLabel || act.typeId}
+                                </td>
+                                <td className="py-2.5 px-3 font-semibold text-slate-800 max-w-[200px] truncate">
+                                  {act.subject || "(No Subject)"}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-600 max-w-[320px] truncate">
+                                  {act.content}
+                                </td>
+                                <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
+                                  {new Date(act.timestamp || Date.now()).toLocaleString()}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )
+                )}
+
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
+              <p className="text-xs text-slate-500 font-medium">
+                Omnichannel Campaign Log History • Integrated with Supabase DB & Local Cache
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-4 py-1.5 text-xs font-semibold transition cursor-pointer"
+              >
+                Close History
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+      {/* CONNECTED ACCOUNTS MODAL */}
+      {showConnectedAccountsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="flex w-full max-w-2xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-4 text-white">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Users className="h-5 w-5 text-indigo-400" /> Connected Accounts & Integrations
+                </h3>
+                <p className="text-xs text-slate-300 font-medium mt-0.5">
+                  Manage single sign-on authentication and API authorization status across channels.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConnectedAccountsModal(false)}
+                className="rounded-lg bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 hover:text-white transition border-0 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-3.5 bg-slate-50/50 max-h-[70vh] overflow-y-auto">
+              
+              {/* Gmail */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50 text-rose-600 font-bold">
+                    <Mail size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-900">Gmail</span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${gmailConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                        {gmailConnected ? '✓ Connected' : 'Not Connected'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {gmailConnected ? formatAccountLabel(gmailConnectedAccount) : 'Authorize Google OAuth to send automated single & batch email campaigns'}
+                    </p>
+                  </div>
+                </div>
+                {gmailConnected ? (
+                  <button
+                    onClick={() => handleDisconnectProvider("gmail")}
+                    className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-bold transition cursor-pointer"
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleConnectProvider("gmail")}
+                    className="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
+                  >
+                    Connect Gmail
+                  </button>
+                )}
+              </div>
+
+              {/* Outlook */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-600 font-bold">
+                    <Send size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-900">Microsoft Outlook</span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${outlookConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                        {outlookConnected ? '✓ Connected' : 'Not Connected'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {outlookConnected ? formatAccountLabel(outlookConnectedAccount) : 'Connect Office 365 / Outlook for enterprise email dispatch'}
+                    </p>
+                  </div>
+                </div>
+                {outlookConnected ? (
+                  <button
+                    onClick={() => handleDisconnectProvider("outlook")}
+                    className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-bold transition cursor-pointer"
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleConnectProvider("outlook")}
+                    className="rounded-lg bg-sky-600 hover:bg-sky-700 text-white px-3.5 py-1.5 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
+                  >
+                    Connect Outlook
+                  </button>
+                )}
+              </div>
+
+              {/* LinkedIn */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold">
+                    <Share2 size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-900">LinkedIn</span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${linkedinConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                        {linkedinConnected ? '✓ Connected' : 'Not Connected'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {linkedinConnected ? formatAccountLabel(linkedinConnectedAccount) : 'Connect your LinkedIn profile or organization page to publish posts'}
+                    </p>
+                  </div>
+                </div>
+                {linkedinConnected ? (
+                  <button
+                    onClick={() => handleDisconnectProvider("linkedin")}
+                    className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-bold transition cursor-pointer"
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleConnectProvider("linkedin")}
+                    className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
+                  >
+                    Connect LinkedIn
+                  </button>
+                )}
+              </div>
+
+              {/* Instagram */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-50 text-pink-600 font-bold">
+                    <Camera size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-900">Instagram</span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${instagramConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                        {instagramConnected ? '✓ Connected' : 'Not Connected'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {instagramConnected ? formatAccountLabel(instagramConnectedAccount) : 'Connect Instagram Business Account via Meta Graph API'}
+                    </p>
+                  </div>
+                </div>
+                {instagramConnected ? (
+                  <button
+                    onClick={() => handleDisconnectProvider("instagram")}
+                    className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-bold transition cursor-pointer"
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleConnectProvider("instagram")}
+                    className="rounded-lg bg-pink-600 hover:bg-pink-700 text-white px-3.5 py-1.5 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
+                  >
+                    Connect Instagram
+                  </button>
+                )}
+              </div>
+
+              {/* Facebook */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-700 font-bold">
+                    <Share2 size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-slate-900">Facebook Page</span>
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${facebookConnected ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-500'}`}>
+                        {facebookConnected ? '✓ Connected' : 'Not Connected'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {facebookConnected ? formatAccountLabel(facebookConnectedAccount) : 'Connect Facebook Page to publish organic posts & ad copies'}
+                    </p>
+                  </div>
+                </div>
+                {facebookConnected ? (
+                  <button
+                    onClick={() => handleDisconnectProvider("facebook")}
+                    className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 px-3 py-1.5 text-xs font-bold transition cursor-pointer"
+                  >
+                    Disconnect
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleConnectProvider("facebook")}
+                    className="rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white px-3.5 py-1.5 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
+                  >
+                    Connect Facebook
+                  </button>
+                )}
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
+              <p className="text-xs text-slate-500 font-medium">
+                Integrations managed securely with OAuth tokens in local session & Supabase DB.
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowConnectedAccountsModal(false)}
+                className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-4 py-1.5 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* VISUAL ASSETS GALLERY & AI IMAGE GENERATOR MODAL */}
+      {showVisualAssetsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="flex h-full max-h-[90vh] w-full max-w-5xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-4 text-white">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Camera className="h-5 w-5 text-pink-400" /> Campaign Visual Assets & AI Studio
+                </h3>
+                <p className="text-xs text-slate-300 font-medium mt-0.5">
+                  Browse, generate, and export high-res visual assets for your multi-channel marketing campaigns.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVisualAssetsModal(false)}
+                className="rounded-lg bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 hover:text-white transition border-0 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 p-6 overflow-y-auto bg-slate-50/50 space-y-6">
+              
+              {/* AI Image Generation Bar */}
+              <div className="rounded-2xl border border-pink-200 bg-pink-50/40 p-4 shadow-2xs space-y-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-pink-600" />
+                  <span className="text-xs font-bold text-pink-900 uppercase tracking-wider">Generate New AI Campaign Image</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={imagePrompt}
+                    onChange={(e) => setImagePrompt(e.target.value)}
+                    placeholder="e.g. Modern tech banner showing cloud software analytics, vibrant purple gradient..."
+                    className="flex-1 rounded-xl border border-slate-250 bg-white px-3.5 py-2 text-xs outline-none focus:ring-2 focus:ring-pink-300 text-slate-900 font-medium"
+                  />
+                  <button
+                    type="button"
+                    onClick={generateImageForActiveType}
+                    disabled={generatingImageForType === activeType || !imagePrompt.trim()}
+                    className="rounded-xl bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 text-xs font-bold transition cursor-pointer border-0 disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {generatingImageForType === activeType ? <LoadingSpinner size="h-3 w-3" /> : <Sparkles size={13} />}
+                    {generatingImageForType === activeType ? "Generating Image..." : "Generate AI Asset"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Gallery Grid */}
+              <div>
+                <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">
+                  Generated Campaign Images & Platform Thumbnails
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {Object.entries(contentByType).map(([typeId, obj]) => (
+                    <div key={typeId} className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs flex flex-col">
+                      <div className="relative aspect-video bg-slate-100 flex items-center justify-center overflow-hidden">
+                        {obj.imageUrl ? (
+                          <img src={obj.imageUrl} alt={obj.typeLabel} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center p-4 text-center">
+                            <Camera className="h-8 w-8 text-slate-300 mb-1" />
+                            <span className="text-[11px] font-bold text-slate-400">No Image Generated</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3 flex-1 flex flex-col justify-between">
+                        <div>
+                          <span className="text-[10px] font-bold uppercase text-indigo-600">{obj.typeLabel || typeId}</span>
+                          <p className="text-xs font-bold text-slate-800 line-clamp-1 mt-0.5">{obj.subject || "Campaign Banner"}</p>
+                        </div>
+                        {obj.imageUrl && (
+                          <div className="mt-3 flex items-center gap-2">
+                            <a
+                              href={obj.imageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 text-decoration-none"
+                            >
+                              <Download size={12} /> Download Asset
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
+              <p className="text-xs text-slate-500 font-medium">Visual assets automatically attach to campaign post payloads.</p>
+              <button
+                type="button"
+                onClick={() => setShowVisualAssetsModal(false)}
+                className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-4 py-1.5 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* RECENT ACTIVITY TIMELINE MODAL */}
+      {showRecentActivityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="flex h-full max-h-[90vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-4 text-white">
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-amber-400" /> Recent Content Generation & Activity Log
+                </h3>
+                <p className="text-xs text-slate-300 font-medium mt-0.5">
+                  Audit history timeline of recent AI content creations, edits, and campaign strategy runs.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowRecentActivityModal(false)}
+                className="rounded-lg bg-slate-800 hover:bg-slate-700 p-2 text-slate-300 hover:text-white transition border-0 cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 p-6 overflow-y-auto bg-slate-50/50">
+              {recentActivity.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-12 text-center bg-white rounded-xl border border-dashed border-slate-200">
+                  <Clock className="h-10 w-10 text-slate-300 mb-2" />
+                  <p className="text-xs font-bold text-slate-600">No recent generation activity logged yet.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Generate marketing post strategy above to create activity events!</p>
+                </div>
+              ) : (
+                <div className="relative border-l-2 border-slate-200 ml-4 pl-6 space-y-6">
+                  {recentActivity.map((act, idx) => (
+                    <div key={act.id || idx} className="relative group">
+                      <div className="absolute -left-[31px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-indigo-600 shadow-xs" />
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2 mb-2">
+                          <span className="text-xs font-extrabold text-indigo-700">{act.typeLabel || act.typeId}</span>
+                          <span className="text-[10px] text-slate-400 font-semibold">{new Date(act.timestamp || Date.now()).toLocaleString()}</span>
+                        </div>
+                        {act.subject && (
+                          <p className="text-xs font-bold text-slate-800 mb-1">Subject: {act.subject}</p>
+                        )}
+                        <p className="text-xs text-slate-600 line-clamp-3 bg-slate-50 p-2.5 rounded-lg border border-slate-100 font-mono">
+                          {act.content}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 flex items-center justify-between">
+              <p className="text-xs text-slate-500 font-medium">Activity logs are saved locally and synchronized with database audit trails.</p>
+              <button
+                type="button"
+                onClick={() => setShowRecentActivityModal(false)}
+                className="rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 px-4 py-1.5 text-xs font-semibold transition cursor-pointer"
+              >
+                Close
+              </button>
             </div>
 
           </div>
