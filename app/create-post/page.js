@@ -3256,17 +3256,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                               </button>
 
                               <button
-                                onClick={() => setEmailWorkspaceTab("history")}
-                                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer transition border ${
-                                  emailWorkspaceTab === "history"
-                                    ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
-                                    : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                                }`}
-                              >
-                                📜 Email History & Outbox ({emailHistoryList.length})
-                              </button>
-
-                              <button
                                 onClick={() => setEmailWorkspaceTab("inbox")}
                                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold cursor-pointer transition border ${
                                   emailWorkspaceTab === "inbox"
@@ -3287,7 +3276,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                   </div>
                                   <div>
                                     <p className="text-xs font-extrabold text-emerald-900">{sendingSuccessMessage}</p>
-                                    <p className="text-[11px] text-emerald-700 font-medium">All sent emails are recorded below under Email History & Outbox.</p>
+                                    <p className="text-[11px] text-emerald-700 font-medium">Email campaign dispatched successfully.</p>
                                   </div>
                                 </div>
                                 <button
@@ -3384,28 +3373,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                       ))}
                                     </tbody>
                                   </table>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Tab 3: Email History & Outbox View */}
-                            {emailWorkspaceTab === "history" && (
-                              <div className="rounded-xl border border-slate-200 bg-white p-6 text-center">
-                                <div className="mx-auto max-w-md space-y-3">
-                                  <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                                    <History size={24} />
-                                  </div>
-                                  <h4 className="text-base font-extrabold text-slate-900">Email Campaign History & Sent Outbox</h4>
-                                  <p className="text-xs text-slate-500">
-                                    Review all sent emails, recipient logs, subject lines, and delivery timestamps in the full Omnichannel History viewer.
-                                  </p>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowHistoryModal(true)}
-                                    className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 text-xs font-bold transition shadow-sm cursor-pointer border-0"
-                                  >
-                                    <History size={14} /> Open Omnichannel History Modal ({emailHistoryList.length} Records)
-                                  </button>
                                 </div>
                               </div>
                             )}
