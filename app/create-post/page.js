@@ -3351,16 +3351,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                         {/* Publishing Workflow Buttons */}
                         <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-between">
                           <div className="flex flex-wrap gap-1.5">
-                            {/* Draft or Failed: Submit for Approval */}
-                            {((contentObj.workflowStatus || "Draft") === "Draft" || (contentObj.workflowStatus || "Draft") === "Failed") && (
-                              <button
-                                onClick={() => updateWorkflowStatus(typeId, "Pending Approval")}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
-                              >
-                                Submit for Approval
-                              </button>
-                            )}
-
                             {/* Pending Approval: Approve or Reject */}
                             {(contentObj.workflowStatus || "Draft") === "Pending Approval" && (
                               <>
@@ -3756,16 +3746,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                         {/* Publishing Workflow Buttons */}
                         <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-between">
                           <div className="flex flex-wrap gap-1.5">
-                            {/* Draft or Failed: Submit for Approval */}
-                            {((contentObj.workflowStatus || "Draft") === "Draft" || (contentObj.workflowStatus || "Draft") === "Failed") && (
-                              <button
-                                onClick={() => updateWorkflowStatus(typeId, "Pending Approval")}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 px-3.5 py-1.5 text-xs font-bold transition cursor-pointer"
-                              >
-                                Submit for Approval
-                              </button>
-                            )}
-
                             {/* Pending Approval: Approve or Reject */}
                             {(contentObj.workflowStatus || "Draft") === "Pending Approval" && (
                               <>
