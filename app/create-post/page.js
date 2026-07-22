@@ -2847,13 +2847,13 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                     <button onClick={() => { setEmailPref('outlook'); handleSendEmail(contentObj, null, 'outlook'); }} title="Open Outlook" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-600 text-white font-black' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>O</button>
                                   </div>
 
-                                  {/* Automated Gmail Button - Always Visible */}
+                                  {/* Automated Email Button - Always Visible & Blue */}
                                   <button
                                     onClick={() => handleSendAutomatedGmail(contentObj)}
-                                    className="inline-flex items-center gap-1 rounded bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
+                                    className="inline-flex items-center gap-1 rounded bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
                                     title="Send Automated Email via Gmail API"
                                   >
-                                    <Send size={11} /> Automated Gmail
+                                    <Send size={11} /> Automated Email
                                   </button>
                                 </div>
                              )}
@@ -3053,9 +3053,9 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                       type="button"
                                       onClick={() => handleSendAutomatedGmail(contentObj)}
                                       disabled={sendingAutomated}
-                                      className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-xs disabled:opacity-50"
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 text-xs font-bold cursor-pointer transition shadow-xs disabled:opacity-50"
                                     >
-                                      <Send size={12} /> Beta Send to {importStats.valid || importedContacts.length} Sheet Contacts
+                                      <Send size={12} /> Automated Email to {importStats.valid || importedContacts.length} Sheet Contacts
                                     </button>
                                   )}
                                   <button
