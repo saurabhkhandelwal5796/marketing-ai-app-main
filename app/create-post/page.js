@@ -2121,62 +2121,81 @@ if (useTemplate && emailSelected && selectedTemplateId) {
   };
 
   return (
-    <main className="min-h-full bg-[#F8FAFC] p-6 lg:p-8">
-      {/* Page Header Toolbar */}
-      <div className="mx-auto max-w-[1400px] mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white rounded-2xl border border-slate-200 p-5 shadow-2xs">
-        <div>
-          <h1 className="text-xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-indigo-600" /> Create & Post Content
-          </h1>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">
-            AI-powered multi-channel campaign generation, email dispatching, and social media posting workspace.
-          </p>
-        </div>
-        
-        {/* Top 4 Clean Action Buttons Toolbar */}
-        <div className="flex items-center flex-wrap gap-2.5">
-          {/* 1. Connected Accounts Button */}
-          <button
-            type="button"
-            onClick={() => setShowConnectedAccountsModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-250 bg-slate-50 hover:bg-slate-100 text-slate-800 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
-          >
-            <Users size={15} className="text-indigo-600" /> Connected Accounts
-            <span className="ml-0.5 rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700">
-              {[gmailConnected, outlookConnected, linkedinConnected, instagramConnected, facebookConnected].filter(Boolean).length}/5
-            </span>
-          </button>
+    <main className="min-h-full bg-[#F8FAFC] p-4 lg:p-6">
+      {/* Salesforce + HubSpot Inspired Sticky Top Navigation Bar */}
+      <div className="sticky top-0 z-30 mx-auto max-w-[1400px] mb-4 rounded-2xl border border-slate-200/90 bg-white/95 backdrop-blur-md p-3.5 shadow-2xs transition-all">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                Create & Post Content
+                <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700 ring-1 ring-indigo-200">AI Studio</span>
+              </h1>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Multi-channel campaign generation, automated email dispatch, and social posting.
+              </p>
+            </div>
+          </div>
+          
+          {/* Horizontal Top Navigation Bar */}
+          <nav className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0 scrollbar-hide">
+            {/* 1. Connected Accounts */}
+            <button
+              type="button"
+              onClick={() => setShowConnectedAccountsModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 hover:bg-indigo-50/60 hover:border-indigo-300 text-slate-800 px-3.5 py-2 text-xs font-extrabold transition-all shadow-2xs cursor-pointer hover:scale-[1.02]"
+            >
+              <Users size={14} className="text-indigo-600" />
+              <span>Connected Accounts</span>
+              <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-extrabold text-indigo-700">
+                {[gmailConnected, outlookConnected, linkedinConnected, instagramConnected, facebookConnected].filter(Boolean).length}/5
+              </span>
+            </button>
 
-          {/* 2. Post & Campaign History Button */}
-          <button
-            type="button"
-            onClick={() => setShowHistoryModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
-          >
-            <History size={15} /> Campaign & Post History ({emailHistoryList.length})
-          </button>
+            {/* 2. Campaign & Post History */}
+            <button
+              type="button"
+              onClick={() => setShowHistoryModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-2 text-xs font-bold transition-all shadow-2xs cursor-pointer hover:scale-[1.02]"
+            >
+              <History size={14} />
+              <span>Campaign & Post History</span>
+              <span className="rounded-full bg-indigo-200/80 px-2 py-0.5 text-[10px] font-extrabold text-indigo-800">
+                {emailHistoryList.length}
+              </span>
+            </button>
 
-          {/* 3. Visual Assets Button */}
-          <button
-            type="button"
-            onClick={() => setShowVisualAssetsModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-pink-200 bg-pink-50 hover:bg-pink-100 text-pink-700 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
-          >
-            <Camera size={15} /> Visual Assets
-          </button>
+            {/* 3. Visual Assets */}
+            <button
+              type="button"
+              onClick={() => setShowVisualAssetsModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-pink-200 bg-pink-50 hover:bg-pink-100 text-pink-700 px-3.5 py-2 text-xs font-bold transition-all shadow-2xs cursor-pointer hover:scale-[1.02]"
+            >
+              <Camera size={14} />
+              <span>Visual Assets</span>
+            </button>
 
-          {/* 4. Recent Activity Button */}
-          <button
-            type="button"
-            onClick={() => setShowRecentActivityModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-3.5 py-2 text-xs font-extrabold transition shadow-2xs cursor-pointer"
-          >
-            <Clock size={15} /> Recent Activity ({recentActivity.length})
-          </button>
+            {/* 4. Recent Activity */}
+            <button
+              type="button"
+              onClick={() => setShowRecentActivityModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 px-3.5 py-2 text-xs font-bold transition-all shadow-2xs cursor-pointer hover:scale-[1.02]"
+            >
+              <Clock size={14} />
+              <span>Recent Activity</span>
+              <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[10px] font-extrabold text-amber-900">
+                {recentActivity.length}
+              </span>
+            </button>
+          </nav>
         </div>
       </div>
+
       {message && (
-        <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-medium text-indigo-700 shadow-sm transition-all flex items-center justify-between">
+        <div className="mb-4 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs font-medium text-indigo-700 shadow-2xs transition-all flex items-center justify-between">
           <span>{message}</span>
           <button onClick={() => setMessage("")} className="text-indigo-400 hover:text-indigo-600 font-bold ml-2 bg-transparent border-0 cursor-pointer">×</button>
         </div>
@@ -2184,24 +2203,24 @@ if (useTemplate && emailSelected && selectedTemplateId) {
 
       {/* Automated Email Dispatching Progress Banner / Card (0% to 100%) */}
       {(sendingAutomated || sendProgress.status === "sending" || sendingSuccessMessage) && (
-        <div className="mx-auto max-w-[1400px] mb-6">
-          <div className={`rounded-2xl border p-5 shadow-md transition-all duration-300 ${
+        <div className="mx-auto max-w-[1400px] mb-4">
+          <div className={`rounded-2xl border p-4 shadow-md transition-all duration-300 ${
             sendingSuccessMessage
               ? "border-emerald-200 bg-emerald-50/90 text-emerald-900"
               : "border-indigo-200 bg-white"
           }`}>
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
               <div className="flex items-center gap-3">
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl font-bold ${
+                <div className={`flex h-9 w-9 items-center justify-center rounded-xl font-bold ${
                   sendingSuccessMessage ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-600 animate-pulse"
                 }`}>
-                  {sendingSuccessMessage ? <CheckCircle2 size={22} /> : <Send size={20} />}
+                  {sendingSuccessMessage ? <CheckCircle2 size={20} /> : <Send size={18} />}
                 </div>
                 <div>
-                  <h3 className="text-sm font-extrabold text-slate-900">
+                  <h3 className="text-xs font-extrabold text-slate-900">
                     {sendingSuccessMessage ? "Email Campaign Dispatched Successfully!" : "Sending Automated Bulk Emails..."}
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
                     {sendingSuccessMessage
                       ? sendingSuccessMessage
                       : `Sending email ${sendProgress.current} of ${sendProgress.total} to ${sendProgress.recipient}...`}
@@ -2209,13 +2228,13 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-emerald-700">
                     ✓ {sendProgress.sentCount} Sent
                   </span>
                   {sendProgress.failCount > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-rose-700">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-0.5 text-rose-700">
                       ✕ {sendProgress.failCount} Failed
                     </span>
                   )}
@@ -2228,21 +2247,21 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                       setSendingSuccessMessage("");
                       setShowHistoryModal(true);
                     }}
-                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
+                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 text-xs font-bold transition cursor-pointer border-0 shadow-2xs"
                   >
-                    <History size={13} /> View Sent History
+                    <History size={12} /> View Sent History
                   </button>
                 )}
               </div>
             </div>
 
             {/* Progress Bar (0% to 100%) */}
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-[11px] font-extrabold text-slate-600">
+            <div className="space-y-1">
+              <div className="flex justify-between text-[10px] font-extrabold text-slate-600">
                 <span>Sending Progress</span>
                 <span>{sendProgress.total > 0 ? Math.round((sendProgress.current / sendProgress.total) * 100) : 0}%</span>
               </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200">
                 <div
                   className={`h-full transition-all duration-300 ease-out ${
                     sendingSuccessMessage ? "bg-emerald-500" : "bg-gradient-to-r from-indigo-500 to-indigo-600"
@@ -2258,85 +2277,142 @@ if (useTemplate && emailSelected && selectedTemplateId) {
       )}
 
       {/* Main Campaign Strategy Section (Full Width) */}
-      <div className="mx-auto flex max-w-[1400px] flex-col gap-6 w-full">
-        <div className="flex w-full flex-col gap-6">
+      <div className="mx-auto flex max-w-[1400px] flex-col gap-4 w-full">
+        <div className="flex w-full flex-col gap-4">
            
            {/* A. Creative Input Card */}
-           <section className="group relative rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
-             <h2 className="text-lg font-semibold text-slate-900">Campaign Goal</h2>
+           <section className="group relative rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-2xs transition-all duration-300 hover:shadow-md">
+             <h2 className="text-base font-bold text-slate-900 flex items-center justify-between">
+               <span>Campaign Goal</span>
+               <span className="text-[10px] text-slate-400 font-normal">Step 1 of 2</span>
+             </h2>
              <textarea
                value={input}
                onChange={(e) => setInput(e.target.value)}
-               rows={4}
+               rows={3}
                placeholder="Describe your campaign goal..."
-               className="mt-3 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+               className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5 text-xs text-slate-800 outline-none transition-all focus:border-indigo-400 focus:bg-white focus:ring-3 focus:ring-indigo-100"
              />
-             <p className="mt-2 text-xs text-slate-400">AI Hint: Be specific about your target audience and key messaging.</p>
              
-             <div className="mt-4 flex flex-col justify-between gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-center">
+             <div className="mt-3 flex flex-col justify-between gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
                 <div className="flex flex-wrap gap-2">
-                   <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Professional</span>
-                   <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Multi-Channel</span>
+                   <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">Professional</span>
+                   <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600">Multi-Channel</span>
                 </div>
                 <button
                    onClick={generateStrategy}
                    disabled={!generatingSuggestions && (generatingContent || !input.trim())}
-                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[0.98] hover:bg-indigo-700 hover:shadow-md disabled:opacity-50 sm:w-auto"
+                   className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-5 py-2 text-xs font-bold text-white shadow-2xs transition-all duration-200 hover:scale-[0.98] hover:bg-indigo-700 hover:shadow-md disabled:opacity-50 sm:w-auto"
                 >
-                   {generatingSuggestions || generatingContent ? <LoadingSpinner /> : <Sparkles size={16} />}
+                   {generatingSuggestions || generatingContent ? <LoadingSpinner /> : <Sparkles size={14} />}
                    {generatingSuggestions ? "Stop" : suggestions.length > 0 ? "Update Strategy" : "Generate Strategy"}
                 </button>
              </div>
            </section>
 
            {/* B. AI Strategy / Platform Suggestions */}
-           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md">
+           <section className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-2xs transition-all duration-300 hover:shadow-md">
              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-slate-900">Platform Strategy</h2>
-                {suggestions.length > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200"><Sparkles size={12} /> AI Optimized</span>}
+                <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <span>Platform Strategy</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Step 2 of 2</span>
+                </h2>
+                {suggestions.length > 0 && <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-700 ring-1 ring-emerald-200"><Sparkles size={11} /> AI Optimized</span>}
              </div>
-             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+             
+             {/* Equal Height Redesigned Platform Cards with Connected Badges */}
+             <div className="mt-3.5 grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 items-stretch">
                {suggestions.length > 0 ? suggestions.map(item => {
                    const meta = PLATFORM_META[item.id] || { label: item.id, Icon: Sparkles, color: "text-slate-600" };
                    const Icon = meta.Icon;
                    const selected = selectedTypes.includes(item.id);
+
+                   // Determine connection state for platform
+                   let isConnected = false;
+                   if (item.id === "email_campaign" || item.id === "newsletter") {
+                     isConnected = gmailConnected || outlookConnected;
+                   } else if (item.id === "linkedin_post") {
+                     isConnected = linkedinConnected;
+                   } else if (item.id === "instagram_post") {
+                     isConnected = instagramConnected;
+                   } else if (item.id === "facebook_post") {
+                     isConnected = facebookConnected;
+                   } else {
+                     isConnected = true;
+                   }
+
                    return (
                      <button
                        key={item.id}
                        onClick={() => toggleType(item.id)}
-                       className={`group relative flex flex-col items-start rounded-xl border p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md cursor-pointer ${
-                         selected ? "border-indigo-600 bg-indigo-50/50 ring-1 ring-indigo-600/20" : "border-slate-200 bg-white hover:border-slate-300"
+                       className={`group relative flex h-full flex-col justify-between rounded-2xl border p-4 text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-lg cursor-pointer ${
+                         selected
+                           ? "border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/30"
+                           : "border-slate-200/90 bg-white hover:border-indigo-300 hover:bg-slate-50/50"
                        }`}
                      >
-                       <div className="flex w-full items-start justify-between">
-                         <div className={`rounded-lg p-2 ${selected ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-600"}`}>
-                           <Icon size={18} className={selected ? "text-indigo-700" : meta.color} />
+                       <div>
+                         <div className="flex w-full items-center justify-between gap-2 mb-2.5">
+                           <div className={`rounded-xl p-2.5 transition-transform duration-200 group-hover:scale-105 ${
+                             selected ? "bg-indigo-600 text-white shadow-xs" : "bg-slate-100 text-slate-700"
+                           }`}>
+                             <Icon size={18} className={selected ? "text-white" : meta.color} />
+                           </div>
+
+                           {/* Connected / Not Connected Badge */}
+                           {isConnected ? (
+                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-extrabold text-emerald-700 border border-emerald-200/80">
+                               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Connected
+                             </span>
+                           ) : (
+                             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-slate-500 border border-slate-200">
+                               <span className="h-1.5 w-1.5 rounded-full bg-slate-400" /> Not Connected
+                             </span>
+                           )}
                          </div>
+
+                         <p className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                           {item.label}
+                           {selected && <Check size={14} className="text-indigo-600 font-bold" />}
+                         </p>
+                         <p className="mt-1 line-clamp-2 text-xs text-slate-500 leading-relaxed font-medium">
+                           {item.hint}
+                         </p>
                        </div>
-                       <p className="mt-3 text-sm font-semibold text-slate-900">{item.label}</p>
-                       <p className="mt-1 line-clamp-2 text-xs text-slate-500">{item.hint}</p>
+
+                       <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-slate-400">
+                         <span>{selected ? "Selected" : "Click to select"}</span>
+                         <span className={selected ? "text-indigo-600 font-extrabold" : "text-slate-400"}>
+                           {selected ? "✓ Active" : "+ Add"}
+                         </span>
+                       </div>
                      </button>
                    );
                }) : (
-                 [1, 2, 3].map(i => (
-                   <div key={i} className="flex flex-col items-start rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-4 opacity-60">
-                     <div className="h-8 w-8 rounded-lg bg-slate-200"></div>
-                     <div className="mt-3 h-4 w-20 rounded bg-slate-200"></div>
-                     <div className="mt-1 h-3 w-full rounded bg-slate-200"></div>
+                 [1, 2, 3, 4].map(i => (
+                   <div key={i} className="flex flex-col justify-between h-32 rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 p-4 opacity-60">
+                     <div className="flex justify-between items-center">
+                       <div className="h-8 w-8 rounded-xl bg-slate-200"></div>
+                       <div className="h-4 w-16 rounded-full bg-slate-200"></div>
+                     </div>
+                     <div>
+                       <div className="h-4 w-24 rounded bg-slate-200 mb-1"></div>
+                       <div className="h-3 w-full rounded bg-slate-200"></div>
+                     </div>
                    </div>
                  ))
                )}
              </div>
              {suggestions.length > 0 && (
-               <div className="mt-5 border-t border-slate-100 pt-4 flex items-center justify-between gap-3">
-                 <div className="space-y-2">
-                   <label className={`inline-flex cursor-pointer items-center gap-2 text-sm font-medium ${needsRecipients ? "text-slate-700" : "cursor-not-allowed text-slate-400"}`}>
+               <div className="mt-4 border-t border-slate-100 pt-3 flex flex-wrap items-center justify-between gap-3">
+                 <div className="space-y-1.5">
+                   <label className={`inline-flex cursor-pointer items-center gap-2 text-xs font-semibold ${needsRecipients ? "text-slate-700" : "cursor-not-allowed text-slate-400"}`}>
                      <input
                        type="checkbox"
                        checked={useTemplate}
                        disabled={!needsRecipients}
                        onChange={(e) => { setUseTemplate(e.target.checked); setSelectedTemplateId(""); }}
-                       className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                       className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
                      />
                      Use Email Template
                    </label>
@@ -2344,7 +2420,7 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                      <select
                        value={selectedTemplateId}
                        onChange={(e) => setSelectedTemplateId(e.target.value)}
-                       className="block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                       className="block rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                      >
                        <option value="">Select template...</option>
                        {emailTemplates.map((t) => (
@@ -2356,10 +2432,10 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                  <button
                    onClick={generateContentForSelectedTypes}
                    disabled={!generatingContent && (selectedTypes.length === 0 || (useTemplate && !selectedTemplateId))}
-                   className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-50 border-0 cursor-pointer"
+                   className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-xs font-bold text-white shadow-2xs transition-all hover:bg-slate-800 hover:shadow-md disabled:opacity-50 border-0 cursor-pointer"
                  >
                    {generatingContent ? <LoadingSpinner /> : null}
-                   {generatingContent ? "Stop" : "Confirm Platforms & Generate"}
+                   {generatingContent ? "Stop" : "Confirm Platforms & Generate Workspace"}
                  </button>
                </div>
              )}
