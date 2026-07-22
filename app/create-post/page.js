@@ -937,11 +937,11 @@ useEffect(() => {
     });
 
     try {
-      await fetch("/api/create-post/email-history", {
+      fetch("/api/create-post/email-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newRecord)
-      });
+      }).catch(() => {});
     } catch (e) {
       console.warn("API write email history note:", e);
     }
@@ -1322,36 +1322,45 @@ useEffect(() => {
   const saveDraft = async (typeId, contentObj) => {
     const formattedDate = new Date().toLocaleDateString();
     const defaultName = `Draft - ${PLATFORM_META[typeId]?.label || typeId} - ${formattedDate}`;
+    const draftContent = contentObj?.content || contentObj?.body || "";
+    const draftSubject = contentObj?.subject || "";
+
+    const localDraft = {
+      id: `draft-${Date.now()}`,
+      name: defaultName,
+      typeId,
+      typeLabel: PLATFORM_META[typeId]?.label || typeId,
+      subject: draftSubject,
+      content: draftContent,
+      toAddress: contentObj?.toAddress || "",
+      ccAddress: contentObj?.ccAddress || "",
+      bccAddress: contentObj?.bccAddress || "",
+      imageUrl: contentObj?.imageUrl || "",
+      attachments: contentObj?.attachments || [],
+      status: "Active",
+      favorite: false,
+      createdBy: currentUser?.name || "Current User",
+      createdAt: formattedDate,
+      lastModified: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    setDrafts(prev => [localDraft, ...prev]);
+    showToast(`✓ Draft "${defaultName}" saved successfully!`);
+    setMessage(`Draft "${defaultName}" saved successfully.`);
+    logHistoryEvent(PLATFORM_META[typeId]?.label || typeId, draftContent, draftSubject, 'Draft Saved');
+
     try {
       const res = await fetch("/api/create-post/drafts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: defaultName,
-          typeId,
-          typeLabel: PLATFORM_META[typeId]?.label || typeId,
-          subject: contentObj.subject || "",
-          content: contentObj.content || "",
-          toAddress: contentObj.toAddress || "",
-          ccAddress: contentObj.ccAddress || "",
-          bccAddress: contentObj.bccAddress || "",
-          imageUrl: contentObj.imageUrl || "",
-          attachments: contentObj.attachments || [],
-          status: "Draft",
-          favorite: false
-        })
+        body: JSON.stringify(localDraft)
       });
       const data = await res.json();
       if (data?.success) {
         await loadDraftsFromDb();
-        setMessage(`Draft "${defaultName}" saved successfully!`);
-        logHistoryEvent(PLATFORM_META[typeId]?.label || typeId, contentObj.content || '', contentObj.subject || '', 'Draft');
-        logAuditAction('Generated Content Archive', { typeId, typeLabel: PLATFORM_META[typeId]?.label || typeId, content: contentObj.content || '', subject: contentObj.subject || '', action: 'draft_saved' });
-      } else {
-        setMessage(data?.error || "Failed to save draft.");
       }
     } catch (e) {
-      setMessage(e.message || "Failed to save draft.");
+      console.warn("API draft save note:", e);
     }
   };
 
@@ -2890,13 +2899,6 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                               <Bookmark size={11} /> Save Draft
                             </button>
                             <button
-                              onClick={() => duplicateContent(typeId, contentObj)}
-                              className="inline-flex items-center gap-1 rounded bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 text-[11px] font-bold cursor-pointer transition"
-                              title="Duplicate"
-                            >
-                              <Plus size={11} /> Duplicate
-                            </button>
-                            <button
                               onClick={() => handleDownloadTxt(typeId, contentObj)}
                               className="inline-flex items-center gap-1 rounded bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 text-[11px] font-bold cursor-pointer transition"
                               title="Download TXT"
@@ -2904,7 +2906,8 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                               <Download size={11} /> Download TXT
                             </button>
                              {(typeId === "email_campaign" || typeId === "newsletter") && (
-                                <div className="inline-flex items-center gap-1">
+                                <div className="inline-flex items-center gap-1.5 flex-wrap">
+                                  {/* Send Email Button */}
                                   <button
                                     onClick={() => handleSendEmail(contentObj)}
                                     className="inline-flex items-center gap-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
@@ -2912,16 +2915,21 @@ if (useTemplate && emailSelected && selectedTemplateId) {
                                   >
                                     <Send size={11} /> Send Email
                                   </button>
+
+                                  {/* G/O Redirect Toggle Button right beside Send Email */}
+                                  <div className="inline-flex border border-indigo-200 rounded overflow-hidden bg-white shadow-2xs" title="Select default mail client (Gmail or Outlook)">
+                                    <button onClick={() => { setEmailPref('gmail'); handleSendEmail(contentObj, null, 'gmail'); }} title="Open Gmail" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-600 text-white font-black' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>G</button>
+                                    <button onClick={() => { setEmailPref('outlook'); handleSendEmail(contentObj, null, 'outlook'); }} title="Open Outlook" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-600 text-white font-black' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>O</button>
+                                  </div>
+
+                                  {/* Automated Gmail Button - Always Visible */}
                                   <button
                                     onClick={() => handleSendAutomatedGmail(contentObj)}
-                                    className="inline-flex items-center gap-1 rounded bg-red-650 hover:bg-red-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs animate-pulse"
+                                    className="inline-flex items-center gap-1 rounded bg-rose-600 hover:bg-rose-700 text-white px-2.5 py-1 text-[11px] font-bold cursor-pointer transition shadow-2xs"
+                                    title="Send Automated Email via Gmail API"
                                   >
-                                    Send Automated Gmail (BETA)
+                                    <Send size={11} /> Automated Gmail
                                   </button>
-                                  <div className="inline-flex border border-indigo-200 rounded overflow-hidden">
-                                    <button onClick={() => { setEmailPref('gmail'); handleSendEmail(contentObj, null, 'gmail'); }} title="Use Gmail" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition ${emailClientPreference === 'gmail' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>G</button>
-                                    <button onClick={() => { setEmailPref('outlook'); handleSendEmail(contentObj, null, 'outlook'); }} title="Use Outlook" className={`px-1.5 py-1 text-[9px] font-bold border-0 cursor-pointer transition border-l border-indigo-100 ${emailClientPreference === 'outlook' ? 'bg-indigo-100 text-indigo-800' : 'bg-white text-slate-400 hover:bg-slate-50'}`}>O</button>
-                                  </div>
                                 </div>
                              )}
                           </div>
@@ -4689,7 +4697,95 @@ if (useTemplate && emailSelected && selectedTemplateId) {
             </div>
 
             {/* Modal Body */}
-            {preSendRecipientsList.length === 0 ? (
+            {sendProgress.status === "completed" || sendingSuccessMessage ? (
+              /* Success Completion View inside Pop-up Modal */
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-white overflow-y-auto">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 mb-3 shadow-2xs">
+                  <CheckCircle2 size={36} />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                  Email Campaign Dispatched Successfully!
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1 max-w-md">
+                  {sendingSuccessMessage || `All ${sendProgress.total} emails have been processed and dispatched.`}
+                </p>
+
+                {/* Live Progress Bar (100%) */}
+                <div className="w-full max-w-lg mt-5 bg-slate-50 border border-slate-200 rounded-2xl p-4 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-700 mb-2">
+                    <span>Campaign Dispatch Progress</span>
+                    <span className="text-emerald-600 font-extrabold">100% Complete</span>
+                  </div>
+                  <div className="h-3 w-full rounded-full bg-slate-200 overflow-hidden border border-slate-200">
+                    <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: "100%" }} />
+                  </div>
+
+                  <div className="flex items-center justify-center gap-3 mt-3 text-xs font-bold">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-emerald-800">
+                      ✓ {sendProgress.sentCount} Sent Successfully
+                    </span>
+                    {sendProgress.failCount > 0 && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-3 py-1 text-rose-800">
+                        ✕ {sendProgress.failCount} Failed
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Recipient Log Table */}
+                {sendProgress.logs && sendProgress.logs.length > 0 && (
+                  <div className="w-full max-w-xl mt-4 max-h-40 overflow-y-auto border border-slate-200 rounded-xl text-left text-xs bg-white shadow-2xs">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                          <th className="py-2 px-3">Recipient</th>
+                          <th className="py-2 px-3">Status</th>
+                          <th className="py-2 px-3 text-right">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {sendProgress.logs.map((log, idx) => (
+                          <tr key={idx}>
+                            <td className="py-2 px-3 font-semibold text-slate-800">{log.name || log.recipient}</td>
+                            <td className="py-2 px-3">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${log.status === 'Sent' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                                {log.status}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 text-right text-slate-400 font-medium">{log.timestamp}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Modal Footer Action Buttons */}
+                <div className="flex items-center gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPreSendReviewModal(false);
+                      setSendingSuccessMessage("");
+                    }}
+                    className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 text-xs font-bold transition shadow-xs cursor-pointer border-0"
+                  >
+                    Done & Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowPreSendReviewModal(false);
+                      setSendingSuccessMessage("");
+                      setShowHistoryModal(true);
+                    }}
+                    className="rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-5 py-2.5 text-xs font-bold transition cursor-pointer"
+                  >
+                    <History size={13} className="inline mr-1" /> View Sent History
+                  </button>
+                </div>
+              </div>
+            ) : preSendRecipientsList.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50">
                 <p className="text-sm font-semibold text-slate-700">No recipients remaining in this campaign list.</p>
                 <p className="text-xs text-slate-400 mt-1">Add a recipient or upload a list to continue.</p>
